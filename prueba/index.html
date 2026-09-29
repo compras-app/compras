@@ -17,11 +17,15 @@
   3. ¿La bandeja de salida guarda lo que se manda sin señal y no duplica?
 -->
 <style>
-:root{--accent:#d6336c;--soft:#fce4ec;--bg:#fff;--fg:#1d1d1f;--muted:#6b6b70;--line:#e5e5ea;--ok:#1e7e34;--bad:#b3261e}
-@media (prefers-color-scheme:dark){:root{--accent:#f06a9a;--soft:#3a1d28;--bg:#141416;--fg:#f2f2f4;--muted:#a0a0a8;--line:#2c2c30;--ok:#5cc97a;--bad:#ff8a80}}
+/* Mismos colores que la app (AppEstilos.html + color rosa de App_Config, paletaDe_) */
+:root{--bg:#ffffff;--fg:#1d2320;--muted:#6a736e;--line:#dde2df;
+  --accent:#d6336c;--accent-soft:#fae7ed;--accent-fg:#ffffff;--band:#d6336c;--band-fg:#ffffff;--ok:#1e7e34;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#141816;--fg:#e7ecea;--muted:#9aa5a0;--line:#2e3532;
+  --accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;--band-fg:#e7ecea;--ok:#5cc97a;--bad:#f08b84;color-scheme:dark}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:0 16px calc(24px + env(safe-area-inset-bottom))}
-header{background:var(--accent);color:#fff;margin:0 -16px 16px;padding:calc(14px + env(safe-area-inset-top)) 16px 14px}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 16px calc(24px + env(safe-area-inset-bottom))}
+header{background:var(--band);color:var(--band-fg);margin:0 -16px 16px;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;
+  background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.05) 0 2px,transparent 2px 14px)}
 header h1{margin:0;font-size:20px}
 header p{margin:2px 0 0;opacity:.9;font-size:14px}
 main{max-width:560px;margin:0 auto}
@@ -29,9 +33,9 @@ main{max-width:560px;margin:0 auto}
 .fila .ic{font-size:22px;width:28px;text-align:center;flex:none}
 .fila b{display:block}
 .fila small{color:var(--muted)}
-button{font:inherit;min-height:48px;border-radius:12px;border:0;padding:0 16px;width:100%;margin-top:10px;cursor:pointer}
-.pri{background:var(--accent);color:#fff;font-weight:600}
-.sec{background:var(--soft);color:var(--accent);font-weight:600}
+button{font:inherit;min-height:48px;border-radius:8px;border:0;padding:0 16px;width:100%;margin-top:10px;cursor:pointer}
+.pri{background:var(--accent);color:var(--accent-fg);font-weight:700}
+.sec{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .chico{background:none;color:var(--muted);min-height:40px;text-decoration:underline}
 h2{font-size:16px;margin:22px 0 4px}
 ul{list-style:none;margin:0;padding:0}
@@ -157,7 +161,8 @@ function nuevoId(){
   const b = new Uint8Array(8); crypto.getRandomValues(b); b.forEach(x => r += a[x % a.length]);
   return 'P' + Date.now().toString(36).toUpperCase() + '-' + r;
 }
-const bandeja = () => guardado.get('prueba_bandeja', []);
+// Cada renglón tiene su propia clave. El número de envío (id) es otra cosa: en un reintento se repite a propósito.
+const bandeja = () => guardado.get('prueba_bandeja', []).map((m, i) => (m.clave ? m : Object.assign(m, { clave: m.id + '#' + i })));
 function pintar(){
   const lista = bandeja(), ul = $('bandeja');
   ul.innerHTML = '';
@@ -174,8 +179,8 @@ function pintar(){
     tx.append(b, s); li.append(ic, tx); ul.append(li);
   });
 }
-function cambiar(id, cambios){
-  const lista = bandeja(); const m = lista.find(x => x.id === id);
+function cambiar(clave, cambios){
+  const lista = bandeja(); const m = lista.find(x => x.clave === clave);
   if (m) Object.assign(m, cambios);
   guardado.set('prueba_bandeja', lista); pintar();
 }
@@ -187,8 +192,8 @@ async function enviarPendientes(){
       let r;
       try { r = await api('eco', { id: m.id, args: [m.texto] }); }
       catch (e) { break; }                                   // sin señal: se reintenta después
-      if (r.ok) cambiar(m.id, { estado: 'ok', nuevo: r.nuevo, recibido: r.recibido });
-      else { cambiar(m.id, { estado: 'ok', nuevo: false, recibido: new Date().toISOString(), texto: m.texto + ' (rechazado: ' + r.error + ')' }); }
+      if (r.ok) cambiar(m.clave, { estado: 'ok', nuevo: r.nuevo, recibido: r.recibido });
+      else { cambiar(m.clave, { estado: 'ok', nuevo: false, recibido: new Date().toISOString(), texto: m.texto + ' (rechazado: ' + r.error + ')' }); }
     }
   } finally { enviando = false; }
 }
@@ -196,14 +201,14 @@ let n = guardado.get('prueba_n', 0);
 $('btMandar').onclick = () => {
   n++; guardado.set('prueba_n', n);
   const lista = bandeja();
-  lista.push({ id: nuevoId(), texto: 'Mensaje de prueba ' + n, creado: new Date().toISOString(), estado: 'pendiente' });
+  lista.push({ clave: nuevoId(), id: nuevoId(), texto: 'Mensaje de prueba ' + n, creado: new Date().toISOString(), estado: 'pendiente' });
   guardado.set('prueba_bandeja', lista); pintar(); enviarPendientes();
 };
 $('btRepetir').onclick = () => {
   const lista = bandeja(); if (!lista.length) return;
   const ult = lista[lista.length - 1];
   // Mismo número de envío: es lo que pasa si la señal se corta y el teléfono reintenta
-  lista.push({ id: ult.id, texto: ult.texto.replace(/ \(reintento\)$/, '') + ' (reintento)', creado: new Date().toISOString(), estado: 'pendiente' });
+  lista.push({ clave: nuevoId(), id: ult.id, texto: ult.texto.replace(/ \(reintento\)$/, '') + ' (reintento)', creado: new Date().toISOString(), estado: 'pendiente' });
   guardado.set('prueba_bandeja', lista); pintar(); enviarPendientes();
 };
 $('btBorrar').onclick = () => { guardado.set('prueba_bandeja', []); pintar(); };

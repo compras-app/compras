@@ -1,7 +1,7 @@
 // Guarda la página de prueba en el dispositivo para que abra sin señal.
 // Lo de esta página sale de lo guardado y se actualiza por detrás cuando hay señal.
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
-const VERSION = 'prueba-1';
+const VERSION = 'prueba-2';
 const ARCHIVOS = ['./', './index.html', './manifest.webmanifest', '../icono-180.png', '../icono-192.png', '../icono-512.png'];
 
 self.addEventListener('install', e => {
