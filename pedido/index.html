@@ -3,46 +3,45 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Compras</title>
+<title>Pedido de insumos</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Compras">
+<meta name="apple-mobile-web-app-title" content="Pedido">
 <meta name="theme-color" content="#d6336c">
 <link rel="apple-touch-icon" href="icono-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
 <link rel="manifest" href="manifest.webmanifest">
 <!--
-  Página propia de la app de compras (GitHub Pages: compras-app.github.io).
-  Muestra la app de Apps Script en un recuadro y le guarda la llave de sesión:
-  Safari borra lo que guarda un recuadro de otro sitio al cerrarlo, pero no lo
-  que guarda esta página. No lleva datos ni claves: solo el link /exec, que ya
-  es público. Fuente: carpeta pagina/ del proyecto compras-app.
+  Formulario de pedidos dentro de la página propia (compras-app.github.io/compras/pedido/),
+  sin el cartel de Apps Script. Muestra /exec?marco=1 (el mismo formulario que /exec).
+  No pide login. Guarda el borrador del pedido: Safari borra lo que guarda un recuadro
+  de otro sitio al cerrarlo, pero no lo que guarda esta página.
+  Fuente: carpeta pagina/pedido/ del proyecto compras-app.
 -->
 <style>
   html, body { margin: 0; height: 100%; background: #ffffff; }
   @media (prefers-color-scheme: dark) { html, body { background: #141816; } }
   iframe { display: block; border: 0; width: 100%; height: 100vh; height: 100dvh; }
-  p { font-family: system-ui, -apple-system, sans-serif; padding: 24px; color: #b3261e; }
 </style>
 </head>
 <body>
-<iframe id="app" title="Compras" allow="clipboard-write"></iframe>
+<iframe id="app" title="Pedido de insumos" allow="camera"></iframe>
 <script>
 (function () {
-  var APP = 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec?app=1&marco=1';
-  var CLAVES = { compras_token: true, compras_desde: true, compras_prueba: true };
+  var FORMULARIO = 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec?marco=1';
+  var CLAVES = { 'pedido-insumos-borrador-v3': true };
 
-  // Esta página no se deja mostrar dentro de otra: nadie puede usarla para leer la llave.
+  // Esta página no se deja mostrar dentro de otra
   if (window.top !== window) {
-    document.body.innerHTML = '<p>Abrí esta página directamente.</p>';
+    document.body.innerHTML = '<p style="font-family:system-ui;padding:24px">Abrí esta página directamente.</p>';
     return;
   }
 
   var marco = document.getElementById('app');
-  marco.src = APP;
+  marco.src = FORMULARIO;
 
-  // true si el mensaje viene de adentro de NUESTRO recuadro (la app está un par de niveles adentro)
-  function esDeLaApp(fuente) {
+  // true si el mensaje viene de adentro de NUESTRO recuadro (el formulario está un par de niveles adentro)
+  function esDelFormulario(fuente) {
     var w = fuente;
     for (var i = 0; i < 6 && w; i++) {
       if (w === marco.contentWindow) return true;
@@ -56,13 +55,13 @@
     var d = ev.data;
     if (!d || typeof d !== 'object' || !d.compras || d.compras === 'respuesta') return;
     if (!/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(ev.origin)) return;
-    if (!esDeLaApp(ev.source)) return;
+    if (!esDelFormulario(ev.source)) return;
     if (!CLAVES[d.clave]) return;
 
     var r = { compras: 'respuesta', id: d.id, ok: false, valor: null };
     try {
       if (d.compras === 'leer') { r.valor = localStorage.getItem(d.clave); r.ok = true; }
-      else if (d.compras === 'guardar') { localStorage.setItem(d.clave, String(d.valor)); r.ok = localStorage.getItem(d.clave) === String(d.valor); }
+      else if (d.compras === 'guardar') { localStorage.setItem(d.clave, String(d.valor)); r.ok = true; }
       else if (d.compras === 'borrar') { localStorage.removeItem(d.clave); r.ok = true; }
     } catch (e) { r.ok = false; }
     ev.source.postMessage(r, ev.origin);
