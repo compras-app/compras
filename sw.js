@@ -5,7 +5,7 @@
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
 // El formulario (pedido/) también es parte de la app.
-const VERSION = 'app-c4922b23aa';
+const VERSION = 'app-55ffeda283';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
   './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js', './js/tablero.js',

@@ -274,3 +274,13 @@ html,body{touch-action:pan-x pan-y}
 .tarjeta .aprobar{flex:none;font-size:12px;font-weight:700;color:var(--fg);background:var(--warn-soft);border-radius:999px;padding:1px 8px}
 .chip-filtro{border:1.5px solid var(--line);background:var(--bg);color:var(--muted);font:inherit;font-size:14px;font-weight:600;border-radius:10px;padding:5px 12px;min-height:36px;cursor:pointer}
 .chip-filtro[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+
+/* Adjuntos de la tarjeta (Paso 4, parte 4) */
+.adjuntos{display:flex;flex-wrap:wrap;gap:8px}
+.adj{position:relative;width:96px;height:96px;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--soft);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--fg);font-size:12px;text-align:center}
+.adj img{width:100%;height:100%;object-fit:cover;display:block}
+.adj .pdf{font-size:30px;line-height:1}
+.adj .n{max-width:100%;padding:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adj .x{position:absolute;top:3px;right:3px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:17px;line-height:1;cursor:pointer}
+.adj .esp{position:absolute;left:3px;bottom:3px;background:rgba(0,0,0,.65);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px}
+.adj.espera img{opacity:.7}

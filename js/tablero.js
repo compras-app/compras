@@ -105,6 +105,7 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
     if (antes) antes(m, r);
     if (m.fn === 'comentar') return comentarioMandado(m, r);
     if (OPS_PRODUCTO[m.fn]) return productoMandado(m, r);
+    if (m.fn === 'quitarAdjunto') return adjuntoQuitado(m, r);
     if (m.fn === 'editarPedido' && r.ok) datosDelPedidoMandados(m.args[0], m.args[1]);
     if (!OPS_TABLERO[m.fn]) return;
     if (r.ok && TB.datos) {
@@ -168,6 +169,7 @@ function inicial(nombre) { return String(nombre || '').trim().charAt(0).toUpperC
 
 function mostrarTablero() {
   if (!TB.filtros) armarFiltros();
+  subirAdjuntos();
   pintarTablero();
   cargarTablero();
   if (location.hash.length > 1 && !TB.abierta) abrirTarjeta(decodeURIComponent(location.hash.slice(1)), true);
@@ -617,7 +619,7 @@ async function traerTarjeta(ref) {
   if (TB.abierta !== ref) { TB.traerOtraVez = false; return; }
   if (r.ok) {
     const antes = TB.detalle;
-    TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [],
+    TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -726,6 +728,7 @@ function pintarTarjeta() {
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
   $('tj-cancelar').hidden = !(admin && enTb);
+  pintarAdjuntos();
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {
@@ -920,6 +923,10 @@ function fraseEvento(e, d) {
     }
     return 'cambió ' + String(e.campo).toLowerCase() + ' de ' + prod + (n ? ': "' + n + '"' : '');
   }
+  if (e.entidad === 'adjunto') {
+    if (e.accion === 'crear') return 'adjuntó "' + n + '"';
+    return e.campo === 'Estado' && n === 'Quitado' ? 'quitó un adjunto' : '';
+  }
   if (!e.campo) return '';
   return 'cambió ' + String(e.campo).toLowerCase() + (n ? ' a "' + n + '"' : '');
 }
@@ -1008,7 +1015,7 @@ function enviarComentario() {
 }
 
 // Sin señal, el comentario que espera dice "⏳ se manda solo"; con señal, "Enviando…"
-function alCambiarLaSenal() { if (TB.abierta) pintarActividad(); }
+function alCambiarLaSenal() { if (TB.abierta) { pintarActividad(); pintarAdjuntos(); } }
 
 /** Respuesta de un comentario que salió de la bandeja. */
 function comentarioMandado(m, r) {
@@ -1124,7 +1131,7 @@ function htmlProducto(l, admin, mio) {
     else if (suyo) botones = boton('Retirar mi pedido', 'retirar');
   } else if (e === 'Para quitar') {
     nota = '⏳ ' + esc(l.propuso) + ' pidió quitarlo: espera aprobación';
-    if (admin) botones = boton('Quitarlo', 'aprobar', 'btn-chico si') + boton('Dejarlo', 'rechazar');
+    if (admin) botones = boton('Aprobar', 'aprobar', 'btn-chico si') + boton('Rechazar', 'rechazar');
     else if (suyo) botones = boton('Retirar mi pedido', 'retirar');
   } else if (e === 'Quitado') {
     nota = 'Quitado del pedido';
@@ -1159,7 +1166,7 @@ async function cambioDeProducto(ref, id, cambio) {
     bandeja.agregar('quitarProducto', [ref, id], 'pedir que quiten ' + nombre);
   } else if (cambio === 'aprobar' || cambio === 'rechazar') {
     const que = l.estado === 'Para agregar' ? (cambio === 'aprobar' ? 'aprobar que se agregue ' : 'rechazar que se agregue ')
-                                             : (cambio === 'aprobar' ? 'quitar ' : 'dejar ');
+                                             : (cambio === 'aprobar' ? 'aprobar que se quite ' : 'rechazar que se quite ');
     bandeja.agregar('resolverCambio', [ref, id, cambio === 'aprobar'], que + nombre);
   } else if (cambio === 'reponer') {
     bandeja.agregar('reponerProducto', [ref, id], 'volver a poner ' + nombre);
@@ -1572,6 +1579,176 @@ $('tj-editar').addEventListener('click', async function () {
   bandeja.agregar('editarPedido', [ref, c], 'cambiar los datos de "' + (p.titulo || ref) + '"');
   pintarTablero();
   pintarTarjeta();
+});
+
+/* ---------- Adjuntos: fotos y PDFs en la tarjeta (Paso 4, parte 4) ----------
+   Pueden adjuntar todos. El archivo queda primero en el teléfono
+   (IndexedDB, con PedidosGuardados) y se sube solo cuando hay señal, como
+   las fotos del formulario: cada uno con su número ("J…"), así un
+   reintento no lo sube dos veces. Van a la carpeta del pedido en Drive.
+   Quitar: quien lo subió o un admin (el archivo no se borra de Drive). */
+const K_ADJUNTOS = 'compras_adjuntos';     // los que esperan subir: [{id, ref, nombre, tipo, creado, token, intentos}]
+const ADJUNTO_MAX_MB = 10;
+const ADJ = { subiendo: false, urls: {} };  // urls: vista previa de los que esperan (mientras la app está abierta)
+function adjPendientes() { return guardado.leerJSON(K_ADJUNTOS, []); }
+function guardarAdjPendientes(l) { guardado.guardarJSON(K_ADJUNTOS, l); APP.adjuntosPendientes = l.length; pintarSinRed(); }
+
+function blobABase64(blob) {
+  return new Promise(function (ok, bad) {
+    const r = new FileReader();
+    r.onload = function () { ok(String(r.result).split(',')[1] || ''); };
+    r.onerror = bad;
+    r.readAsDataURL(blob);
+  });
+}
+// Las fotos se achican en el teléfono antes de subir (máx. 1600 px, JPEG), como en el formulario
+function comprimirFoto(file) {
+  return new Promise(function (ok, bad) {
+    const img = new Image(), u = URL.createObjectURL(file);
+    img.onload = function () {
+      const r = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(function (b) { URL.revokeObjectURL(u); if (!b) return bad(); ok({ blob: b, nombre: file.name.replace(/\.[^.]+$/, '') + '.jpg' }); }, 'image/jpeg', 0.75);
+    };
+    img.onerror = function () { URL.revokeObjectURL(u); bad(); };
+    img.src = u;
+  });
+}
+
+async function adjuntar(files) {
+  const ref = TB.abierta;
+  if (!ref) return;
+  for (let k = 0; k < files.length; k++) {
+    const f = files[k];
+    const esPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+    if (!esPdf && !/^image\//.test(f.type)) { aviso('"' + f.name + '": solo se pueden adjuntar fotos o PDF.', 'bad'); continue; }
+    let blob = f, nombre = f.name;
+    if (esPdf) {
+      if (f.size > ADJUNTO_MAX_MB * 1024 * 1024) { aviso('"' + f.name + '" pesa más de ' + ADJUNTO_MAX_MB + ' MB.', 'bad'); continue; }
+    } else {
+      try { const c = await comprimirFoto(f); blob = c.blob; nombre = c.nombre; }
+      catch (e) { aviso('No se pudo leer la foto "' + f.name + '".', 'bad'); continue; }
+    }
+    const id = 'J' + nuevoId();
+    try { await PedidosGuardados.guardarFoto(id, blob, nombre); }
+    catch (e) { aviso('No se pudo guardar "' + nombre + '" en el teléfono.', 'bad'); continue; }
+    ADJ.urls[id] = URL.createObjectURL(blob);
+    const l = adjPendientes();
+    l.push({ id: id, ref: ref, nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', creado: new Date().toISOString(), token: APP.token, intentos: 0 });
+    guardarAdjPendientes(l);
+  }
+  pintarAdjuntos();
+  subirAdjuntos();
+}
+
+/** Sube lo que espera, del más viejo al más nuevo. Sin señal, para y se reintenta después. */
+async function subirAdjuntos() {
+  if (ADJ.subiendo || !APP.token) return;
+  ADJ.subiendo = true;
+  try {
+    for (const p of adjPendientes()) {
+      const g = await PedidosGuardados.leerFoto(p.id);
+      let r;
+      if (!g) r = { ok: false, error: 'el archivo ya no estaba en el teléfono' };
+      else {
+        try {
+          r = await llamar('subirAdjunto', [p.token || APP.token, p.ref, { id: p.id, nombre: p.nombre, tipo: p.tipo, base64: await blobABase64(g.blob) }],
+                           p.id, { limiteMs: 180000 });
+        } catch (x) {
+          if (x.sinRed) break;                                   // sin señal: después
+          r = { ok: false, error: 'el servidor no lo aceptó', reintentar: true };
+        }
+      }
+      if (r.sinSesion) { sesionPerdida(r.error); break; }
+      if (!r.ok && r.reintentar) {                               // respuesta rara: se reintenta, pero no para siempre
+        const l = adjPendientes(), x = l.find(function (y) { return y.id === p.id; });
+        if (x && ++x.intentos < 5) { guardarAdjPendientes(l); break; }
+      }
+      guardarAdjPendientes(adjPendientes().filter(function (x) { return x.id !== p.id; }));
+      if (g) PedidosGuardados.borrarFoto(p.id);
+      if (r.ok) ponerAdjuntoEnDetalle(p.ref, r.adjunto, false);
+      else noAplicado('adjuntar "' + p.nombre + '"', r.error);
+      if (TB.abierta === p.ref) pintarAdjuntos();
+    }
+  } finally {
+    ADJ.subiendo = false;
+  }
+}
+setInterval(function () { if (!document.hidden && adjPendientes().length) subirAdjuntos(); }, 15000);
+window.addEventListener('online', function () { subirAdjuntos(); });
+APP.adjuntosPendientes = adjPendientes().length;
+
+/** Suma (o saca) un adjunto en lo guardado de la tarjeta. */
+function ponerAdjuntoEnDetalle(ref, a, sacar) {
+  const poner = function (d) {
+    if (!d) return;
+    d.adjuntos = (d.adjuntos || []).filter(function (x) { return x.id !== (sacar ? a : a.id); });
+    if (!sacar) d.adjuntos.push(a);
+  };
+  const todos = detallesGuardados();
+  if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
+  if (TB.abierta === ref) poner(TB.detalle);
+}
+function adjuntoQuitado(m, r) {
+  if (r.ok) ponerAdjuntoEnDetalle(m.args[0], m.args[1], true);
+  if (TB.abierta === m.args[0]) pintarAdjuntos();
+}
+
+function pintarAdjuntos() {
+  const ref = TB.abierta, d = TB.detalle, cont = $('tj-adjuntos');
+  if (!ref) return;
+  const quitando = {};
+  bandeja.lista().forEach(function (m) { if (m.fn === 'quitarAdjunto' && m.args[0] === ref) quitando[m.args[1]] = true; });
+  const lista = ((d && d.adjuntos) || []).filter(function (a) { return !quitando[a.id]; });
+  const esperan = adjPendientes().filter(function (p) { return p.ref === ref; });
+  $('tj-adj-t').textContent = 'Adjuntos' + (lista.length + esperan.length ? ' (' + (lista.length + esperan.length) + ')' : '');
+  const puedeQuitar = function (a) { return APP.yo.admin || a.autor === APP.yo.nombre; };
+  const tile = function (a, espera) {
+    const foto = a.tipo === 'foto';
+    const img = espera ? (foto && ADJ.urls[a.id] ? '<img src="' + esc(ADJ.urls[a.id]) + '" alt="">' : '<span class="pdf">' + (foto ? '🖼️' : '📄') + '</span>')
+                       : (foto ? '<img src="https://drive.google.com/thumbnail?id=' + esc(a.idDrive) + '&sz=w240" alt="" loading="lazy">' : '<span class="pdf">📄</span>');
+    return '<div class="adj' + (espera ? ' espera' : '') + '" role="button" tabindex="0" data-adj="' + esc(a.id) + '" title="' + esc(a.nombre) + (a.autor ? ' · ' + esc(a.autor) : '') + '">' +
+      img + (foto ? '' : '<span class="n">' + esc(a.nombre) + '</span>') +
+      (espera ? '<span class="esp">' + (APP.enLinea ? 'Subiendo…' : '⏳') + '</span>' : '') +
+      (espera || puedeQuitar(a) ? '<button type="button" class="x" data-quitar="' + esc(a.id) + '" aria-label="Quitar ' + esc(a.nombre) + '">×</button>' : '') + '</div>';
+  };
+  cont.innerHTML = lista.map(function (a) { return tile(a, false); }).join('') + esperan.map(function (a) { return tile(a, true); }).join('') ||
+    '<p class="nota" style="margin:0">Fotos o PDFs del pedido: remito, presupuesto, foto del repuesto…</p>';
+  cont.querySelectorAll('[data-adj]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      if (e.target.closest('[data-quitar]')) return;
+      const a = lista.filter(function (x) { return x.id === el.dataset.adj; })[0];
+      if (!a) return;                                    // todavía se está subiendo
+      if (a.tipo === 'foto') verFoto(a.idDrive);
+      else window.open('https://drive.google.com/file/d/' + encodeURIComponent(a.idDrive) + '/view', '_blank');
+    });
+  });
+  cont.querySelectorAll('[data-quitar]').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      const id = b.dataset.quitar;
+      const p = esperan.filter(function (x) { return x.id === id; })[0];
+      if (p) {                                           // todavía no subió: se saca del teléfono
+        if (ADJ.subiendo) return aviso('Se está subiendo: esperá unos segundos para quitarlo.');
+        guardarAdjPendientes(adjPendientes().filter(function (x) { return x.id !== id; }));
+        PedidosGuardados.borrarFoto(id);
+        return pintarAdjuntos();
+      }
+      const a = lista.filter(function (x) { return x.id === id; })[0];
+      const si = await dialogo({ titulo: '¿Quitar "' + a.nombre + '"?', texto: 'Deja de verse en la tarjeta. El archivo queda guardado en el Drive.',
+        botones: [{ texto: 'Sí, quitarlo', clase: 'btn peligro-btn', valor: true }, { texto: 'No, volver', valor: null }] });
+      if (!si) return;
+      bandeja.agregar('quitarAdjunto', [ref, id], 'quitar el adjunto "' + a.nombre + '"');
+      pintarAdjuntos();
+    });
+  });
+}
+$('tj-adjuntar-b').addEventListener('click', function () { $('tj-adjuntar').click(); });
+$('tj-adjuntar').addEventListener('change', function () {
+  const files = Array.prototype.slice.call(this.files || []);
+  this.value = '';
+  if (files.length) adjuntar(files);
 });
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */
