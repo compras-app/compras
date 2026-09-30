@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Compras</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -124,8 +124,8 @@
             <button type="button" id="tb-mios" aria-pressed="false">Mis pedidos</button>
             <button type="button" id="tb-todos" aria-pressed="false">Todos</button>
           </div>
-          <select id="tb-sitio" aria-label="Granja" hidden></select>
-          <select id="tb-resp" aria-label="Responsable" hidden></select>
+          <label class="filtro" id="tb-sitio-l" hidden><span>Granja</span><select id="tb-sitio"></select></label>
+          <label class="filtro" id="tb-resp-l" hidden><span>Responsable</span><select id="tb-resp"></select></label>
           <button type="button" class="refrescar" id="tb-refrescar" aria-label="Actualizar el tablero">↻ <span id="tb-hace"></span></button>
         </div>
       </div>
@@ -184,6 +184,13 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Foto en grande, adentro de la app -->
+  <div class="visor" id="visor" hidden>
+    <button type="button" class="icono visor-cerrar" id="visor-cerrar" aria-label="Cerrar la foto">×</button>
+    <img id="visor-img" alt="Foto del producto">
+    <p class="visor-carga" id="visor-carga">Cargando la foto…</p>
   </div>
 
   <!-- Diálogos (mover, quién retiró, responsable, cancelar) -->

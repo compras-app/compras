@@ -63,7 +63,9 @@ function resto(q,fi,ej){
   const out=[]; let started=false;
   for(const raw of String(q).trim().split(/\s+/)){
     const t=norm(raw); if(!t){continue;}
-    const esFam = /[a-z]/.test(t) && t.length>=3 && fw.some(w=>w.startsWith(t.slice(0,4))||t.startsWith(w.slice(0,4))||(t.length>=4&&lev(t,w)<=(t.length>=7?2:1)));
+    // Lo que escribió para buscar el producto no es la medida: "bu" (de bulón) tampoco, aunque sea corto
+    const esFam = (/^[a-z]+$/.test(t) && fw.some(w=>w.startsWith(t))) ||
+      (/[a-z]/.test(t) && t.length>=3 && fw.some(w=>w.startsWith(t.slice(0,4))||t.startsWith(w.slice(0,4))||(t.length>=4&&lev(t,w)<=(t.length>=7?2:1))));
     if(esFam) continue;
     if(!started && stop.has(t)) continue;
     started=true; out.push(raw);

@@ -110,7 +110,7 @@ const PedidosGuardados = (function () {
       })
     });
     let r;
-    try { r = await llamar('recibirFormulario', [datos], e.ref); }
+    try { r = await llamar('recibirFormulario', [datos], e.ref, { limiteMs: 60000 }); }
     catch (x) {
       if (x.sinRed) { e.progreso = ''; await poner('envios', e); return false; }
       r = { ok: false, error: 'El servidor no lo aceptó. Probá de nuevo en un rato.', reintentar: true };
@@ -179,10 +179,13 @@ const PedidosGuardados = (function () {
   };
 })();
 
-// Reintentos: al volver la señal, al volver a la página y cada 20 s si hay pendientes
+// Reintentos: al volver la señal, al volver a la página, y seguido si hay pendientes
 window.addEventListener('online', function () { PedidosGuardados.procesar(); });
 document.addEventListener('visibilitychange', function () { if (!document.hidden) PedidosGuardados.procesar(); });
+// Sin señal se prueba cada 5 s (así apenas vuelve, se manda); con señal, cada 20 s
+let vueltasPedidos = 0;
 setInterval(function () {
-  if (document.hidden) return;
+  vueltasPedidos++;
+  if (document.hidden || !(APP.enLinea === false || vueltasPedidos % 4 === 0)) return;
   PedidosGuardados.pendientes().then(function (n) { if (n) PedidosGuardados.procesar(); });
-}, 20000);
+}, 5000);

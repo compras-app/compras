@@ -108,11 +108,11 @@ function armarFiltros() {
   const admin = APP.yo.admin;
   TB.filtros = { mios: !admin, sitio: '', resp: '' };   // pedido de Feli: los no admins entran con "Mis pedidos"
   const sitio = $('tb-sitio'), resp = $('tb-resp');
-  sitio.hidden = resp.hidden = !admin;
+  $('tb-sitio-l').hidden = $('tb-resp-l').hidden = !admin;
   if (admin) {
-    sitio.innerHTML = '<option value="">Granja</option>' +
+    sitio.innerHTML = '<option value="">Ver todos</option>' +
       (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
-    resp.innerHTML = '<option value="">Responsable</option><option value="-">Sin responsable</option>' +
+    resp.innerHTML = '<option value="">Ver todos</option><option value="-">Sin responsable</option>' +
       (APP.config.admins || []).map(function (a) { return '<option>' + esc(a) + '</option>'; }).join('');
   }
   pintarFiltros();
@@ -652,12 +652,13 @@ function pintarTarjeta() {
     prods.innerHTML = d.lineas.map(function (l) {
       const nombre = (l.familia || l.texto) + (l.especificacion ? ' (' + l.especificacion + ')' : '');
       const sub = [];
-      if (l.familia && l.texto && l.texto.toLowerCase() !== l.familia.toLowerCase()) sub.push('Escribió: "' + l.texto + '"');
+      // Lo que escribió el encargado, solo si el producto no estaba en el padrón (si lo eligió de la lista, no hace falta)
+      if (!l.enPadron && l.familia && l.texto && l.texto.toLowerCase() !== l.familia.toLowerCase()) sub.push('Escribió: "' + l.texto + '"');
       if (l.canal) sub.push('Rubro: ' + l.canal);
       if (l.descripcion) sub.push(l.descripcion);
       const fotos = (l.fotos || []).map(function (u) {
         const id = idDrive(u);
-        return id ? '<a href="https://drive.google.com/file/d/' + esc(id) + '/view" target="_blank" rel="noopener" aria-label="Ver foto">' +
+        return id ? '<a href="https://drive.google.com/file/d/' + esc(id) + '/view" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
                     '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w200" alt="Foto" loading="lazy"></a>' : '';
       }).join('');
       return '<div class="producto"><b>' + esc(l.cantidad) + ' × ' + esc(nombre) + '</b>' +
@@ -671,6 +672,9 @@ function pintarTarjeta() {
   }
   $('tj-cancelar').hidden = !(admin && enTb);
 
+  prods.querySelectorAll('[data-foto]').forEach(function (a) {
+    a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
+  });
   const b = $('tj-resp');
   if (b) b.addEventListener('click', function () { cambiarResponsable(ref); });
   $('tj-datos').querySelectorAll('[data-entrega]').forEach(function (btn) {
@@ -766,3 +770,21 @@ function avisoConBoton(texto, boton, accion) {
   clearTimeout(timerAviso);
   timerAviso = setTimeout(function () { el.hidden = true; }, 8000);
 }
+
+/* ---------- Foto en grande, adentro de la app ----------
+   Las fotos están guardadas en Google Drive (las sube el formulario). Se
+   muestran con la vista previa grande de Drive, sin salir de la app. */
+function verFoto(id) {
+  const img = $('visor-img');
+  $('visor-carga').hidden = false;
+  $('visor-carga').textContent = 'Cargando la foto…';
+  img.hidden = true;
+  img.onload = function () { $('visor-carga').hidden = true; img.hidden = false; };
+  img.onerror = function () { $('visor-carga').textContent = 'No se pudo cargar la foto (¿poca señal?).'; };
+  img.src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w1600';
+  $('visor').hidden = false;
+}
+function cerrarFoto() { $('visor').hidden = true; $('visor-img').removeAttribute('src'); }
+$('visor-cerrar').addEventListener('click', cerrarFoto);
+$('visor').addEventListener('click', function (e) { if (e.target === this || e.target.id === 'visor-img') cerrarFoto(); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('visor').hidden) { e.stopImmediatePropagation(); cerrarFoto(); } }, true);

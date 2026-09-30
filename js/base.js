@@ -13,7 +13,7 @@ const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
   : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
 const FORMULARIO = new URL('../pedido/', document.currentScript.src).href;   // "Nuevo pedido"
-const VERSION_APP = '6414ccbc33';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '8d070ed3ad';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -85,8 +85,10 @@ async function llamarUnaVez(fn, args, id, limite) {
       body: JSON.stringify({ fn: fn, args: args || [], id: id })
     });
   } catch (e) {
-    conexion(false);
-    const x = new Error('sin señal'); x.sinRed = true; throw x;
+    // Si se cortó por tiempo, hay conexión pero Google está tardando: no es "poca señal"
+    const lento = e && e.name === 'AbortError';
+    if (!lento) conexion(false);
+    const x = new Error(lento ? 'Google tardó demasiado' : 'sin señal'); x.sinRed = true; x.lento = lento; throw x;
   } finally { clearTimeout(vence); }
   conexion(true);
   const texto = await resp.text().catch(function () { return ''; });
@@ -160,25 +162,44 @@ const bandeja = {
   /** true si el renglón sigue esperando (no se mandó todavía). */
   pendiente(clave) { return this.lista().some(function (x) { return x.clave === clave; }); },
   quitar(clave) { this.guardarLista(this.lista().filter(function (x) { return x.clave !== clave; })); },
+  /**
+   * Manda lo pendiente, en orden. Varios juntos en un solo viaje ('lote' en
+   * Api.js): cada viaje a Google tarda unos segundos. Sin señal (o si Google
+   * tarda demasiado) para y se reintenta después, con los mismos números.
+   */
   async procesar() {
     if (this.enviando) return;
     this.enviando = true;
     pintarSinRed();
     try {
-      for (const m of this.lista()) {
-        let r;
+      while (true) {
+        const tanda = this.lista().slice(0, 20);
+        if (!tanda.length) break;
+        let respuestas;
         try {
-          r = await llamar(m.fn, [m.token].concat(m.args), m.id);
+          if (tanda.length === 1) {
+            respuestas = [await llamar(tanda[0].fn, [tanda[0].token].concat(tanda[0].args), tanda[0].id, { limiteMs: 60000 })];
+          } else {
+            const r = await llamar('lote', [tanda.map(function (m) { return { fn: m.fn, args: [m.token].concat(m.args), id: m.id }; })],
+                                   null, { limiteMs: 90000 });
+            if (!r.ok || !Array.isArray(r.respuestas)) { const x = new Error(r.error || 'lote'); x.servidor = true; throw x; }
+            respuestas = r.respuestas;
+          }
         } catch (e) {
-          if (e.sinRed) break;                          // sin señal: se reintenta después, en orden
+          if (e.sinRed) break;                          // sin señal o muy lento: se reintenta después, en orden
           // El servidor contestó algo raro: se reintenta, pero no para siempre
-          const l = this.lista(), x = l.find(function (y) { return y.clave === m.clave; });
+          const l = this.lista(), x = l.find(function (y) { return y.clave === tanda[0].clave; });
           if (x && ++x.intentos < 5) { this.guardarLista(l); break; }
-          r = { ok: false, error: 'el servidor no lo aceptó' };
+          respuestas = tanda.map(function () { return { ok: false, error: 'el servidor no lo aceptó' }; });
         }
-        this.quitar(m.clave);
-        if (!r.ok && !r.sinSesion) aviso('No se pudo ' + m.texto + ': ' + r.error, 'bad');
-        if (this.alTerminar) this.alTerminar(m, r);
+        const self = this;
+        tanda.forEach(function (m, i) {
+          const r = respuestas[i] || { ok: false, error: 'sin respuesta' };
+          self.quitar(m.clave);
+          if (!r.ok && !r.sinSesion) aviso('No se pudo ' + m.texto + ': ' + r.error, 'bad');
+          if (r.sinSesion && APP.token === m.token) sesionPerdida(r.error);
+          if (self.alTerminar) self.alTerminar(m, r);
+        });
       }
     } finally {
       this.enviando = false;
@@ -212,9 +233,7 @@ function pintarSinRed() {
                 : '📶 Poca señal. Podés seguir usando la app: lo que hagas se manda solo cuando vuelva la señal.';
     // Si lo que se ve es viejo, que se sepa
     if (APP.actualizado && Date.now() - new Date(APP.actualizado) > 5 * 60000) texto += ' Lo que ves es de ' + hace(APP.actualizado) + '.';
-  } else if (que) {
-    texto = '⏳ Mandando ' + que + '…';
-  }
+  }   // con señal no se muestra nada: los cambios se ven al instante y se mandan por detrás (pedido de Feli)
   el.textContent = texto;
   el.hidden = !texto;
   // El tablero ocupa el alto que queda: necesita saber cuánto mide este aviso
@@ -327,4 +346,19 @@ document.addEventListener('visibilitychange', function () {
   bandeja.procesar();
   if (window.alVolverALaApp) alVolverALaApp();
 });
-setInterval(function () { if (!document.hidden && bandeja.pendientes()) bandeja.procesar(); }, 15000);
+// Sin señal se prueba cada 5 s (así apenas vuelve, se manda); con señal, cada 15 s
+let vueltasReintento = 0;
+setInterval(function () {
+  vueltasReintento++;
+  if (document.hidden) return;
+  if (bandeja.pendientes()) { if (!APP.enLinea || vueltasReintento % 3 === 0) bandeja.procesar(); }
+  // Con el aviso de poca señal puesto y nada para mandar: se prueba si volvió (así el aviso se va solo)
+  else if (!APP.enLinea && vueltasReintento % 2 === 0) llamar('ping', []).catch(function () {});
+}, 5000);
+
+/* ---------- Sin zoom con los dedos (pedido de Feli: que no se agrande sin querer) ----------
+   El iPhone ignora "user-scalable=no"; esto frena el pellizco en Safari. */
+['gesturestart', 'gesturechange'].forEach(function (ev) {
+  document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
+});
+document.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });

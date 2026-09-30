@@ -103,6 +103,7 @@ body[data-pantalla="tablero"] .contenido{max-width:none;padding:0}
 .seg{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;flex:none}
 .seg button{border:0;background:var(--bg);color:var(--muted);font:inherit;font-size:14px;font-weight:600;padding:5px 12px;min-height:36px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.filtro{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
 .filtros select{font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:5px 8px;min-height:36px;max-width:40vw}
 .refrescar{margin-left:auto;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;min-height:36px;cursor:pointer;padding:0 4px;white-space:nowrap}
 .tablero{flex:1;min-height:0;display:flex;align-items:flex-start;gap:10px;overflow-x:auto;padding:10px 12px 12px;scroll-snap-type:x mandatory;scroll-padding:0 12px;background:var(--soft);overscroll-behavior-x:contain}
@@ -176,3 +177,14 @@ body.modal-abierto{overflow:hidden}
 .opciones .choice[aria-current="true"]{border-color:var(--accent)}
 .aviso-accion{display:flex;align-items:center;gap:12px}
 .aviso-accion button{margin-left:auto;background:none;border:0;color:inherit;font:inherit;font-weight:800;text-decoration:underline;cursor:pointer;min-height:36px}
+
+/* Foto en grande (visor), adentro de la app */
+.visor{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;
+  padding:calc(56px + env(safe-area-inset-top)) 8px calc(16px + env(safe-area-inset-bottom))}
+.visor img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px}
+.visor-cerrar{position:absolute;top:calc(8px + env(safe-area-inset-top));right:8px;color:#fff;font-size:30px}
+.visor-cerrar:hover{background:rgba(255,255,255,.12)}
+.visor-carga{position:absolute;color:#ddd;font-weight:600}
+
+/* Sin zoom con los dedos (pedido de Feli): el zoom de pellizco y el de doble toque */
+html,body{touch-action:pan-x pan-y}
