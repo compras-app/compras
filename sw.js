@@ -4,8 +4,8 @@
 // archivos); el navegador lo nota, baja todo de nuevo por detrás y la app
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
-// Las carpetas prueba/ y viejo/ tampoco: no son parte de la app. El formulario (pedido/) sí.
-const VERSION = 'app-b701912d54';
+// El formulario (pedido/) también es parte de la app.
+const VERSION = 'app-003c77975c';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
   './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js',
