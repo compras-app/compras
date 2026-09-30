@@ -33,6 +33,9 @@ function pantallaCuenta() {
   $('c-disp').textContent = dispositivo();
   $('c-host').textContent = location.host + (instalada() ? ' (app instalada)' : '');
   $('c-version').textContent = VERSION_APP;
+  const err = guardado.leerJSON(K.error, null);
+  $('c-error-t').hidden = $('c-error').hidden = !err;
+  if (err) $('c-error').textContent = new Date(err.cuando).toLocaleString('es-AR', { hour12: false }) + ' · ' + err.fn + ' · ' + err.detalle;
   const desde = guardado.leer(K.desde);
   $('c-desde').textContent = desde ? new Date(desde).toLocaleString('es-AR', { hour12: false }) : '—';
   estado('e-cuenta', '');

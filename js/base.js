@@ -13,14 +13,15 @@ const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
   : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
 const FORMULARIO = './pedido/';       // "Nuevo pedido"
-const VERSION_APP = '2f88c59f67';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '0f41f233f2';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
 // mismas que usaba la página vieja: quien ya había entrado sigue adentro.
 const K = {
   token: 'compras_token', desde: 'compras_desde', inicio: 'compras_inicio',
-  usuarios: 'compras_usuarios', css: 'compras_css', bandeja: 'compras_bandeja'
+  usuarios: 'compras_usuarios', css: 'compras_css', bandeja: 'compras_bandeja',
+  error: 'compras_error'   // la última respuesta rara del servidor (se ve en Tu cuenta)
 };
 const APP = { token: null, yo: null, config: null, actualizado: null, enLinea: true };
 
@@ -55,26 +56,46 @@ function nuevoId() {
  * Llama a una función de Api.js (por doPost). Devuelve su respuesta
  * ({ok, ...}). Si no hay señal o no contesta a tiempo, falla con
  * e.sinRed; si contesta algo que no es JSON, con e.servidor.
- * Sin cabeceras propias: así el navegador no pide permiso antes (CORS).
+ * Google a veces contesta con su propia página de error (sobre todo al
+ * "despertar"): en ese caso reintenta solo, con el mismo número de envío,
+ * así un cambio no se repite (recordarEnvio_ en Api.js).
  */
 async function llamar(fn, args, id) {
+  id = id || nuevoId();
+  const esperas = [1500, 4000];
+  for (let intento = 0; ; intento++) {
+    try {
+      return await llamarUnaVez(fn, args, id);
+    } catch (e) {
+      if (!e.servidor || intento >= esperas.length) throw e;
+      await new Promise(function (ok) { setTimeout(ok, esperas[intento]); });
+    }
+  }
+}
+
+/** Una sola llamada. Sin cabeceras propias: así el navegador no pide permiso antes (CORS). */
+async function llamarUnaVez(fn, args, id) {
   const ctl = window.AbortController ? new AbortController() : null;
   const vence = setTimeout(function () { if (ctl) ctl.abort(); }, LIMITE_MS);
   let resp;
   try {
     resp = await fetch(API, {
       method: 'POST', cache: 'no-store', signal: ctl ? ctl.signal : undefined,
-      body: JSON.stringify({ fn: fn, args: args || [], id: id || nuevoId() })
+      body: JSON.stringify({ fn: fn, args: args || [], id: id })
     });
   } catch (e) {
     conexion(false);
     const x = new Error('sin señal'); x.sinRed = true; throw x;
   } finally { clearTimeout(vence); }
   conexion(true);
+  const texto = await resp.text().catch(function () { return ''; });
   try {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    return await resp.json();
+    return JSON.parse(texto);
   } catch (e) {
+    // Se guarda para verlo en Tu cuenta (sirve para saber qué contestó Google)
+    guardado.guardarJSON(K.error, { cuando: new Date().toISOString(), fn: fn,
+                                    detalle: e.message + ' · ' + texto.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) });
     const x = new Error('respuesta rara del servidor: ' + e.message); x.servidor = true; throw x;
   }
 }
