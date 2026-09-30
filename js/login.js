@@ -59,7 +59,7 @@ async function iniciar(token) {
     if (r.sinSesion) return sesionPerdida(r.error);
     errorGeneral(r.error);
   } catch (e) {
-    errorGeneral(e.sinRed ? 'Sin señal. La primera vez hace falta conexión: reintentá cuando tengas.'
+    errorGeneral(e.sinRed ? 'Hay poca señal. La primera vez que se abre en este dispositivo hace falta conexión: tocá Reintentar en un rato.'
                           : 'Error del servidor. Probá de nuevo en un rato.');
   }
 }
@@ -110,7 +110,7 @@ async function entrarDeCero(motivo) {
     if (!(guardados && guardados.length)) pantallaNombre(r.usuarios, motivo);
   } catch (e) {
     if (!(guardados && guardados.length)) {
-      errorGeneral(e.sinRed ? 'Sin señal. Para entrar hace falta conexión: reintentá cuando tengas.'
+      errorGeneral(e.sinRed ? 'Hay poca señal. Para entrar hace falta conexión: tocá Reintentar en un rato.'
                             : 'Error del servidor. Probá de nuevo en un rato.');
     }
   }
@@ -149,7 +149,7 @@ async function pedirCodigo(boton, idEstado) {
   try { r = await llamar('pedirCodigo', [elegido.id]); }
   catch (e) {
     boton.disabled = false;
-    return estado(idEstado, e.sinRed ? 'Sin señal. Probá de nuevo cuando tengas conexión.' : 'Error del servidor. Probá de nuevo en un rato.');
+    return estado(idEstado, e.sinRed ? 'Hay poca señal y no se pudo mandar el código. Probá de nuevo en un rato.' : 'Error del servidor. Probá de nuevo en un rato.');
   }
   if (!r.ok) { boton.disabled = false; return estado(idEstado, r.error); }
   $('t-destino').textContent = 'Te lo mandamos por WhatsApp al número terminado en ' + r.destino + '. Vence en ' + r.minutos + ' minutos.';
@@ -194,7 +194,7 @@ async function entrar(ev) {
   try { r = await llamar('validarCodigo', [elegido.id, codigo, dispositivo()], envioEntrar.id); }
   catch (e) {
     b.disabled = false;
-    return estado('e-codigo', e.sinRed ? 'Sin señal. Tocá Entrar de nuevo cuando tengas conexión.' : 'Error del servidor. Probá de nuevo en un rato.');
+    return estado('e-codigo', e.sinRed ? 'Hay poca señal. Tu código sigue sirviendo: tocá Entrar de nuevo en un rato.' : 'Error del servidor. Probá de nuevo en un rato.');
   }
   b.disabled = false;
   if (!r.ok) { $('codigo').select(); return estado('e-codigo', r.error); }

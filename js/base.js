@@ -13,7 +13,7 @@ const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
   : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
 const FORMULARIO = './pedido/';       // "Nuevo pedido"
-const VERSION_APP = '0f41f233f2';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '30617ca57e';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -113,7 +113,7 @@ async function api(fn) {
     return r;
   } catch (e) {
     return e.servidor ? { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' }
-                      : { ok: false, sinConexion: true, error: 'Sin señal. Probá de nuevo cuando tengas conexión.' };
+                      : { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
   }
 }
 
@@ -188,18 +188,23 @@ function conexion(hay) {
   pintarSinRed();
 }
 
-/** El aviso de debajo de la barra: sin señal, o cambios esperando para mandarse. */
+/**
+ * El aviso de debajo de la barra: poca señal, o cambios esperando para
+ * mandarse. Tiene que tranquilizar (pedido de Feli): la app sigue andando
+ * y lo que se haga se manda solo; nunca "no anda" ni "sin conexión".
+ */
 function pintarSinRed() {
   const el = $('sinred');
   if (!el) return;
   const n = bandeja.pendientes();
-  const cambios = n === 1 ? '1 cambio' : n + ' cambios';
   let texto = '';
   if (!APP.enLinea) {
-    texto = '📴 Sin señal · ' + (n ? cambios + ' esperando para mandarse'
-                                     : 'mostrando lo guardado' + (APP.actualizado ? ' (' + hace(APP.actualizado) + ')' : ''));
+    texto = n ? '📶 Poca señal. ' + (n === 1 ? '1 cambio guardado: se manda' : n + ' cambios guardados: se mandan') + ' solo cuando vuelva la señal.'
+              : '📶 Poca señal. Podés seguir usando la app: lo que hagas se manda solo cuando vuelva la señal.';
+    // Si lo que se ve es viejo, que se sepa
+    if (APP.actualizado && Date.now() - new Date(APP.actualizado) > 5 * 60000) texto += ' Lo que ves es de ' + hace(APP.actualizado) + '.';
   } else if (n) {
-    texto = '⏳ Mandando ' + cambios + '…';
+    texto = '⏳ Mandando ' + (n === 1 ? '1 cambio' : n + ' cambios') + '…';
   }
   el.textContent = texto;
   el.hidden = !texto;

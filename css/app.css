@@ -83,7 +83,7 @@ dd{margin:0;overflow-wrap:anywhere;font-family:var(--f-mono);font-size:13px}
 @media (min-width:720px){.toast{bottom:24px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
-/* Sin señal / cambios esperando: debajo de la barra */
-.sinred{position:sticky;top:var(--alto-barra);z-index:9;background:var(--warn-soft);color:var(--warn);font-weight:600;font-size:14px;padding:8px 16px;text-align:center}
+/* Poca señal / cambios esperando: debajo de la barra. Color tranquilo, no de alarma */
+.sinred{position:sticky;top:var(--alto-barra);z-index:9;background:var(--accent-soft);color:var(--fg);font-weight:600;font-size:14px;padding:8px 16px;text-align:center}
 @media (min-width:720px){.sinred{top:calc(var(--alto-barra) + 48px)}}
 

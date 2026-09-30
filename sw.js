@@ -5,7 +5,7 @@
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
 // Las carpetas pedido/, prueba/ y viejo/ tampoco: no son parte de la app.
-const VERSION = 'app-0f41f233f2';
+const VERSION = 'app-30617ca57e';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
   './js/base.js', './js/login.js', './js/pantallas.js',
