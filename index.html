@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -7,7 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Compras">
-<meta name="theme-color" content="#d6336c">
+<meta name="theme-color" content="#7f2745">
+<meta name="color-scheme" content="dark">
 <link rel="apple-touch-icon" href="icono-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -183,6 +184,16 @@
           <div class="bloque"><h3>Comentarios y actividad</h3><p class="nota">Llegan en el Paso 4: comentarios con @, adjuntos e historia del pedido.</p></div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Cambios que no se aplicaron (quedan guardados hasta "Entendido") -->
+  <div class="modal encima" id="no-aplicados" hidden>
+    <div class="panel chico" role="alertdialog" aria-modal="true" aria-labelledby="na-titulo">
+      <h2 id="na-titulo"></h2>
+      <p>Se hicieron con poca señal y, cuando llegaron, ya no se podían aplicar. El tablero ya muestra cómo quedó.</p>
+      <ul class="na-lista" id="na-lista"></ul>
+      <div class="botones"><button type="button" class="btn" id="na-ok">Entendido</button></div>
     </div>
   </div>
 

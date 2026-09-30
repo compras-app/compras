@@ -196,3 +196,9 @@ body.modal-abierto{overflow:hidden}
 
 /* Sin zoom con los dedos (pedido de Feli): el zoom de pellizco y el de doble toque */
 html,body{touch-action:pan-x pan-y}
+
+/* Cambios que no se aplicaron */
+.na-lista{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:10px;max-height:50vh;overflow-y:auto}
+.na-lista li{border-left:3px solid var(--danger);padding:4px 0 4px 10px;font-size:15px}
+.na-lista li span{color:var(--muted)}
+.na-lista li small{display:block;color:var(--muted);font-size:12px;margin-top:2px}

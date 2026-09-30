@@ -19,6 +19,7 @@ function mostrarApp() {
   pintarBarra();
   pintarSinRed();
   ir('tablero');
+  mostrarNoAplicados();          // los que quedaron de antes (aunque se haya cerrado la app)
 }
 
 /** La barra según quién sos (se vuelve a pintar si inicioApp trae algo nuevo). */

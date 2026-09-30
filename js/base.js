@@ -13,7 +13,7 @@ const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
   : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
 const FORMULARIO = new URL('../pedido/', document.currentScript.src).href;   // "Nuevo pedido"
-const VERSION_APP = '5d7c8dd373';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '9ea5c7a216';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -196,7 +196,7 @@ const bandeja = {
         tanda.forEach(function (m, i) {
           const r = respuestas[i] || { ok: false, error: 'sin respuesta' };
           self.quitar(m.clave);
-          if (!r.ok && !r.sinSesion) aviso('No se pudo ' + m.texto + ': ' + r.error, 'bad');
+          if (!r.ok && !r.sinSesion) noAplicado(m.texto, r.error);
           if (r.sinSesion && APP.token === m.token) sesionPerdida(r.error);
           if (self.alTerminar) self.alTerminar(m, r);
         });
@@ -207,6 +207,40 @@ const bandeja = {
     }
   }
 };
+
+/* ---------- Cambios que no se aplicaron ----------
+   Pedido de Feli: si un cambio hecho sin señal no se aplica (ej. otro admin
+   movió la tarjeta mientras tanto), el aviso queda guardado aunque se cierre
+   la app, y se muestra al abrirla hasta que se toque "Entendido". */
+const K_NO_APLICADOS = 'compras_no_aplicados';
+function noAplicado(texto, motivo) {
+  const l = guardado.leerJSON(K_NO_APLICADOS, []);
+  l.push({ texto: texto, motivo: motivo || '', cuando: new Date().toISOString() });
+  guardado.guardarJSON(K_NO_APLICADOS, l.slice(-30));
+  mostrarNoAplicados();
+}
+function mostrarNoAplicados() {
+  const cont = $('no-aplicados');
+  if (!cont) return;
+  const l = guardado.leerJSON(K_NO_APLICADOS, []);
+  if (!l.length || $('app').hidden) { cont.hidden = true; return; }
+  $('na-lista').innerHTML = '';
+  l.forEach(function (x) {
+    const li = document.createElement('li');
+    const b = document.createElement('b'); b.textContent = 'No se pudo ' + x.texto + '.';
+    const m = document.createElement('span'); m.textContent = ' ' + x.motivo;
+    const c = document.createElement('small');
+    c.textContent = new Date(x.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+    li.append(b, m, c);
+    $('na-lista').appendChild(li);
+  });
+  $('na-titulo').textContent = l.length === 1 ? 'Un cambio no se aplicó' : l.length + ' cambios no se aplicaron';
+  cont.hidden = false;
+}
+if ($('na-ok')) $('na-ok').addEventListener('click', function () {
+  guardado.borrar(K_NO_APLICADOS);
+  $('no-aplicados').hidden = true;
+});
 
 /* ---------- Señal ---------- */
 function conexion(hay) {

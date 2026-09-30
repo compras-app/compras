@@ -302,7 +302,7 @@ async function moverA(ref, destino, despuesDe) {
     op.retiro = d.retiro;
     op.fechaRetiro = d.fecha;
   }
-  bandeja.agregar('moverTarjeta', [ref, op], 'mover la tarjeta');
+  bandeja.agregar('moverTarjeta', [ref, op], (destino === t.columna ? 'reordenar "' : 'mover "') + t.titulo + '" a ' + destino);
   pintarTablero();
   if (TB.abierta === ref) pintarTarjeta();
 }
@@ -696,7 +696,7 @@ function pintarTarjeta() {
     btn.addEventListener('click', function () {
       const v = btn.dataset.entrega;
       const actual = (buscarEnVista(ref) || {}).entrega;
-      bandeja.agregar('marcarEntrega', [ref, actual === v ? '' : v], 'marcar cómo llega');
+      bandeja.agregar('marcarEntrega', [ref, actual === v ? '' : v], 'marcar cómo llega "' + ((buscarEnVista(ref) || {}).titulo || ref) + '"');
       pintarTablero(); pintarTarjeta();
     });
   });
@@ -731,7 +731,7 @@ async function cambiarResponsable(ref) {
   if (!v) return;
   const nombre = v === '-' ? '' : v;
   if (nombre === (t.responsable || '')) return;
-  bandeja.agregar('asignarResponsable', [ref, nombre], 'asignar el responsable');
+  bandeja.agregar('asignarResponsable', [ref, nombre], (nombre ? 'poner a ' + nombre + ' como responsable de "' : 'sacar el responsable de "') + t.titulo + '"');
   pintarTablero(); pintarTarjeta();
 }
 
@@ -762,12 +762,12 @@ $('tj-cancelar').addEventListener('click', async function () {
   const l = vista().filter(function (x) { return x.columna === t.columna; });
   const k = l.findIndex(function (x) { return x.ref === ref; });
   const antes = { columna: t.columna, despuesDe: k > 0 ? l[k - 1].ref : '' };
-  const clave = bandeja.agregar('cancelarPedido', [ref, motivo, t.columna], 'cancelar el pedido');
+  const clave = bandeja.agregar('cancelarPedido', [ref, motivo, t.columna], 'cancelar "' + t.titulo + '"');
   cerrarTarjeta();
   pintarTablero();
   avisoConBoton('Pedido cancelado: pasó a Finalizados.', 'Deshacer', function () {
     if (bandeja.pendiente(clave) && !bandeja.enviando) bandeja.quitar(clave);      // todavía no salió: se saca
-    else bandeja.agregar('moverTarjeta', [ref, { columna: antes.columna, desde: colCancelado(), despuesDe: antes.despuesDe }], 'deshacer la cancelación');
+    else bandeja.agregar('moverTarjeta', [ref, { columna: antes.columna, desde: colCancelado(), despuesDe: antes.despuesDe }], 'deshacer la cancelación de "' + t.titulo + '"');
     pintarTablero();
   });
 });
