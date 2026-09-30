@@ -5,7 +5,8 @@
    - Secciones (Tanda verde, Cotización, Seguimiento) con sus columnas,
      una al lado de la otra; en el celular se desliza de costado.
    - Tarjeta: título, sitio, urgencia, inicial del responsable (y en
-     "Por recibir", si hay que ir a buscarlo o nos lo traen).
+     "Por recibir", si hay que ir a buscarlo o nos lo traen). Las de la
+     urgencia más alta (🔴), pintadas de rojo.
    - Filtros: Mis pedidos / Todos (los no admins entran con Mis pedidos),
      y para admins, granja y responsable.
    - Solo los admins mueven (arrastrando, o con la columna de la tarjeta
@@ -13,6 +14,8 @@
    - Todo cambio va por la bandeja de salida (base.js): se ve al instante,
      se manda cuando hay señal y un reintento no lo repite. Lo que se ve
      es lo último que mandó el servidor MÁS lo que está en la bandeja.
+   - Tarjeta abierta (Paso 4): comentarios con @ (al mencionado le llega
+     un WhatsApp) y, con "Ver detalles", la historia del pedido.
    ============================================================ */
 
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
@@ -29,6 +32,7 @@ const TB = {
   abierta: null,                               // ref de la tarjeta abierta
   detalle: null,                               // getTarjeta de la abierta
   cancelados: {},                              // tarjetas canceladas (para "Deshacer")
+  borradores: {},                              // comentario a medio escribir, por tarjeta
   cargando: false
 };
 
@@ -91,6 +95,7 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
   const antes = bandeja.alTerminar;
   bandeja.alTerminar = function (m, r) {
     if (antes) antes(m, r);
+    if (m.fn === 'comentar') return comentarioMandado(m, r);
     if (!OPS_TABLERO[m.fn]) return;
     if (r.ok && TB.datos) {
       aplicarOp(TB.datos.tarjetas, m.fn, m.args);
@@ -203,8 +208,11 @@ function pintarTablero() {
   pintarHace();
 }
 
+/** La urgencia más alta (la primera de App_Config, ej. 🔴): la tarjeta se pinta de rojo (pedido de Feli). */
+function esUrgente(u) { const l = (APP.config && APP.config.urgencias) || []; return !!u && u === l[0]; }
+
 function htmlTarjeta(t, enPorRecibir) {
-  return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
@@ -259,7 +267,7 @@ async function cargarTablero() {
     TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado };
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
-    if (TB.abierta) pintarTarjeta();
+    if (TB.abierta) { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
   } else if (!TB.datos) pintarTablero();                  // sin señal: queda lo guardado
   pintarHace();
   if (TB.otraVez) { TB.otraVez = false; cargarTablero(); }
@@ -575,18 +583,34 @@ async function abrirTarjeta(ref, sinHistoria) {
   const g = detallesGuardados()[ref];
   TB.detalle = g ? g.d : null;
   TB.sinDetalle = '';
+  ponerBorrador(ref);
   pintarTarjeta();
   $('tarjeta-modal').hidden = false;
   $('tarjeta-modal').scrollTop = 0;
   document.body.classList.add('modal-abierto');
   // Con el "atrás" del celular se cierra la tarjeta; y el link #Ref abre la tarjeta (avisos por WhatsApp, Fase 3)
   if (!sinHistoria) history.pushState({ tarjeta: ref }, '', '#' + encodeURIComponent(ref));
-  const r = await api('getTarjeta', ref);
-  if (TB.abierta !== ref) return;
-  if (r.ok) { TB.detalle = { pedido: r.pedido, lineas: r.lineas }; guardarDetalle(ref, TB.detalle); }
-  else if (r.sinConexion) TB.sinDetalle = TB.detalle ? '' : 'Hay poca señal: los productos se ven cuando vuelva.';
+  await traerTarjeta(ref);
+}
+
+/** Trae del servidor la tarjeta abierta (con la historia si "Ver detalles" está prendido). */
+async function traerTarjeta(ref) {
+  if (TB.trayendo === ref) { TB.traerOtraVez = true; return; }   // cuando termine, trae de nuevo
+  TB.trayendo = ref;
+  const conHistoria = verDetalles();
+  const r = await api('getTarjeta', ref, { historia: conHistoria });
+  TB.trayendo = null;
+  if (TB.abierta !== ref) { TB.traerOtraVez = false; return; }
+  if (r.ok) {
+    const antes = TB.detalle;
+    TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [],
+                   historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
+    TB.sinDetalle = '';
+    guardarDetalle(ref, TB.detalle);
+  } else if (r.sinConexion) TB.sinDetalle = TB.detalle ? '' : 'Hay poca señal: los productos se ven cuando vuelva.';
   else if (!r.sinSesion) TB.sinDetalle = r.error;
   pintarTarjeta();
+  if (TB.traerOtraVez) { TB.traerOtraVez = false; traerTarjeta(ref); }
 }
 
 function ocultarTarjeta() {
@@ -605,6 +629,11 @@ function cerrarTarjeta() {
 window.addEventListener('popstate', function () {
   if (cerrarDialogoActual) cerrarDialogoActual(null);
   if (!$('tarjeta-modal').hidden) ocultarTarjeta();
+});
+// Un link #Ref con la app ya abierta (ej. el WhatsApp de una mención): abre esa tarjeta
+window.addEventListener('hashchange', function () {
+  const ref = decodeURIComponent(location.hash.slice(1));
+  if (ref && APP.token && !$('app').hidden && TB.abierta !== ref) abrirTarjeta(ref, true);
 });
 $('tj-cerrar').addEventListener('click', cerrarTarjeta);
 $('tarjeta-modal').addEventListener('click', function (e) { if (e.target === this) cerrarTarjeta(); });
@@ -686,6 +715,7 @@ function pintarTarjeta() {
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
   $('tj-cancelar').hidden = !(admin && enTb);
+  pintarActividad();
 
   prods.querySelectorAll('[data-foto]').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
@@ -771,6 +801,197 @@ $('tj-cancelar').addEventListener('click', async function () {
     pintarTablero();
   });
 });
+
+/* ---------- Comentarios y actividad (Paso 4) ----------
+   Del más nuevo al más viejo, como en Trello. "Ver detalles" suma la
+   historia del pedido (App_Eventos); queda elegido en el dispositivo.
+   El comentario va por la bandeja: sin señal queda con ⏳ y se manda solo.
+   Con @ se menciona a alguien: el servidor le manda un WhatsApp. */
+const K_VER_DETALLES = 'compras_ver_detalles';
+const LARGO_COMENTARIO = 2000;
+function verDetalles() { return guardado.leer(K_VER_DETALLES) === '1'; }
+function nombreDe(usuario) { return String(usuario || '').replace(/^formulario:\s*/, '') || 'La app'; }
+
+function pintarActividad() {
+  const ref = TB.abierta, d = TB.detalle, detalles = verDetalles();
+  const bd = $('tj-detalles');
+  bd.textContent = detalles ? 'Ocultar detalles' : 'Ver detalles';
+  bd.setAttribute('aria-pressed', String(detalles));
+  const items = [], ya = {};
+  ((d && d.comentarios) || []).forEach(function (c) {
+    ya[c.id] = true;
+    items.push({ tipo: 'c', fecha: c.fecha, autor: c.autor, texto: c.texto });
+  });
+  // Los que esperan en la bandeja (sin señal, o saliendo)
+  bandeja.lista().forEach(function (m) {
+    if (m.fn === 'comentar' && m.args[0] === ref && !ya[m.args[2]]) items.push({ tipo: 'c', fecha: m.creado, autor: APP.yo.nombre, texto: m.args[1], espera: true });
+  });
+  if (detalles && d && d.historia) d.historia.forEach(function (e) {
+    const f = fraseEvento(e, d);
+    if (f) items.push({ tipo: 'e', fecha: e.fecha, autor: nombreDe(e.usuario), texto: f });
+  });
+  items.sort(function (a, b) { return new Date(b.fecha) - new Date(a.fecha); });
+  let html = items.map(htmlActividad).join('');
+  if (detalles && d && !d.historia) html += '<p class="nota">' + (APP.enLinea ? 'Cargando la historia…' : 'La historia se ve cuando vuelva la señal.') + '</p>';
+  else if (!items.length && d) html = '<p class="nota">Todavía no hay comentarios.</p>';
+  $('tj-actividad').innerHTML = html;
+}
+
+function htmlActividad(x) {
+  const av = '<span class="av" aria-hidden="true">' + esc(inicial(x.autor)) + '</span>';
+  const cuando = '<small title="' + esc(new Date(x.fecha).toLocaleString('es-AR')) + '">' + esc(hace(x.fecha)) + '</small>';
+  if (x.tipo === 'e') return '<div class="act ev">' + av + '<div><b>' + esc(x.autor) + '</b> ' + esc(x.texto) + ' · ' + cuando + '</div></div>';
+  return '<div class="act' + (x.espera ? ' espera' : '') + '">' + av + '<div class="act-c">' +
+    '<div class="quien"><b>' + esc(x.autor) + '</b> ' +
+    (x.espera ? '<small>' + (APP.enLinea ? 'Enviando…' : '⏳ Se manda solo cuando vuelva la señal') + '</small>' : cuando) + '</div>' +
+    '<div class="burbuja">' + conMenciones(x.texto) + '</div></div></div>';
+}
+
+/** El texto con las menciones (@Nombre de un usuario) resaltadas. El nombre más largo gana. */
+function conMenciones(texto) {
+  const nombres = (APP.config.usuarios || []).slice().sort(function (a, b) { return b.length - a.length; })
+    .map(function (n) { return esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+  const h = esc(texto);
+  if (!nombres.length) return h;
+  return h.replace(new RegExp('@(' + nombres.join('|') + ')(?![0-9A-Za-zÁÉÍÓÚÜÑáéíóúüñ])', 'gi'),
+                   function (m) { return '<span class="mencion">' + m + '</span>'; });
+}
+
+/** Un cambio de la historia, en palabras ("lo movió de Entrantes a Por cotizar"). */
+function fraseEvento(e, d) {
+  const a = e.antes, n = e.despues;
+  if (e.entidad === 'pedido') {
+    if (e.accion === 'crear') return 'cargó el pedido' + (/^formulario/.test(n) ? ' desde el formulario' : /^masivo/.test(n) ? ' como pedido masivo' : '');
+    switch (e.campo) {
+      case 'Columna':
+        if (n === colCancelado()) return 'canceló el pedido';
+        if (a === colCancelado()) return 'lo recuperó: volvió a ' + n;
+        return 'lo movió de ' + a + ' a ' + n;
+      case 'Responsable':
+        if (!n) return 'sacó a ' + a + ' de responsable';
+        return n === nombreDe(e.usuario) ? 'se anotó como responsable' : 'puso a ' + n + ' como responsable';
+      case 'Entrega': return n ? 'marcó cómo llega: ' + (ENTREGA_TEXTO[n] || n) : 'borró cómo llega';
+      case 'Retiró': return 'anotó que lo retiró ' + n;
+      case 'Urgencia': return 'cambió la urgencia de ' + a + ' a ' + n;
+      case 'Título': return 'cambió el título a "' + n + '"';
+      case 'Razón': return 'cambió la razón del pedido';
+    }
+  }
+  if (e.entidad === 'linea') {
+    const l = ((d && d.lineas) || []).filter(function (x) { return x.id === e.id; })[0];
+    const prod = l ? (l.familia || l.texto) : 'un producto';
+    if (e.accion === 'crear') return 'agregó ' + prod;
+    if (e.campo === 'Tildado') return (n === 'SI' ? 'marcó como comprado: ' : 'desmarcó como comprado: ') + prod;
+    return 'cambió ' + String(e.campo).toLowerCase() + ' de ' + prod + (n ? ': "' + n + '"' : '');
+  }
+  if (!e.campo) return '';
+  return 'cambió ' + String(e.campo).toLowerCase() + (n ? ' a "' + n + '"' : '');
+}
+
+$('tj-detalles').addEventListener('click', function () {
+  const v = !verDetalles();
+  guardado.guardar(K_VER_DETALLES, v ? '1' : '');
+  pintarActividad();
+  if (v && TB.abierta) traerTarjeta(TB.abierta);
+});
+
+/* Escribir un comentario, con @ para mencionar */
+const cajaComentario = $('tj-comentario');
+function ajustarCaja() {
+  cajaComentario.style.height = 'auto';
+  cajaComentario.style.height = Math.min(cajaComentario.scrollHeight + 3, 220) + 'px';
+  $('tj-comentar').disabled = !cajaComentario.value.trim();
+}
+function ponerBorrador(ref) {
+  cajaComentario.value = TB.borradores[ref] || '';
+  $('tj-menciones').hidden = true;
+  ajustarCaja();
+}
+function sinTildes(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+
+/** Lo que se está escribiendo después de un "@" (o null si no se está mencionando). */
+function mencionEnCurso() {
+  const pos = cajaComentario.selectionStart, antes = cajaComentario.value.slice(0, pos);
+  const i = antes.lastIndexOf('@');
+  if (i === -1 || (i > 0 && !/\s/.test(antes.charAt(i - 1)))) return null;
+  const q = antes.slice(i + 1);
+  if (q.length > 30 || /\n/.test(q)) return null;
+  return { desde: i, hasta: pos, q: sinTildes(q) };
+}
+function sugerirMenciones() {
+  const cont = $('tj-menciones'), m = mencionEnCurso();
+  const lista = !m ? [] : (APP.config.usuarios || []).filter(function (n) {
+    const s = sinTildes(n);
+    return n !== APP.yo.nombre && (s.indexOf(m.q) === 0 || s.indexOf(' ' + m.q) !== -1);
+  }).slice(0, 8);
+  if (!lista.length) { cont.hidden = true; cont.innerHTML = ''; return; }
+  cont.innerHTML = '<span class="nota">Mencionar:</span>' +
+    lista.map(function (n) { return '<button type="button" class="mencion-op" data-n="' + esc(n) + '">' + esc(n) + '</button>'; }).join('');
+  cont.hidden = false;
+  cont.querySelectorAll('button').forEach(function (b) {
+    b.addEventListener('pointerdown', function (e) { e.preventDefault(); });   // que no se cierre el teclado
+    b.addEventListener('click', function () { ponerMencion(b.dataset.n); });
+  });
+}
+function ponerMencion(nombre) {
+  const m = mencionEnCurso();
+  if (!m) return;
+  const v = cajaComentario.value, texto = '@' + nombre + ' ';
+  cajaComentario.value = v.slice(0, m.desde) + texto + v.slice(m.hasta);
+  const p = m.desde + texto.length;
+  cajaComentario.focus();
+  cajaComentario.setSelectionRange(p, p);
+  if (TB.abierta) TB.borradores[TB.abierta] = cajaComentario.value;
+  ajustarCaja();
+  sugerirMenciones();
+}
+cajaComentario.addEventListener('input', function () {
+  if (TB.abierta) TB.borradores[TB.abierta] = this.value;
+  ajustarCaja();
+  sugerirMenciones();
+});
+cajaComentario.addEventListener('click', sugerirMenciones);
+cajaComentario.addEventListener('keyup', function (e) { if (/^Arrow|Home|End/.test(e.key)) sugerirMenciones(); });
+cajaComentario.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); enviarComentario(); }   // en la compu: Ctrl/Cmd + Enter
+});
+$('tj-comentar').addEventListener('click', enviarComentario);
+
+function enviarComentario() {
+  const ref = TB.abierta, texto = cajaComentario.value.trim();
+  if (!ref || !texto) return;
+  if (texto.length > LARGO_COMENTARIO) return aviso('El comentario es muy largo (máximo ' + LARGO_COMENTARIO + ' letras).', 'bad');
+  const t = buscarEnVista(ref) || (TB.detalle && TB.detalle.pedido) || {};
+  const corto = texto.length > 80 ? texto.slice(0, 80) + '…' : texto;
+  bandeja.agregar('comentar', [ref, texto, 'C' + nuevoId()], 'comentar en "' + (t.titulo || ref) + '": «' + corto + '»');
+  cajaComentario.value = '';
+  delete TB.borradores[ref];
+  ajustarCaja();
+  sugerirMenciones();
+  pintarActividad();
+}
+
+// Sin señal, el comentario que espera dice "⏳ se manda solo"; con señal, "Enviando…"
+function alCambiarLaSenal() { if (TB.abierta) pintarActividad(); }
+
+/** Respuesta de un comentario que salió de la bandeja. */
+function comentarioMandado(m, r) {
+  const ref = m.args[0];
+  if (r.ok && r.comentario) {
+    const poner = function (d) {
+      if (d) d.comentarios = (d.comentarios || []).filter(function (c) { return c.id !== r.comentario.id; }).concat([r.comentario]);
+    };
+    const todos = detallesGuardados();
+    if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
+    if (TB.abierta === ref) poner(TB.detalle);
+    if (!document.hidden) {
+      const lista = function (l) { return l.join(', ').replace(/, ([^,]*)$/, ' y $1'); };
+      if (r.sinAviso && r.sinAviso.length) aviso('No le pudo llegar el WhatsApp a ' + lista(r.sinAviso) + '. El comentario quedó guardado igual.', 'bad');
+      else if (r.avisados && r.avisados.length) aviso('📲 Le llegó un WhatsApp a ' + lista(r.avisados) + '.');
+    }
+  }
+  if (TB.abierta === ref) pintarActividad();
+}
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */
 function avisoConBoton(texto, boton, accion) {

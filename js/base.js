@@ -13,7 +13,7 @@ const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
   : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
 const FORMULARIO = new URL('../pedido/', document.currentScript.src).href;   // "Nuevo pedido"
-const VERSION_APP = '9ea5c7a216';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '33da3de880';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -247,6 +247,8 @@ function conexion(hay) {
   if (APP.enLinea === hay) return;
   APP.enLinea = hay;
   pintarSinRed();
+  if (hay && bandeja.pendientes()) setTimeout(function () { bandeja.procesar(); }, 0);   // volvió la señal: sale ya lo que esperaba
+  if (window.alCambiarLaSenal) alCambiarLaSenal(hay);
 }
 
 /**

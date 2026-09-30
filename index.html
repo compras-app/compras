@@ -181,7 +181,19 @@
           <button type="button" class="peligro" id="tj-cancelar" hidden>Cancelar pedido</button>
         </div>
         <div class="lado">
-          <div class="bloque"><h3>Comentarios y actividad</h3><p class="nota">Llegan en el Paso 4: comentarios con @, adjuntos e historia del pedido.</p></div>
+          <div class="act-h">
+            <h3>Comentarios y actividad</h3>
+            <button type="button" class="btn-chico" id="tj-detalles" aria-pressed="false">Ver detalles</button>
+          </div>
+          <div class="comentar">
+            <div class="menciones" id="tj-menciones" hidden></div>
+            <textarea id="tj-comentario" rows="1" maxlength="2000" placeholder="Escribí un comentario…" aria-label="Comentario"></textarea>
+            <div class="comentar-b">
+              <button type="button" class="btn" id="tj-comentar" disabled>Comentar</button>
+              <span class="nota">Con @ mencionás a alguien y le llega un WhatsApp.</span>
+            </div>
+          </div>
+          <div id="tj-actividad"></div>
         </div>
       </div>
     </div>
