@@ -15,12 +15,14 @@
      se manda cuando hay señal y un reintento no lo repite. Lo que se ve
      es lo último que mandó el servidor MÁS lo que está en la bandeja.
    - Tarjeta abierta (Paso 4): comentarios con @ (al mencionado le llega
-     un WhatsApp) y, con "Ver detalles", la historia del pedido.
+     un WhatsApp) y, con "Ver detalles", la historia del pedido; tildar
+     productos (comprado) y, los admins, editarlos y editar el pedido.
    ============================================================ */
 
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
 const K_TARJETAS = 'compras_tarjetas';    // tarjetas abiertas hace poco (para verlas sin señal)
-const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1 };
+const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1 };
+const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1 };      // cambios de un producto (Paso 4)
 const ENTREGA_TEXTO = { Retirar: '🏃 Hay que ir a buscarlo', Envío: '🚚 Nos lo traen' };
 const ENTREGA_CORTO = { Retirar: '🏃 A buscar', Envío: '🚚 Nos lo traen' };
 
@@ -79,6 +81,12 @@ function aplicarOp(lista, fn, args) {
     if (fn === 'asignarResponsable') lista[i] = Object.assign({}, lista[i], { responsable: args[1] || '' });
     else if (fn === 'marcarEntrega') lista[i] = Object.assign({}, lista[i], { entrega: args[1] || '' });
     else if (fn === 'cancelarPedido') { TB.cancelados[ref] = lista[i]; lista.splice(i, 1); }
+    else if (fn === 'editarPedido') {
+      const c = args[1] || {}, t = Object.assign({}, lista[i]);
+      if (c.titulo !== undefined) t.titulo = c.titulo;
+      if (c.urgencia !== undefined) t.urgencia = c.urgencia;
+      lista[i] = t;
+    }
   }
 }
 
@@ -96,6 +104,8 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
   bandeja.alTerminar = function (m, r) {
     if (antes) antes(m, r);
     if (m.fn === 'comentar') return comentarioMandado(m, r);
+    if (OPS_PRODUCTO[m.fn]) return productoMandado(m, r);
+    if (m.fn === 'editarPedido' && r.ok) datosDelPedidoMandados(m.args[0], m.args[1]);
     if (!OPS_TABLERO[m.fn]) return;
     if (r.ok && TB.datos) {
       aplicarOp(TB.datos.tarjetas, m.fn, m.args);
@@ -689,27 +699,15 @@ function pintarTarjeta() {
   if (!enTb && p && p.columna) etiquetas.push('Finalizado: ' + p.columna);
   $('tj-etiquetas').innerHTML = etiquetas.map(function (e) { return '<span class="etiqueta">' + esc(e) + '</span>'; }).join('');
 
-  $('tj-razon').textContent = p ? (p.razon || '—') : (TB.sinDetalle || 'Cargando…');
+  const pv = p ? pedidoConCambios(ref, p) : null;
+  $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');
+  $('tj-editar').hidden = !(admin && p);
   const prods = $('tj-productos');
   if (d && d.lineas) {
-    $('tj-prod-t').textContent = 'Productos (' + d.lineas.length + ')';
-    prods.innerHTML = d.lineas.map(function (l) {
-      const nombre = (l.familia || l.texto) + (l.especificacion ? ' (' + l.especificacion + ')' : '');
-      const sub = [];
-      // Lo que escribió el encargado, solo si el producto no estaba en el padrón (si lo eligió de la lista, no hace falta)
-      if (!l.enPadron && l.familia && l.texto && l.texto.toLowerCase() !== l.familia.toLowerCase()) sub.push('Escribió: "' + l.texto + '"');
-      if (l.canal) sub.push('Rubro: ' + l.canal);
-      if (l.descripcion) sub.push(l.descripcion);
-      const fotos = (l.fotos || []).map(function (u) {
-        const id = idDrive(u);
-        return id ? '<a href="https://drive.google.com/file/d/' + esc(id) + '/view" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
-                    '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w200" alt="Foto" loading="lazy"></a>' : '';
-      }).join('');
-      return '<div class="producto"><b>' + esc(l.cantidad) + ' × ' + esc(nombre) + '</b>' +
-        (l.enPadron ? '' : '<span class="fuera">Fuera del padrón</span>') +
-        sub.map(function (s) { return '<div class="sub">' + esc(s) + '</div>'; }).join('') +
-        (fotos ? '<div class="fotos">' + fotos + '</div>' : '') + '</div>';
-    }).join('');
+    const ls = lineasConCambios(ref, d.lineas);
+    const comprados = ls.filter(function (l) { return l.tildado; }).length;
+    $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' comprado' + (comprados > 1 ? 's' : '') : '');
+    prods.innerHTML = ls.map(function (l) { return htmlProducto(l, admin); }).join('');
   } else {
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
@@ -717,6 +715,12 @@ function pintarTarjeta() {
   $('tj-cancelar').hidden = !(admin && enTb);
   pintarActividad();
 
+  prods.querySelectorAll('.tilde').forEach(function (b) {
+    b.addEventListener('click', function () { tildar(ref, b.dataset.id); });
+  });
+  prods.querySelectorAll('.editar-prod').forEach(function (b) {
+    b.addEventListener('click', function () { editarProducto(ref, b.dataset.id); });
+  });
   prods.querySelectorAll('[data-foto]').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
   });
@@ -879,9 +883,16 @@ function fraseEvento(e, d) {
   }
   if (e.entidad === 'linea') {
     const l = ((d && d.lineas) || []).filter(function (x) { return x.id === e.id; })[0];
-    const prod = l ? (l.familia || l.texto) : 'un producto';
+    const prod = l ? nombreProducto(l) : 'un producto';
     if (e.accion === 'crear') return 'agregó ' + prod;
-    if (e.campo === 'Tildado') return (n === 'SI' ? 'marcó como comprado: ' : 'desmarcó como comprado: ') + prod;
+    switch (e.campo) {
+      case 'Tildado': return (n === 'SI' ? 'marcó como comprado: ' : 'desmarcó como comprado: ') + prod;
+      case 'Familia': return a ? 'cambió el nombre de "' + a + '" a "' + n + '"' : 'le puso el nombre "' + n + '" a "' + (l ? l.texto : prod) + '"';
+      case 'Canal': return n ? 'cambió el rubro de ' + prod + ' a ' + n : 'le sacó el rubro a ' + prod;
+      case 'Especificación': return 'cambió la especificación de ' + prod + ' a "' + n + '"';
+      case 'Cantidad': return 'cambió la cantidad de ' + prod + ' de ' + a + ' a ' + n;
+      case 'Proveedores particulares': return n ? 'mandó ' + prod + ' solo a ' + n : 'le sacó los proveedores particulares (' + a + ') a ' + prod;
+    }
     return 'cambió ' + String(e.campo).toLowerCase() + ' de ' + prod + (n ? ': "' + n + '"' : '');
   }
   if (!e.campo) return '';
@@ -992,6 +1003,350 @@ function comentarioMandado(m, r) {
   }
   if (TB.abierta === ref) pintarActividad();
 }
+
+/* ---------- Productos (Paso 4, parte 2) ----------
+   Tildar = ya está comprado: pueden todos. Editar un producto (nombre,
+   especificación, cantidad, rubro, proveedor particular) y los datos del
+   pedido (título, urgencia, razón): solo admins. Todo por la bandeja: se
+   ve al instante y sin señal se manda después. Crear un proveedor sí
+   necesita señal (se comprueba que el número tenga WhatsApp). */
+const K_PRODUCTOS = 'compras_productos';     // proveedores, rubros y nombres del padrón (datosProductos)
+function nombreProducto(l) { return (l.familia || l.texto) + (l.especificacion ? ' (' + l.especificacion + ')' : ''); }
+
+/** Los productos con lo que espera en la bandeja encima (como el tablero). */
+function lineasConCambios(ref, lineas) {
+  const ls = lineas.map(function (l) { return Object.assign({}, l); });
+  const datos = TB.datosProd || guardado.leerJSON(K_PRODUCTOS, null);
+  bandeja.lista().forEach(function (m) {
+    if (!OPS_PRODUCTO[m.fn] || m.args[0] !== ref) return;
+    const l = ls.filter(function (x) { return x.id === m.args[1]; })[0];
+    if (!l) return;
+    l.espera = true;
+    if (m.fn === 'tildarProducto') { l.tildado = !!m.args[2]; return; }
+    const c = m.args[2] || {};
+    if (c.especificacion !== undefined) l.especificacion = c.especificacion;
+    if (c.cantidad !== undefined) l.cantidad = String(c.cantidad);
+    if (c.familia !== undefined) {
+      l.familia = c.familia;
+      const f = datos && datos.familias.filter(function (x) { return x[0] === c.familia; })[0];
+      l.familiaEnPadron = !!f;
+      if (f && c.canal === undefined) l.canal = f[1];
+    }
+    if (c.canal !== undefined) l.canal = c.canal;
+    if (c.proveedores !== undefined) {
+      l.proveedores = c.proveedores.map(function (id) {
+        const pr = datos && datos.proveedores.filter(function (x) { return x.id === id; })[0];
+        return { id: id, nombre: pr ? pr.nombre : id };
+      });
+    }
+    if (l.proveedores && l.proveedores.length) l.canal = '';
+  });
+  return ls;
+}
+
+function pedidoConCambios(ref, p) {
+  const v = Object.assign({}, p);
+  bandeja.lista().forEach(function (m) {
+    if (m.fn !== 'editarPedido' || m.args[0] !== ref) return;
+    const c = m.args[1] || {};
+    ['titulo', 'urgencia', 'razon'].forEach(function (k) { if (c[k] !== undefined) v[k] = c[k]; });
+  });
+  return v;
+}
+
+function htmlProducto(l, admin) {
+  const sub = [];
+  // Lo que escribió el encargado, solo si el producto no estaba en el padrón (si lo eligió de la lista, no hace falta)
+  if (!l.enPadron && l.familia && l.texto && l.texto.toLowerCase() !== l.familia.toLowerCase()) sub.push(esc('Escribió: "' + l.texto + '"'));
+  const provs = l.proveedores || [];
+  if (provs.length) sub.push('<span class="prov">🎯 Va solo a ' + esc(provs.map(function (x) { return x.nombre; }).join(', ')) + '</span>');
+  else if (l.canal) sub.push(esc('Rubro: ' + l.canal));
+  else sub.push(esc('Sin rubro'));
+  if (l.descripcion) sub.push(esc(l.descripcion));
+  const fotos = (l.fotos || []).map(function (u) {
+    const id = idDrive(u);
+    return id ? '<a href="https://drive.google.com/file/d/' + esc(id) + '/view" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
+                '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w200" alt="Foto" loading="lazy"></a>' : '';
+  }).join('');
+  const fuera = l.familiaEnPadron === undefined ? !l.enPadron : !l.familiaEnPadron;
+  return '<div class="producto' + (l.tildado ? ' tildado' : '') + '">' +
+    '<button type="button" class="tilde" data-id="' + esc(l.id) + '" aria-pressed="' + !!l.tildado + '" aria-label="Comprado" title="' +
+      (l.tildado ? 'Comprado (tocá para desmarcar)' : 'Marcar como comprado') + '">✓</button>' +
+    '<div class="prod-c"><b>' + esc(l.cantidad) + ' × ' + esc(nombreProducto(l)) + '</b>' +
+    (l.tildado ? '<span class="comprado">Comprado</span>' : '') +
+    (fuera ? '<span class="fuera">Fuera del padrón</span>' : '') +
+    (l.espera ? '<span class="espera">' + (APP.enLinea ? 'Guardando…' : '⏳') + '</span>' : '') +
+    sub.map(function (x) { return '<div class="sub">' + x + '</div>'; }).join('') +
+    (fotos ? '<div class="fotos">' + fotos + '</div>' : '') + '</div>' +
+    (admin ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" aria-label="Editar el producto" title="Editar">✏️</button>' : '') +
+    '</div>';
+}
+
+function lineaVista(ref, id) {
+  const d = TB.detalle;
+  if (!d || !d.lineas) return null;
+  return lineasConCambios(ref, d.lineas).filter(function (l) { return l.id === id; })[0] || null;
+}
+
+function tildar(ref, id) {
+  const l = lineaVista(ref, id);
+  if (!l) return;
+  bandeja.agregar('tildarProducto', [ref, id, !l.tildado], (l.tildado ? 'desmarcar "' : 'marcar como comprado "') + nombreProducto(l) + '"');
+  pintarTarjeta();
+}
+
+/** Respuesta de un cambio de producto que salió de la bandeja. */
+function productoMandado(m, r) {
+  const ref = m.args[0];
+  if (r.ok && r.linea) {
+    const poner = function (d) {
+      if (!d || !d.lineas) return;
+      d.lineas = d.lineas.map(function (l) { return l.id === r.linea.id ? r.linea : l; });
+    };
+    const todos = detallesGuardados();
+    if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
+    if (TB.abierta === ref) poner(TB.detalle);
+    if (r.titulo) {                   // cambiar un producto rehace el título (Feli)
+      [todos[ref] && todos[ref].d, TB.abierta === ref ? TB.detalle : null].forEach(function (d) { if (d && d.pedido) d.pedido.titulo = r.titulo; });
+      guardado.guardarJSON(K_TARJETAS, todos);
+      if (TB.datos) {
+        TB.datos.tarjetas.forEach(function (t) { if (t.ref === ref) t.titulo = r.titulo; });
+        guardado.guardarJSON(K_TABLERO, TB.datos);
+        if (!TB.arrastre) pintarTablero();
+      }
+    }
+    if (r.padron && r.padron.length) {
+      TB.datosProd = null;            // el padrón cambió: la lista se trae de nuevo la próxima vez
+      if (!document.hidden) aviso('También quedó en el padrón: ' + r.padron.join('; ') + '.');
+    }
+  } else if (!r.ok && TB.abierta === ref) traerTarjeta(ref);
+  if (TB.abierta === ref) pintarTarjeta();
+}
+
+function datosDelPedidoMandados(ref, c) {
+  const poner = function (d) {
+    if (!d || !d.pedido) return;
+    ['titulo', 'urgencia', 'razon'].forEach(function (k) { if (c[k] !== undefined) d.pedido[k] = c[k]; });
+  };
+  const todos = detallesGuardados();
+  if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
+  if (TB.abierta === ref) poner(TB.detalle);
+}
+
+/** Proveedores, rubros y nombres del padrón: se traen una vez por sesión y se guardan (sin señal, lo guardado). */
+async function datosProductos() {
+  if (TB.datosProd) return TB.datosProd;
+  const r = await api('datosProductos');
+  if (r.ok) {
+    TB.datosProd = { proveedores: r.proveedores, canales: r.canales, familias: r.familias };
+    guardado.guardarJSON(K_PRODUCTOS, TB.datosProd);
+    return TB.datosProd;
+  }
+  return guardado.leerJSON(K_PRODUCTOS, null);
+}
+
+/** Lista de sugerencias debajo de un cuadro de texto. items(q) → [{texto, sub, valor}] */
+function conSugerencias(input, cont, items, alElegir) {
+  const pintar = function () {
+    const l = items(sinTildes(input.value.trim()));
+    cont.innerHTML = '';
+    cont.hidden = !l.length;
+    l.forEach(function (x) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = x.texto;
+      if (x.sub) { const sm = document.createElement('small'); sm.textContent = x.sub; b.appendChild(sm); }
+      b.addEventListener('pointerdown', function (e) { e.preventDefault(); });
+      b.addEventListener('click', function () { alElegir(x.valor); cont.hidden = true; });
+      cont.appendChild(b);
+    });
+  };
+  input.addEventListener('input', pintar);
+  input.addEventListener('focus', pintar);
+  return pintar;
+}
+function coincide(texto, q) { const s = sinTildes(texto); return !q || s.indexOf(q) === 0 || s.indexOf(' ' + q) !== -1; }
+
+async function editarProducto(ref, id) {
+  const l = lineaVista(ref, id);
+  if (!l || !APP.yo.admin) return;
+  const datos = await datosProductos();
+  const familias = datos ? datos.familias : [], proveedores = datos ? datos.proveedores.slice() : [];
+  const canales = datos ? datos.canales.slice() : [];
+  if (l.canal && canales.indexOf(l.canal) === -1) canales.push(l.canal);
+  let provs = (l.proveedores || []).map(function (x) { return { id: x.id, nombre: x.nombre }; });
+
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML =
+    (l.texto ? '<p class="nota">El encargado escribió: «' + esc(l.texto) + '» (eso no se cambia)</p>' : '') +
+    (datos ? '' : '<p class="estado warn">Hay poca señal: la lista de nombres y proveedores se ve cuando vuelva. Igual podés cambiar la especificación y la cantidad.</p>') +
+    '<div class="campo"><label for="ep-nombre">Nombre del producto</label>' +
+      '<input type="text" id="ep-nombre" autocomplete="off" placeholder="Buscá en el padrón o escribilo">' +
+      '<div class="sugerencias" id="ep-nombres" hidden></div></div>' +
+    '<div class="fila2"><div class="campo"><label for="ep-espec">Especificación</label><input type="text" id="ep-espec" autocomplete="off" placeholder="Medida, modelo…"></div>' +
+      '<div class="campo"><label for="ep-cant">Cantidad</label><input type="text" id="ep-cant" inputmode="decimal" autocomplete="off"></div></div>' +
+    '<div class="campo"><label for="ep-rubro">Rubro</label><select id="ep-rubro"></select><p class="nota" id="ep-rubro-nota" hidden>Con proveedores particulares va sin rubro: el pedido les llega solo a ellos.</p></div>' +
+    '<div class="campo"><label for="ep-prov-q">Proveedores particulares (opcional)</label>' +
+      '<div class="pila" id="ep-prov-el" style="gap:6px"></div>' +
+      '<input type="text" id="ep-prov-q" autocomplete="off" placeholder="Buscá un proveedor para sumar">' +
+      '<div class="sugerencias" id="ep-provs" hidden></div>' +
+      '<button type="button" class="linkbtn" id="ep-nuevo-b" style="align-self:flex-start;padding:4px 0;min-height:36px">+ Crear un proveedor nuevo</button>' +
+      '<div class="caja-nuevo" id="ep-nuevo" hidden>' +
+        '<input type="text" id="ep-np-nombre" autocomplete="off" placeholder="Nombre del proveedor">' +
+        '<input type="tel" id="ep-np-tel" autocomplete="off" placeholder="Teléfono: 5493525415029">' +
+        '<p class="nota">Con código de país, sin 0 ni 15: 54 + 9 + código de área + número. Ejemplo: 5493525415029. Se comprueba que tenga WhatsApp.</p>' +
+        '<p class="estado" id="ep-np-estado" hidden></p>' +
+        '<button type="button" class="btn2" id="ep-np-crear">Crear y sumar</button>' +
+      '</div></div>' +
+    '<p class="nota"><b>Solo en este pedido:</b> cambia este pedido. <b>También en el padrón:</b> además queda para los pedidos que vengan (nombre, rubro y proveedores; la especificación y la cantidad son de este pedido).</p>';
+
+  const inicial = { familia: l.familia || '', especificacion: l.especificacion || '', cantidad: String(l.cantidad || ''), canal: l.canal || '',
+                    proveedores: provs.map(function (x) { return x.id; }).join(',') };
+  const cambios = function () {
+    const c = {};
+    const fam = $('ep-nombre').value.trim(), esp = $('ep-espec').value.trim(), cant = $('ep-cant').value.trim().replace(',', '.');
+    if (fam && fam !== inicial.familia) c.familia = fam;
+    if (esp !== inicial.especificacion) c.especificacion = esp;
+    if (cant !== inicial.cantidad.replace(',', '.')) c.cantidad = cant;
+    const ids = provs.map(function (x) { return x.id; });
+    if (ids.join(',') !== inicial.proveedores) c.proveedores = ids;
+    if (!ids.length) {
+      const k = $('ep-rubro').value;
+      if (k !== inicial.canal || (inicial.proveedores && c.proveedores)) c.canal = k;
+    }
+    return c;
+  };
+
+  const res = await dialogo({
+    titulo: 'Editar producto', cuerpo: cuerpo,
+    botones: [
+      { texto: 'Solo en este pedido', clase: 'btn', id: 'dg-ok', valor: function () { return { c: cambios(), padron: false }; } },
+      { texto: 'En este pedido y en el padrón', clase: 'btn2', id: 'dg-padron', valor: function () { return { c: cambios(), padron: true }; } },
+      { texto: 'Volver', valor: null }
+    ],
+    alAbrir: function () {
+      $('ep-nombre').value = inicial.familia;
+      $('ep-espec').value = inicial.especificacion;
+      $('ep-cant').value = inicial.cantidad;
+      const sel = $('ep-rubro');
+      sel.innerHTML = '<option value="">Sin rubro</option>' + canales.map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('');
+      sel.value = inicial.canal;
+      const revisar = function () {
+        const cant = Number($('ep-cant').value.trim().replace(',', '.'));
+        const c = cambios(), nombre = $('ep-nombre').value.trim();
+        $('dg-ok').disabled = !(cant > 0) || Object.keys(c).length === 0;
+        // Al padrón solo va nombre, rubro y proveedores (y hace falta un nombre)
+        $('dg-padron').disabled = !(cant > 0) || !nombre || !(c.familia !== undefined || c.canal !== undefined || c.proveedores !== undefined);
+      };
+      const pintarProv = function () {
+        const el = $('ep-prov-el');
+        el.innerHTML = '';
+        provs.forEach(function (x, k) {
+          const d = document.createElement('div');
+          d.className = 'elegido';
+          d.innerHTML = '<span>🎯 ' + esc(x.nombre) + '</span><button type="button" aria-label="Sacar a ' + esc(x.nombre) + '">×</button>';
+          d.querySelector('button').addEventListener('click', function () { provs.splice(k, 1); pintarProv(); });
+          el.appendChild(d);
+        });
+        $('ep-nuevo-b').hidden = !datos;
+        sel.hidden = provs.length > 0;
+        $('ep-rubro-nota').hidden = !provs.length;
+        revisar();
+      };
+      ['ep-nombre', 'ep-espec', 'ep-cant'].forEach(function (i) { $(i).addEventListener('input', revisar); });
+      sel.addEventListener('change', revisar);
+      conSugerencias($('ep-nombre'), $('ep-nombres'), function (q) {
+        if (!q) return [];
+        return familias.filter(function (f) { return coincide(f[0], q); }).slice(0, 8)
+          .map(function (f) { return { texto: f[0], sub: f[1] ? 'Rubro: ' + f[1] : 'Con proveedores particulares', valor: f }; });
+      }, function (f) {
+        $('ep-nombre').value = f[0];
+        if (f[1] && !Array.prototype.some.call(sel.options, function (o) { return o.value === f[1]; })) sel.insertAdjacentHTML('beforeend', '<option>' + esc(f[1]) + '</option>');
+        sel.value = f[1] || '';
+        revisar();
+      });
+      const yaElegido = function (x) { return provs.some(function (y) { return y.id === x.id; }); };
+      conSugerencias($('ep-prov-q'), $('ep-provs'), function (q) {
+        const rubro = sel.value;
+        const l2 = q ? proveedores.filter(function (x) { return coincide(x.nombre, q); })
+                     : proveedores.filter(function (x) { return rubro && x.canales.indexOf(rubro) !== -1; });   // sin buscar: los del rubro
+        return l2.filter(function (x) { return !yaElegido(x); }).slice(0, 8)
+          .map(function (x) { return { texto: x.nombre, sub: x.canales.join(', '), valor: x }; });
+      }, function (x) { provs.push({ id: x.id, nombre: x.nombre }); $('ep-prov-q').value = ''; pintarProv(); });
+      $('ep-nuevo-b').addEventListener('click', function () {
+        $('ep-nuevo').hidden = false;
+        $('ep-np-nombre').value = $('ep-prov-q').value.trim();
+        $('ep-np-nombre').focus();
+      });
+      $('ep-np-crear').addEventListener('click', async function () {
+        const b = this, nombre = $('ep-np-nombre').value.trim(), tel = $('ep-np-tel').value.trim();
+        if (nombre.length < 2 || !tel) return estado('ep-np-estado', 'Escribí el nombre y el teléfono.', 'bad');
+        b.disabled = true;
+        estado('ep-np-estado', 'Comprobando el número…', 'run');
+        const r = await api('crearProveedor', nombre, tel);
+        b.disabled = false;
+        if (!r.ok) return estado('ep-np-estado', r.sinConexion ? 'Hay poca señal: para crear un proveedor hace falta señal. Probá en un rato.' : r.error, 'bad');
+        estado('ep-np-estado', '');
+        proveedores.push(r.proveedor);
+        if (TB.datosProd) { TB.datosProd.proveedores.push(r.proveedor); guardado.guardarJSON(K_PRODUCTOS, TB.datosProd); }
+        provs.push({ id: r.proveedor.id, nombre: r.proveedor.nombre });
+        $('ep-np-nombre').value = $('ep-np-tel').value = $('ep-prov-q').value = '';
+        $('ep-nuevo').hidden = true;
+        pintarProv();
+      });
+      pintarProv();
+    }
+  });
+  if (!res || !Object.keys(res.c).length) return;
+  bandeja.agregar('editarProducto', [ref, id, res.c, { padron: res.padron }],
+                  'cambiar "' + nombreProducto(l) + '"' + (res.padron ? ' (también en el padrón)' : ''));
+  pintarTarjeta();
+}
+
+$('tj-editar').addEventListener('click', async function () {
+  const ref = TB.abierta, d = TB.detalle;
+  if (!ref || !d || !d.pedido || !APP.yo.admin) return;
+  const t = buscarEnVista(ref);
+  const p = pedidoConCambios(ref, Object.assign({}, d.pedido, t ? { titulo: t.titulo, urgencia: t.urgencia } : {}));
+  let urgencia = p.urgencia;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<div class="campo"><label for="eq-titulo">Título</label><input type="text" id="eq-titulo" maxlength="200" autocomplete="off">' +
+    '<p class="nota">Cambia solo el título: los productos quedan como están. Si después se cambia un producto, el título se vuelve a armar con los productos.</p></div>' +
+    '<div class="campo"><label>Urgencia</label><div class="urgencias-el" id="eq-urg"></div></div>' +
+    '<div class="campo"><label for="eq-razon">Razón del pedido</label><textarea id="eq-razon" maxlength="2000"></textarea></div>';
+  const c = await dialogo({
+    titulo: 'Editar pedido', cuerpo: cuerpo,
+    botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
+      const c = {}, ti = $('eq-titulo').value.trim(), ra = $('eq-razon').value.trim();
+      if (ti !== p.titulo) c.titulo = ti;
+      if (urgencia !== p.urgencia) c.urgencia = urgencia;
+      if (ra !== (p.razon || '')) c.razon = ra;
+      return c;
+    } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      $('eq-titulo').value = p.titulo || '';
+      $('eq-razon').value = p.razon || '';
+      const urg = $('eq-urg');
+      const pintarUrg = function () {
+        urg.innerHTML = (APP.config.urgencias || []).map(function (u) {
+          return '<button type="button" data-u="' + esc(u) + '" aria-pressed="' + (u === urgencia) + '">' + esc(u) + '</button>';
+        }).join('');
+        urg.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { urgencia = b.dataset.u; pintarUrg(); revisar(); }); });
+      };
+      const revisar = function () { $('dg-ok').disabled = !$('eq-titulo').value.trim() || !$('eq-razon').value.trim(); };
+      $('eq-titulo').addEventListener('input', revisar);
+      $('eq-razon').addEventListener('input', revisar);
+      pintarUrg();
+      revisar();
+    }
+  });
+  if (!c || !Object.keys(c).length) return;
+  bandeja.agregar('editarPedido', [ref, c], 'cambiar los datos de "' + (p.titulo || ref) + '"');
+  pintarTablero();
+  pintarTarjeta();
+});
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */
 function avisoConBoton(texto, boton, accion) {

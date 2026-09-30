@@ -170,7 +170,16 @@ body.modal-abierto{overflow:hidden}
 .etiqueta{font-size:13px;font-weight:700;border-radius:6px;padding:3px 10px;background:var(--soft);color:var(--fg)}
 .bloque h3{font-size:15px;margin:20px 0 8px}
 .bloque p.texto{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
-.producto{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.producto{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;gap:10px;align-items:flex-start}
+.prod-c{flex:1;min-width:0}
+.tilde{flex:none;width:30px;height:30px;margin-top:-2px;border:2px solid var(--muted);border-radius:8px;background:none;color:transparent;font:inherit;font-weight:800;font-size:17px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.tilde[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.producto.tildado .prod-c b{text-decoration:line-through;opacity:.7}
+.producto .comprado{font-size:12px;font-weight:700;color:var(--accent);margin-left:6px}
+.producto .prov{color:var(--fg)}
+.producto .espera{font-size:12px;color:var(--muted);margin-left:6px}
+.editar-prod{flex:none;border:0;background:var(--soft);color:var(--fg);border-radius:8px;min-width:36px;min-height:36px;cursor:pointer;font-size:15px}
+.editar-prod:hover{background:var(--line)}
 .producto b{font-weight:700}
 .producto .sub{color:var(--muted);font-size:14px;margin-top:2px;overflow-wrap:anywhere}
 .producto .fuera{font-size:12px;font-weight:700;color:var(--warn);background:var(--warn-soft);border-radius:999px;padding:1px 8px;margin-left:6px}
@@ -236,3 +245,19 @@ html,body{touch-action:pan-x pan-y}
 .act.ev .av{background:var(--soft);color:var(--muted)}
 .act.ev b{color:var(--fg)}
 .mencion{color:var(--accent);font-weight:700}
+
+/* Editar un producto o el pedido (Paso 4, parte 2) */
+.panel.chico .cuerpo input[type=text],.panel.chico .cuerpo input[type=tel],.panel.chico .cuerpo select{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;min-height:48px}
+.panel.chico .cuerpo .fila2{display:grid;grid-template-columns:1fr 110px;gap:10px}
+.panel.chico .cuerpo .campo{display:flex;flex-direction:column;gap:6px}
+.panel.chico .cuerpo .nota{margin:0;font-size:13px}
+.sugerencias{display:flex;flex-direction:column;gap:4px;max-height:210px;overflow-y:auto}
+.sugerencias button{border:1.5px solid var(--line);background:var(--soft);color:var(--fg);font:inherit;font-weight:600;text-align:left;border-radius:8px;padding:6px 10px;min-height:40px;cursor:pointer}
+.sugerencias button small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.elegido{display:flex;align-items:center;gap:8px;border:1.5px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:6px 6px 6px 12px;font-weight:700}
+.elegido span{flex:1;min-width:0}
+.elegido button{border:0;background:none;color:var(--fg);font-size:20px;min-width:36px;min-height:36px;cursor:pointer}
+.caja-nuevo{border:1.5px dashed var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.urgencias-el{display:flex;flex-wrap:wrap;gap:6px}
+.urgencias-el button{border:1.5px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-weight:600;border-radius:999px;padding:6px 12px;min-height:40px;cursor:pointer}
+.urgencias-el button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
