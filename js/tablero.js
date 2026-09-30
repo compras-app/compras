@@ -22,7 +22,7 @@
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
 const K_TARJETAS = 'compras_tarjetas';    // tarjetas abiertas hace poco (para verlas sin señal)
 const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1 };
-const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1 };      // cambios de un producto (Paso 4)
+const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1, deshacerProducto: 1 };      // cambios de un producto (Paso 4)
 const ENTREGA_TEXTO = { Retirar: '🏃 Hay que ir a buscarlo', Envío: '🚚 Nos lo traen' };
 const ENTREGA_CORTO = { Retirar: '🏃 A buscar', Envío: '🚚 Nos lo traen' };
 
@@ -707,8 +707,10 @@ function pintarTarjeta() {
     const ls = lineasConCambios(ref, d.lineas);
     const comprados = ls.filter(function (l) { return l.tildado; }).length;
     $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' comprado' + (comprados > 1 ? 's' : '') : '');
+    $('tj-varios').hidden = !(admin && ls.length > 1);
     prods.innerHTML = ls.map(function (l) { return htmlProducto(l, admin); }).join('');
   } else {
+    $('tj-varios').hidden = true;
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
@@ -1023,7 +1025,9 @@ function lineasConCambios(ref, lineas) {
     if (!l) return;
     l.espera = true;
     if (m.fn === 'tildarProducto') { l.tildado = !!m.args[2]; return; }
-    const c = m.args[2] || {};
+    let c = m.args[2] || {};
+    if (m.fn === 'deshacerProducto') { c = (l.deshacer && l.deshacer.antes) || {}; l.deshacer = null; }
+    else l.deshacer = null;           // el último cambio pasa a ser este (se ve bien cuando se guarda)
     if (c.especificacion !== undefined) l.especificacion = c.especificacion;
     if (c.cantidad !== undefined) l.cantidad = String(c.cantidad);
     if (c.familia !== undefined) {
@@ -1115,9 +1119,10 @@ function productoMandado(m, r) {
         if (!TB.arrastre) pintarTablero();
       }
     }
-    if (r.padron && r.padron.length) {
-      TB.datosProd = null;            // el padrón cambió: la lista se trae de nuevo la próxima vez
-      if (!document.hidden) aviso('También quedó en el padrón: ' + r.padron.join('; ') + '.');
+    if (r.padron && r.padron.length) TB.datosProd = null;     // el padrón cambió: la lista se trae de nuevo la próxima vez
+    if (!document.hidden) {
+      if (m.fn === 'deshacerProducto') aviso('Deshecho: ' + r.deshecho + (r.padron && r.padron.length ? '. En el padrón: ' + r.padron.join('; ') : '') + '.');
+      else if (r.padron && r.padron.length) aviso('También quedó en el padrón: ' + r.padron.join('; ') + '.');
     }
   } else if (!r.ok && TB.abierta === ref) traerTarjeta(ref);
   if (TB.abierta === ref) pintarTarjeta();
@@ -1167,6 +1172,73 @@ function conSugerencias(input, cont, items, alElegir) {
 }
 function coincide(texto, q) { const s = sinTildes(texto); return !q || s.indexOf(q) === 0 || s.indexOf(' ' + q) !== -1; }
 
+/**
+ * Elegir proveedores particulares (uno o varios): buscador, los elegidos
+ * con su ×, y crear uno nuevo (necesita señal: se comprueba el WhatsApp).
+ * Lo usan "Editar producto" y "Proveedores para varios".
+ *   htmlSelectorProv(): el HTML. armarSelectorProv(o): lo pone a andar.
+ *   o = {provs (se cambia en el lugar), proveedores, datos, rubro(), alCambiar()}
+ */
+function htmlSelectorProv() {
+  return '<div class="pila" id="sp-el" style="gap:6px"></div>' +
+    '<input type="text" id="sp-q" autocomplete="off" placeholder="Buscá un proveedor para sumar">' +
+    '<div class="sugerencias" id="sp-sug" hidden></div>' +
+    '<button type="button" class="linkbtn" id="sp-nuevo-b" style="align-self:flex-start;padding:4px 0;min-height:36px">+ Crear un proveedor nuevo</button>' +
+    '<div class="caja-nuevo" id="sp-nuevo" hidden>' +
+      '<input type="text" id="sp-np-nombre" autocomplete="off" placeholder="Nombre del proveedor">' +
+      '<input type="tel" id="sp-np-tel" autocomplete="off" placeholder="Teléfono: 5493525415029">' +
+      '<p class="nota">Con código de país, sin 0 ni 15: 54 + 9 + código de área + número. Ejemplo: 5493525415029. Se comprueba que tenga WhatsApp.</p>' +
+      '<p class="estado" id="sp-np-estado" hidden></p>' +
+      '<button type="button" class="btn2" id="sp-np-crear">Crear y sumar</button>' +
+    '</div>';
+}
+function armarSelectorProv(o) {
+  const provs = o.provs;
+  const pintar = function () {
+    const el = $('sp-el');
+    el.innerHTML = '';
+    provs.forEach(function (x, k) {
+      const d = document.createElement('div');
+      d.className = 'elegido';
+      d.innerHTML = '<span>🎯 ' + esc(x.nombre) + '</span><button type="button" aria-label="Sacar a ' + esc(x.nombre) + '">×</button>';
+      d.querySelector('button').addEventListener('click', function () { provs.splice(k, 1); pintar(); });
+      el.appendChild(d);
+    });
+    $('sp-nuevo-b').hidden = !o.datos;
+    if (o.alCambiar) o.alCambiar();
+  };
+  const yaElegido = function (x) { return provs.some(function (y) { return y.id === x.id; }); };
+  conSugerencias($('sp-q'), $('sp-sug'), function (q) {
+    const rubro = o.rubro ? o.rubro() : '';
+    const l2 = q ? o.proveedores.filter(function (x) { return coincide(x.nombre, q); })
+                 : o.proveedores.filter(function (x) { return rubro && x.canales.indexOf(rubro) !== -1; });   // sin buscar: los del rubro
+    return l2.filter(function (x) { return !yaElegido(x); }).slice(0, 8)
+      .map(function (x) { return { texto: x.nombre, sub: x.canales.join(', '), valor: x }; });
+  }, function (x) { provs.push({ id: x.id, nombre: x.nombre }); $('sp-q').value = ''; pintar(); });
+  $('sp-nuevo-b').addEventListener('click', function () {
+    $('sp-nuevo').hidden = false;
+    $('sp-np-nombre').value = $('sp-q').value.trim();
+    $('sp-np-nombre').focus();
+  });
+  $('sp-np-crear').addEventListener('click', async function () {
+    const b = this, nombre = $('sp-np-nombre').value.trim(), tel = $('sp-np-tel').value.trim();
+    if (nombre.length < 2 || !tel) return estado('sp-np-estado', 'Escribí el nombre y el teléfono.', 'bad');
+    b.disabled = true;
+    estado('sp-np-estado', 'Comprobando el número…', 'run');
+    const r = await api('crearProveedor', nombre, tel);
+    b.disabled = false;
+    if (!r.ok) return estado('sp-np-estado', r.sinConexion ? 'Hay poca señal: para crear un proveedor hace falta señal. Probá en un rato.' : r.error, 'bad');
+    estado('sp-np-estado', '');
+    o.proveedores.push(r.proveedor);
+    if (TB.datosProd && TB.datosProd.proveedores !== o.proveedores) { TB.datosProd.proveedores.push(r.proveedor); guardado.guardarJSON(K_PRODUCTOS, TB.datosProd); }
+    provs.push({ id: r.proveedor.id, nombre: r.proveedor.nombre });
+    $('sp-np-nombre').value = $('sp-np-tel').value = $('sp-q').value = '';
+    $('sp-nuevo').hidden = true;
+    pintar();
+  });
+  pintar();
+}
+
 async function editarProducto(ref, id) {
   const l = lineaVista(ref, id);
   if (!l || !APP.yo.admin) return;
@@ -1174,11 +1246,15 @@ async function editarProducto(ref, id) {
   const familias = datos ? datos.familias : [], proveedores = datos ? datos.proveedores.slice() : [];
   const canales = datos ? datos.canales.slice() : [];
   if (l.canal && canales.indexOf(l.canal) === -1) canales.push(l.canal);
-  let provs = (l.proveedores || []).map(function (x) { return { id: x.id, nombre: x.nombre }; });
+  const provs = (l.proveedores || []).map(function (x) { return { id: x.id, nombre: x.nombre }; });
+  const u = l.deshacer;
 
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML =
+    (u ? '<div class="caja-nuevo"><p class="nota" style="margin:0">Último cambio (' + esc(u.quien) + ', ' + esc(hace(u.cuando)) + '): <b>' + esc(u.resumen) + '</b></p>' +
+         '<button type="button" class="btn2" id="ep-deshacer">↩ Deshacer este cambio</button></div>'
+       : (l.espera ? '<p class="nota">Hay un cambio guardándose: para deshacerlo, esperá a que se guarde.</p>' : '')) +
     (l.texto ? '<p class="nota">El encargado escribió: «' + esc(l.texto) + '» (eso no se cambia)</p>' : '') +
     (datos ? '' : '<p class="estado warn">Hay poca señal: la lista de nombres y proveedores se ve cuando vuelva. Igual podés cambiar la especificación y la cantidad.</p>') +
     '<div class="campo"><label for="ep-nombre">Nombre del producto</label>' +
@@ -1187,18 +1263,7 @@ async function editarProducto(ref, id) {
     '<div class="fila2"><div class="campo"><label for="ep-espec">Especificación</label><input type="text" id="ep-espec" autocomplete="off" placeholder="Medida, modelo…"></div>' +
       '<div class="campo"><label for="ep-cant">Cantidad</label><input type="text" id="ep-cant" inputmode="decimal" autocomplete="off"></div></div>' +
     '<div class="campo"><label for="ep-rubro">Rubro</label><select id="ep-rubro"></select><p class="nota" id="ep-rubro-nota" hidden>Con proveedores particulares va sin rubro: el pedido les llega solo a ellos.</p></div>' +
-    '<div class="campo"><label for="ep-prov-q">Proveedores particulares (opcional)</label>' +
-      '<div class="pila" id="ep-prov-el" style="gap:6px"></div>' +
-      '<input type="text" id="ep-prov-q" autocomplete="off" placeholder="Buscá un proveedor para sumar">' +
-      '<div class="sugerencias" id="ep-provs" hidden></div>' +
-      '<button type="button" class="linkbtn" id="ep-nuevo-b" style="align-self:flex-start;padding:4px 0;min-height:36px">+ Crear un proveedor nuevo</button>' +
-      '<div class="caja-nuevo" id="ep-nuevo" hidden>' +
-        '<input type="text" id="ep-np-nombre" autocomplete="off" placeholder="Nombre del proveedor">' +
-        '<input type="tel" id="ep-np-tel" autocomplete="off" placeholder="Teléfono: 5493525415029">' +
-        '<p class="nota">Con código de país, sin 0 ni 15: 54 + 9 + código de área + número. Ejemplo: 5493525415029. Se comprueba que tenga WhatsApp.</p>' +
-        '<p class="estado" id="ep-np-estado" hidden></p>' +
-        '<button type="button" class="btn2" id="ep-np-crear">Crear y sumar</button>' +
-      '</div></div>' +
+    '<div class="campo"><label for="sp-q">Proveedores particulares (opcional)</label>' + htmlSelectorProv() + '</div>' +
     '<p class="nota"><b>Solo en este pedido:</b> cambia este pedido. <b>También en el padrón:</b> además queda para los pedidos que vengan (nombre, rubro y proveedores; la especificación y la cantidad son de este pedido).</p>';
 
   const inicial = { familia: l.familia || '', especificacion: l.especificacion || '', cantidad: String(l.cantidad || ''), canal: l.canal || '',
@@ -1213,7 +1278,7 @@ async function editarProducto(ref, id) {
     if (ids.join(',') !== inicial.proveedores) c.proveedores = ids;
     if (!ids.length) {
       const k = $('ep-rubro').value;
-      if (k !== inicial.canal || (inicial.proveedores && c.proveedores)) c.canal = k;
+      if (k !== inicial.canal) c.canal = k;
     }
     return c;
   };
@@ -1235,24 +1300,11 @@ async function editarProducto(ref, id) {
       const revisar = function () {
         const cant = Number($('ep-cant').value.trim().replace(',', '.'));
         const c = cambios(), nombre = $('ep-nombre').value.trim();
+        sel.hidden = provs.length > 0;
+        $('ep-rubro-nota').hidden = !provs.length;
         $('dg-ok').disabled = !(cant > 0) || Object.keys(c).length === 0;
         // Al padrón solo va nombre, rubro y proveedores (y hace falta un nombre)
         $('dg-padron').disabled = !(cant > 0) || !nombre || !(c.familia !== undefined || c.canal !== undefined || c.proveedores !== undefined);
-      };
-      const pintarProv = function () {
-        const el = $('ep-prov-el');
-        el.innerHTML = '';
-        provs.forEach(function (x, k) {
-          const d = document.createElement('div');
-          d.className = 'elegido';
-          d.innerHTML = '<span>🎯 ' + esc(x.nombre) + '</span><button type="button" aria-label="Sacar a ' + esc(x.nombre) + '">×</button>';
-          d.querySelector('button').addEventListener('click', function () { provs.splice(k, 1); pintarProv(); });
-          el.appendChild(d);
-        });
-        $('ep-nuevo-b').hidden = !datos;
-        sel.hidden = provs.length > 0;
-        $('ep-rubro-nota').hidden = !provs.length;
-        revisar();
       };
       ['ep-nombre', 'ep-espec', 'ep-cant'].forEach(function (i) { $(i).addEventListener('input', revisar); });
       sel.addEventListener('change', revisar);
@@ -1266,43 +1318,87 @@ async function editarProducto(ref, id) {
         sel.value = f[1] || '';
         revisar();
       });
-      const yaElegido = function (x) { return provs.some(function (y) { return y.id === x.id; }); };
-      conSugerencias($('ep-prov-q'), $('ep-provs'), function (q) {
-        const rubro = sel.value;
-        const l2 = q ? proveedores.filter(function (x) { return coincide(x.nombre, q); })
-                     : proveedores.filter(function (x) { return rubro && x.canales.indexOf(rubro) !== -1; });   // sin buscar: los del rubro
-        return l2.filter(function (x) { return !yaElegido(x); }).slice(0, 8)
-          .map(function (x) { return { texto: x.nombre, sub: x.canales.join(', '), valor: x }; });
-      }, function (x) { provs.push({ id: x.id, nombre: x.nombre }); $('ep-prov-q').value = ''; pintarProv(); });
-      $('ep-nuevo-b').addEventListener('click', function () {
-        $('ep-nuevo').hidden = false;
-        $('ep-np-nombre').value = $('ep-prov-q').value.trim();
-        $('ep-np-nombre').focus();
-      });
-      $('ep-np-crear').addEventListener('click', async function () {
-        const b = this, nombre = $('ep-np-nombre').value.trim(), tel = $('ep-np-tel').value.trim();
-        if (nombre.length < 2 || !tel) return estado('ep-np-estado', 'Escribí el nombre y el teléfono.', 'bad');
-        b.disabled = true;
-        estado('ep-np-estado', 'Comprobando el número…', 'run');
-        const r = await api('crearProveedor', nombre, tel);
-        b.disabled = false;
-        if (!r.ok) return estado('ep-np-estado', r.sinConexion ? 'Hay poca señal: para crear un proveedor hace falta señal. Probá en un rato.' : r.error, 'bad');
-        estado('ep-np-estado', '');
-        proveedores.push(r.proveedor);
-        if (TB.datosProd) { TB.datosProd.proveedores.push(r.proveedor); guardado.guardarJSON(K_PRODUCTOS, TB.datosProd); }
-        provs.push({ id: r.proveedor.id, nombre: r.proveedor.nombre });
-        $('ep-np-nombre').value = $('ep-np-tel').value = $('ep-prov-q').value = '';
-        $('ep-nuevo').hidden = true;
-        pintarProv();
-      });
-      pintarProv();
+      if (u) $('ep-deshacer').addEventListener('click', function () { if (cerrarDialogoActual) cerrarDialogoActual({ deshacer: true }); });
+      armarSelectorProv({ provs: provs, proveedores: proveedores, datos: datos, rubro: function () { return sel.value; }, alCambiar: revisar });
     }
   });
-  if (!res || !Object.keys(res.c).length) return;
+  if (!res) return;
+  if (res.deshacer) {
+    bandeja.agregar('deshacerProducto', [ref, id], 'deshacer el cambio de "' + nombreProducto(l) + '" (' + u.resumen + ')');
+    return pintarTarjeta();
+  }
+  if (!Object.keys(res.c).length) return;
   bandeja.agregar('editarProducto', [ref, id, res.c, { padron: res.padron }],
                   'cambiar "' + nombreProducto(l) + '"' + (res.padron ? ' (también en el padrón)' : ''));
   pintarTarjeta();
 }
+
+/** Proveedores particulares para varios productos del pedido a la vez (solo en este pedido). */
+async function proveedoresParaVarios(ref) {
+  const d = TB.detalle;
+  if (!d || !d.lineas || !APP.yo.admin) return;
+  const ls = lineasConCambios(ref, d.lineas);
+  const datos = await datosProductos();
+  const proveedores = datos ? datos.proveedores.slice() : [];
+  const elegidos = {}, provs = [];
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML =
+    (datos ? '' : '<p class="estado warn">Hay poca señal: la lista de proveedores se ve cuando vuelva.</p>') +
+    '<div class="campo"><div style="display:flex;align-items:center;justify-content:space-between"><label>Productos</label>' +
+      '<button type="button" class="linkbtn" id="pv-todos" style="padding:4px 0;min-height:36px">Elegir todos</button></div>' +
+      '<div class="opciones" id="pv-prods" style="max-height:40vh"></div></div>' +
+    '<div class="campo"><label for="sp-q">Proveedores particulares</label>' + htmlSelectorProv() + '</div>' +
+    '<p class="nota">Solo en este pedido. Los productos elegidos quedan "🎯 Va solo a…" y sin rubro. Sin ningún proveedor, les saca los que tengan y vuelven a su rubro.</p>';
+  const res = await dialogo({
+    titulo: 'Proveedores para varios productos', cuerpo: cuerpo,
+    botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () { return true; } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      const cont = $('pv-prods');
+      const revisar = function () {
+        const n = Object.keys(elegidos).length;
+        $('dg-ok').disabled = !n;
+        $('dg-ok').textContent = !n ? 'Guardar' : provs.length ? 'Guardar en ' + n + ' producto' + (n > 1 ? 's' : '') : 'Sacarles los proveedores (' + n + ')';
+        $('pv-todos').textContent = n === ls.length ? 'Ninguno' : 'Elegir todos';
+      };
+      ls.forEach(function (l) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'choice';
+        b.setAttribute('aria-checked', 'false');
+        const provTxt = (l.proveedores || []).length ? ' · 🎯 ' + l.proveedores.map(function (x) { return x.nombre; }).join(', ') : (l.canal ? ' · ' + l.canal : '');
+        b.innerHTML = '<span aria-hidden="true" class="marca">☐</span><span>' + esc(l.cantidad + ' × ' + nombreProducto(l)) + '<small style="display:block;color:var(--muted);font-weight:400">' + esc(provTxt.replace(/^ · /, '')) + '</small></span>';
+        b.addEventListener('click', function () {
+          if (elegidos[l.id]) delete elegidos[l.id]; else elegidos[l.id] = l;
+          b.setAttribute('aria-checked', String(!!elegidos[l.id]));
+          b.querySelector('.marca').textContent = elegidos[l.id] ? '☑' : '☐';
+          revisar();
+        });
+        cont.appendChild(b);
+      });
+      $('pv-todos').addEventListener('click', function () {
+        const todos = Object.keys(elegidos).length !== ls.length;
+        cont.querySelectorAll('.choice').forEach(function (b, k) {
+          if (todos) elegidos[ls[k].id] = ls[k]; else delete elegidos[ls[k].id];
+          b.setAttribute('aria-checked', String(todos));
+          b.querySelector('.marca').textContent = todos ? '☑' : '☐';
+        });
+        revisar();
+      });
+      armarSelectorProv({ provs: provs, proveedores: proveedores, datos: datos, rubro: function () { return ''; }, alCambiar: revisar });
+    }
+  });
+  if (!res) return;
+  const ids = provs.map(function (x) { return x.id; });
+  Object.keys(elegidos).forEach(function (id) {
+    const l = elegidos[id];
+    if ((l.proveedores || []).map(function (x) { return x.id; }).join(',') === ids.join(',')) return;   // ya estaba así
+    bandeja.agregar('editarProducto', [ref, id, { proveedores: ids }, { padron: false }], 'cambiar los proveedores de "' + nombreProducto(l) + '"');
+  });
+  pintarTarjeta();
+}
+
+$('tj-varios').addEventListener('click', function () { if (TB.abierta) proveedoresParaVarios(TB.abierta); });
 
 $('tj-editar').addEventListener('click', async function () {
   const ref = TB.abierta, d = TB.detalle;
