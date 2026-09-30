@@ -749,10 +749,15 @@ function pintarTarjeta() {
 
   const pv = p ? pedidoConCambios(ref, p) : null;
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');
+  if (pv && !pv.razon && pv.descripcion) $('tj-razon-b').hidden = true;      // masivo libre sin razón: con la descripción alcanza
   $('tj-editar').hidden = !(admin && p) || !!parte;
-  $('tj-desc-b').hidden = !parte;
+  // Descripción: la de la mini tarjeta abierta, o la del pedido masivo libre (Paso 6)
+  $('tj-desc-b').hidden = !parte && !(pv && pv.descripcion);
   if (parte) {
     $('tj-desc').textContent = parte.descripcion || (admin ? 'Sin descripción.' : '—');
+    $('tj-desc-editar').hidden = !admin;
+  } else if (pv && pv.descripcion) {
+    $('tj-desc').textContent = pv.descripcion;
     $('tj-desc-editar').hidden = !admin;
   }
   const prods = $('tj-productos');
@@ -1211,7 +1216,7 @@ function pedidoConCambios(ref, p) {
   bandeja.lista().forEach(function (m) {
     if (m.fn !== 'editarPedido' || m.args[0] !== ref) return;
     const c = m.args[1] || {};
-    ['titulo', 'urgencia', 'razon'].forEach(function (k) { if (c[k] !== undefined) v[k] = c[k]; });
+    ['titulo', 'urgencia', 'razon', 'descripcion'].forEach(function (k) { if (c[k] !== undefined) v[k] = c[k]; });
   });
   return v;
 }
@@ -1379,7 +1384,7 @@ function productoMandado(m, r) {
 function datosDelPedidoMandados(ref, c) {
   const poner = function (d) {
     if (!d || !d.pedido) return;
-    ['titulo', 'urgencia', 'razon'].forEach(function (k) { if (c[k] !== undefined) d.pedido[k] = c[k]; });
+    ['titulo', 'urgencia', 'razon', 'descripcion'].forEach(function (k) { if (c[k] !== undefined) d.pedido[k] = c[k]; });
   };
   const todos = detallesGuardados();
   if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
@@ -1683,7 +1688,8 @@ $('tj-editar').addEventListener('click', async function () {
         }).join('');
         urg.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { urgencia = b.dataset.u; pintarUrg(); revisar(); }); });
       };
-      const revisar = function () { $('dg-ok').disabled = !$('eq-titulo').value.trim() || !$('eq-razon').value.trim(); };
+      // La razón no se puede vaciar si tenía (un masivo puede no tenerla)
+      const revisar = function () { $('dg-ok').disabled = !$('eq-titulo').value.trim() || (!!p.razon && !$('eq-razon').value.trim()); };
       $('eq-titulo').addEventListener('input', revisar);
       $('eq-razon').addEventListener('input', revisar);
       pintarUrg();
@@ -1732,9 +1738,11 @@ function comprimirFoto(file) {
   });
 }
 
-async function adjuntar(files) {
-  const ref = TB.abierta;
+/** ref: el pedido (por defecto, el abierto); lo usa también el pedido masivo libre (admin.js). */
+async function adjuntar(files, ref) {
+  ref = ref || TB.abierta;
   if (!ref) return;
+  const parte = ref === TB.abierta ? (TB.parte || '') : '';
   for (let k = 0; k < files.length; k++) {
     const f = files[k];
     const esPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
@@ -1751,7 +1759,7 @@ async function adjuntar(files) {
     catch (e) { aviso('No se pudo guardar "' + nombre + '" en el teléfono.', 'bad'); continue; }
     ADJ.urls[id] = URL.createObjectURL(blob);
     const l = adjPendientes();
-    l.push({ id: id, ref: ref, parte: TB.parte || '', nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', creado: new Date().toISOString(), token: APP.token, intentos: 0 });
+    l.push({ id: id, ref: ref, parte: parte, nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', creado: new Date().toISOString(), token: APP.token, intentos: 0 });
     guardarAdjPendientes(l);
   }
   pintarAdjuntos();
@@ -2009,6 +2017,7 @@ $('tj-cancelar-parte').addEventListener('click', async function () {
 
 $('tj-desc-editar').addEventListener('click', async function () {
   if (TB.tipo === 'tarea') return describirTareaUI(TB.abierta);
+  if (!TB.parte) return describirPedidoUI(TB.abierta);
   const ref = TB.abierta, pt = partesVista(ref).filter(function (x) { return x.id === TB.parte; })[0];
   if (!pt) return;
   const cuerpo = document.createElement('div');
@@ -2023,6 +2032,24 @@ $('tj-desc-editar').addEventListener('click', async function () {
   bandeja.agregar('describirParte', [ref, pt.id, texto], 'cambiar la descripción de "' + pt.nombre + '"');
   pintarTarjeta();
 });
+
+/** La descripción del pedido (la del masivo libre, Paso 6): va por editarPedido. */
+async function describirPedidoUI(ref) {
+  const d = TB.detalle;
+  if (!ref || !d || !d.pedido || !APP.yo.admin) return;
+  const p = pedidoConCambios(ref, d.pedido);
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<label for="dg-desc">Descripción</label><textarea id="dg-desc" maxlength="20000" style="min-height:40vh"></textarea>';
+  const texto = await dialogo({
+    titulo: 'Descripción del pedido', cuerpo: cuerpo,
+    botones: [{ texto: 'Guardar', clase: 'btn', valor: function () { return $('dg-desc').value.trim(); } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () { $('dg-desc').value = p.descripcion || ''; $('dg-desc').focus(); }
+  });
+  if (texto === null || texto === undefined || texto === (p.descripcion || '')) return;
+  bandeja.agregar('editarPedido', [ref, { descripcion: texto }], 'cambiar la descripción de "' + (p.titulo || ref) + '"');
+  pintarTarjeta();
+}
 
 /** Respuesta de un cambio de mini tarjeta. */
 function parteMandada(m, r) {

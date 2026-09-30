@@ -35,7 +35,8 @@
 <!-- El color de App_Config: el último que mandó el servidor, guardado en el dispositivo.
      La primera vez, el rosa de siempre (paletaDe_ de #d6336c). -->
 <style id="estiloColor">:root{--accent:#d6336c;--accent-soft:#fae7ed;--accent-fg:#ffffff;--band:#d6336c;--tablero:#c93066;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;--tablero:#5e2237;}}:root[data-theme="dark"]{--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;--tablero:#5e2237;}</style>
-<script>try { var c = localStorage.getItem('compras_css'); if (c !== null) document.getElementById('estiloColor').textContent = c; } catch (e) {}</script>
+<script>try { var c = localStorage.getItem('compras_css_mio'); if (c === null) c = localStorage.getItem('compras_css'); if (c !== null) document.getElementById('estiloColor').textContent = c;
+  var e = localStorage.getItem('compras_estilo'); if (e) document.documentElement.dataset.estilo = e; } catch (e) {}</script>
 </head>
 <body>
 <div id="login">
@@ -177,8 +178,87 @@
       <button type="button" class="btn2 bu-mas" id="bu-mas" hidden>Ver más</button>
     </section>
 
+    <!-- Admin (Paso 6): un menú y una pantalla por función -->
     <section id="s-admin" hidden>
-      <div class="vacio"><b>Administración</b>Llega en el Paso 6: usuarios y sesiones, proveedores, columnas, sitios y pedido masivo.</div>
+      <div class="ad-menu">
+        <button type="button" class="ad-op" data-ir="personas"><span class="ic" aria-hidden="true">👥</span><b>Personas y dispositivos</b><small>Altas, bajas, roles y dónde tiene abierta la app cada uno</small></button>
+        <button type="button" class="ad-op" data-ir="proveedores"><span class="ic" aria-hidden="true">🏪</span><b>Proveedores</b><small>Teléfonos, rubros, activar o desactivar</small></button>
+        <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Granjas y aviso de la Tanda verde</small></button>
+        <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Pegar una lista de productos, o un pedido libre con PDF</small></button>
+      </div>
+    </section>
+
+    <section id="s-personas" hidden>
+      <div class="ad-barra">
+        <button type="button" class="btn ad-nuevo" id="pe-nuevo">＋ Agregar persona</button>
+      </div>
+      <p class="nota ad-estado" id="pe-estado" role="status" aria-live="polite"></p>
+      <div class="ad-lista" id="pe-lista"></div>
+    </section>
+
+    <section id="s-proveedores" hidden>
+      <div class="ad-barra">
+        <input type="search" id="pv-q" placeholder="Buscar proveedor…" aria-label="Buscar proveedor" autocomplete="off">
+        <button type="button" class="btn ad-nuevo" id="pv-nuevo">＋ Agregar</button>
+      </div>
+      <div class="filtros ad-filtros">
+        <label class="filtro"><span>Rubro</span><select id="pv-rubro"></select></label>
+        <label class="filtro"><span>Ver</span><select id="pv-ver">
+          <option value="">Todos</option><option value="sintel">Sin teléfono</option><option value="inactivos">Desactivados</option>
+        </select></label>
+      </div>
+      <p class="nota ad-estado" id="pv-estado" role="status" aria-live="polite"></p>
+      <div class="ad-lista" id="pv-lista"></div>
+    </section>
+
+    <section id="s-ajustes" hidden>
+      <div class="caja">
+        <div class="act-h"><h2>Granjas</h2><button type="button" class="btn-chico" id="aj-granja-nueva">＋ Agregar granja</button></div>
+        <p class="nota">Son las que aparecen en el formulario y en los filtros. Si le cambiás el nombre a una, cambia también en los pedidos viejos.</p>
+        <div id="aj-granjas" class="ad-lista"></div>
+      </div>
+      <div class="caja">
+        <h2>Tanda verde</h2>
+        <p class="nota">Cada cuántos días te avisa que conviene mandar a cotizar lo que juntó la Tanda verde.</p>
+        <div class="aj-dias"><label for="aj-dias">Avisar cada</label><input type="number" id="aj-dias" min="1" max="60" inputmode="numeric"><span>días</span>
+          <button type="button" class="btn2" id="aj-dias-ok">Guardar</button></div>
+      </div>
+      <p class="nota ad-estado" id="aj-estado" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="s-masivo" hidden>
+      <div class="seg ma-modo" role="group" aria-label="Cómo cargar el pedido">
+        <button type="button" data-modo="lista" aria-pressed="true">📋 Lista de productos</button>
+        <button type="button" data-modo="libre" aria-pressed="false">📝 Libre, con PDF</button>
+      </div>
+      <p class="nota" id="ma-ayuda-modo"></p>
+      <div class="caja">
+        <div class="campo"><label for="ma-sitio">Granja</label><select id="ma-sitio"></select></div>
+        <div class="campo"><label>Urgencia</label><div class="urgencias-el" id="ma-urg"></div></div>
+        <div class="campo" id="ma-titulo-c" hidden><label for="ma-titulo">Título</label><input type="text" id="ma-titulo" maxlength="200" autocomplete="off" placeholder="Ej: Materiales obra silos PAB"></div>
+        <div class="campo"><label for="ma-razon">Razón <small>(opcional)</small></label><input type="text" id="ma-razon" maxlength="2000" autocomplete="off" placeholder="Ej: obra nueva, reposición del mes…"></div>
+      </div>
+      <!-- Modo lista -->
+      <div class="caja" id="ma-lista-c">
+        <label for="ma-texto">Pegá la lista: un producto por línea</label>
+        <textarea id="ma-texto" rows="8" placeholder="20 bulones 3/4&#10;5 guantes de nitrilo talle M&#10;cable 2,5 mm x 50"></textarea>
+        <p class="nota">Cada línea: <b>cantidad</b>, <b>producto</b> y, si hace falta, cómo es (medida, talle, marca). La cantidad puede ir al principio ("20 bulones 3/4") o al final ("bulones 3/4 x 20"). Sirve pegar desde Excel, WhatsApp o un mail. Si una línea no tiene cantidad, va 1 y lo podés cambiar.</p>
+        <button type="button" class="btn" id="ma-ver">Ver cómo queda</button>
+        <div id="ma-previa" hidden>
+          <h3 id="ma-previa-t"></h3>
+          <div id="ma-filas" class="ma-filas"></div>
+        </div>
+      </div>
+      <!-- Modo libre -->
+      <div class="caja" id="ma-libre-c" hidden>
+        <label for="ma-desc">Descripción</label>
+        <textarea id="ma-desc" rows="10" maxlength="20000" placeholder="Pegá acá los productos como los tengas, o lo que haga falta explicar."></textarea>
+        <div class="act-h" style="margin-top:12px"><h3>Adjuntos</h3><button type="button" class="btn-chico" id="ma-adj-b">📎 Adjuntar PDF o fotos</button></div>
+        <input type="file" id="ma-adj" accept="image/*,application/pdf" multiple style="display:none">
+        <ul class="ma-archivos" id="ma-archivos"></ul>
+      </div>
+      <button type="button" class="btn" id="ma-crear" disabled>Crear pedido masivo</button>
+      <p class="nota ad-estado" id="ma-estado" role="status" aria-live="polite"></p>
     </section>
 
     <section id="s-cuenta" hidden>
@@ -194,6 +274,15 @@
           <dt>Versión</dt><dd id="c-version"></dd>
           <dt id="c-error-t" hidden>Último error</dt><dd id="c-error" hidden></dd>
         </dl>
+      </div>
+      <!-- Paso 6: cada uno elige su estilo de tablero y su color -->
+      <div class="caja" id="c-aspecto">
+        <h2>Cómo se ve la app</h2>
+        <p class="nota">Solo cambia para vos, en todos tus dispositivos.</p>
+        <h3 class="asp-t">Tablero</h3>
+        <div class="asp-estilos" id="c-estilos"></div>
+        <h3 class="asp-t">Color</h3>
+        <div class="asp-colores" id="c-colores"></div>
       </div>
       <div class="pila">
         <p class="estado" id="e-cuenta" hidden></p>
@@ -301,6 +390,7 @@
 <script src="js/tablero.js"></script>
 <script src="js/tareas.js"></script>
 <script src="js/buscar.js"></script>
+<script src="js/admin.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 </body>

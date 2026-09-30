@@ -393,7 +393,7 @@ async function arrancar(){
   try{
     const r=await llamar('datosFormulario',[]);
     if(!r.ok) throw new Error(r.error);
-    if(typeof aplicarColor==='function') aplicarColor(r.css); else { $('#estiloColor').textContent=r.css; guardado.guardar(K.css,r.css); }
+    if(typeof aplicarColor==='function') aplicarColor(r.css); else { if(guardado.leer('compras_css_mio')===null) $('#estiloColor').textContent=r.css; guardado.guardar(K.css,r.css); }
     guardado.guardarJSON(K_DATOS,{padron:r.padron,sitios:r.sitios,urgencias:r.urgencias,solicitantes:r.solicitantes,actualizado:new Date().toISOString()});
     // La primera vez arranca con lo que llegó; si ya estaba abierto, lo nuevo se usa la próxima vez
     if(!guardados){ usarDatos(r); mostrarFormulario(); }

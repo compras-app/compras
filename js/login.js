@@ -36,8 +36,19 @@ function arrancar() {
 /** El color de App_Config, guardado para la próxima vez (se aplica antes de pintar, en index.html). */
 function aplicarColor(css) {
   if (typeof css !== 'string') return;
-  $('estiloColor').textContent = css;
+  if (guardado.leer(K.cssMio) === null) $('estiloColor').textContent = css;   // si eligió el suyo, manda el suyo
   guardado.guardar(K.css, css);
+}
+
+/**
+ * El aspecto que eligió cada uno (Paso 6): su color (css; null = el de la
+ * app) y el estilo del tablero. Queda guardado para abrir ya con eso, y el
+ * formulario de este dispositivo usa el mismo color.
+ */
+function aplicarAspecto(cssMio, estilo) {
+  if (cssMio === null) { guardado.borrar(K.cssMio); $('estiloColor').textContent = guardado.leer(K.css) || ''; }
+  else { guardado.guardar(K.cssMio, cssMio); $('estiloColor').textContent = cssMio; }
+  if (estilo) { document.documentElement.dataset.estilo = estilo; guardado.guardar(K.estilo, estilo); }
 }
 
 /** Guarda y aplica lo que trae inicioApp. */
@@ -46,7 +57,11 @@ function aplicarInicio(r) {
   APP.config = r.config;
   APP.actualizado = r.actualizado || new Date().toISOString();
   guardado.guardarJSON(K.inicio, { yo: r.yo, config: r.config, actualizado: APP.actualizado });
-  if (r.config) aplicarColor(r.config.css);
+  // Si hay un cambio de aspecto esperando señal, manda ese (el servidor todavía tiene el anterior)
+  if (r.config && r.yo && !bandeja.lista().some(function (m) { return m.fn === 'guardarAspecto'; })) {
+    if (r.yo.color) aplicarAspecto(r.config.css, r.yo.estilo);
+    else { aplicarAspecto(null, r.yo.estilo); aplicarColor(r.config.css); }
+  } else if (r.config && !r.yo) aplicarColor(r.config.css);
 }
 
 /** Primera vez en este dispositivo (sin nada guardado): hace falta señal. */
@@ -91,6 +106,9 @@ function sesionPerdida(texto) {
   // Lo del tablero es de quien estaba: que el próximo no lo vea
   guardado.borrar('compras_tablero');
   guardado.borrar('compras_tarjetas');
+  guardado.borrar(K.cssMio);             // el próximo arranca con el color y el estilo de la app
+  guardado.borrar(K.estilo);
+  delete document.documentElement.dataset.estilo;
   if (typeof TB !== 'undefined') { TB.datos = null; TB.filtros = null; TB.cancelados = {}; if (TB.abierta) ocultarTarjeta(); }
   entrarDeCero(texto);
 }
