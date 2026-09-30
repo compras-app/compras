@@ -105,7 +105,10 @@ body[data-pantalla="tablero"] .contenido{max-width:none;padding:0}
 .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
 .filtro{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
 .filtros select{font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:5px 8px;min-height:36px;max-width:40vw}
-.refrescar{margin-left:auto;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;min-height:36px;cursor:pointer;padding:0 4px;white-space:nowrap}
+.refrescar{margin-left:auto;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;min-height:44px;min-width:44px;cursor:pointer;padding:0 6px;white-space:nowrap;touch-action:manipulation}
+.refrescar .ic{display:inline-block}
+.refrescar.girando .ic{animation:girar 1s linear infinite}
+@keyframes girar{to{transform:rotate(360deg)}}
 .tablero{flex:1;min-height:0;display:flex;align-items:flex-start;gap:10px;overflow-x:auto;padding:10px 12px 12px;scroll-snap-type:x mandatory;scroll-padding:0 12px;background:var(--soft);overscroll-behavior-x:contain}
 .col{flex:0 0 84vw;max-width:340px;height:100%;scroll-snap-align:start;display:flex;flex-direction:column;background:var(--bg);border:1.5px solid var(--line);border-radius:12px;min-height:0}
 @media (min-width:720px){.tablero{scroll-snap-type:none}.col{flex-basis:272px}}

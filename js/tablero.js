@@ -248,24 +248,39 @@ $('tablero').addEventListener('scroll', function () {
 
 /* ---------- Traer del servidor ---------- */
 async function cargarTablero() {
-  if (TB.cargando || !APP.token) return;
+  if (!APP.token) return;
+  if (TB.cargando) { TB.otraVez = true; return; }        // ya está trayendo: cuando termine, trae de nuevo
   TB.cargando = true;
+  pintarHace();
   if (!TB.datos) pintarTablero();
   const r = await api('getTablero');
   TB.cargando = false;
-  if (!r.ok) { if (!TB.datos) pintarTablero(); pintarHace(); return; }   // sin señal: queda lo guardado
-  TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, porRecibir: r.porRecibir, actualizado: r.actualizado };
-  guardado.guardarJSON(K_TABLERO, TB.datos);
-  if (!TB.arrastre) pintarTablero();
-  if (TB.abierta) pintarTarjeta();
+  if (r.ok) {
+    TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado };
+    guardado.guardarJSON(K_TABLERO, TB.datos);
+    if (!TB.arrastre) pintarTablero();
+    if (TB.abierta) pintarTarjeta();
+  } else if (!TB.datos) pintarTablero();                  // sin señal: queda lo guardado
+  pintarHace();
+  if (TB.otraVez) { TB.otraVez = false; cargarTablero(); }
 }
 function pintarHace() {
-  const el = $('tb-hace');
-  if (el) el.textContent = TB.datos && TB.datos.actualizado ? hace(TB.datos.actualizado) : '';
+  const el = $('tb-hace'), b = $('tb-refrescar');
+  if (b) b.classList.toggle('girando', !!TB.cargando);
+  if (el) el.textContent = TB.cargando ? 'Actualizando…' : (TB.datos && TB.datos.actualizado ? hace(TB.datos.actualizado) : '');
 }
 $('tb-refrescar').addEventListener('click', function () { cargarTablero(); });
 function tableroALaVista() { return !$('app').hidden && !$('s-tablero').hidden && !document.hidden; }
-// Se actualiza solo cada 2 minutos mientras está a la vista, al volver a la app y al volver la señal
+// Lo que cambian los demás se ve en segundos: cada 8 s se pregunta si algo cambió (consulta
+// liviana, no lee la planilla) y solo en ese caso se trae el tablero. Además, al volver a la
+// app, al volver la señal, y por las dudas cada 2 minutos.
+async function vigilarCambios() {
+  if (!tableroALaVista() || TB.arrastre || TB.cargando || !TB.datos || !APP.token) return;
+  let r;
+  try { r = await llamar('versionTablero', [APP.token]); } catch (e) { return; }
+  if (r.ok && r.version !== TB.datos.version) cargarTablero();
+}
+setInterval(vigilarCambios, 8000);
 setInterval(function () { if (tableroALaVista() && !TB.arrastre) cargarTablero(); }, 120000);
 setInterval(pintarHace, 30000);
 document.addEventListener('visibilitychange', function () { if (tableroALaVista()) cargarTablero(); });
