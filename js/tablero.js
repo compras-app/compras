@@ -175,7 +175,9 @@ function mostrarTablero() {
   subirAdjuntos();
   pintarTablero();
   cargarTablero();
-  if (location.hash.length > 1 && !TB.abierta) abrirTarjeta(decodeURIComponent(location.hash.slice(1)), true);
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h && /^K/.test(h)) { if (APP.yo.admin) ir('tareas'); return; }     // link a una tarea: se abre en Tareas
+  if (h && !TB.abierta) abrirTarjeta(h, true);
 }
 
 function pintarTablero() {
@@ -288,7 +290,7 @@ async function cargarTablero() {
     TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado, tanda: r.tanda };
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
-    if (TB.abierta) { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
+    if (TB.abierta && TB.tipo !== 'tarea') { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
   } else if (!TB.datos) pintarTablero();                  // sin señal: queda lo guardado
   pintarHace();
   if (TB.otraVez) { TB.otraVez = false; cargarTablero(); }
@@ -339,12 +341,15 @@ async function moverA(ref, destino, despuesDe) {
 /* ---------- Arrastrar (solo admins) ----------
    Celular: mantener apretada la tarjeta medio segundo y arrastrar; al borde
    de la pantalla pasa a la columna de al lado. Compu: arrastrar con el mouse. */
-function tocar(e, el, ref) {
+/** Qué tablero se arrastra: el de pedidos (por defecto) o el de tareas (tareas.js). */
+const CTX_PEDIDOS = { tb: function () { return $('tablero'); }, mover: function (r, d, a) { moverA(r, d, a); }, repintar: function () { pintarTablero(); } };
+
+function tocar(e, el, ref, ctx) {
   if (e.touches.length !== 1 || TB.arrastre) return;
   const x0 = e.touches[0].clientX, y0 = e.touches[0].clientY;
   let timer = setTimeout(function () {
     timer = null;
-    empezarArrastre(el, ref, x0, y0);
+    empezarArrastre(el, ref, x0, y0, ctx);
     if (navigator.vibrate) navigator.vibrate(15);
   }, 400);
   const opciones = { passive: false };
@@ -365,12 +370,12 @@ function tocar(e, el, ref) {
   document.addEventListener('touchcancel', fin);
 }
 
-function conMouse(e, el, ref) {
+function conMouse(e, el, ref, ctx) {
   if (e.button !== 0 || TB.arrastre) return;
   const x0 = e.clientX, y0 = e.clientY;
   let empezo = false;
   const mover = function (ev) {
-    if (!empezo && (Math.abs(ev.clientX - x0) > 5 || Math.abs(ev.clientY - y0) > 5)) { empezo = true; empezarArrastre(el, ref, x0, y0); }
+    if (!empezo && (Math.abs(ev.clientX - x0) > 5 || Math.abs(ev.clientY - y0) > 5)) { empezo = true; empezarArrastre(el, ref, x0, y0, ctx); }
     if (empezo) { ev.preventDefault(); seguirArrastre(ev.clientX, ev.clientY); }
   };
   const fin = function () {
@@ -388,7 +393,8 @@ function tarjetaAnterior(nodo, ignorar) {
   return p ? p.dataset.ref : '';
 }
 
-function empezarArrastre(el, ref, x, y) {
+function empezarArrastre(el, ref, x, y, ctx) {
+  ctx = ctx || CTX_PEDIDOS;
   const r = el.getBoundingClientRect();
   const fantasma = el.cloneNode(true);
   fantasma.classList.add('arrastrando');
@@ -401,10 +407,10 @@ function empezarArrastre(el, ref, x, y) {
   hueco.style.height = r.height + 'px';
   el.parentNode.insertBefore(hueco, el);
   el.style.display = 'none';
-  const tb = $('tablero');
+  const tb = ctx.tb();
   tb.style.scrollSnapType = 'none';
   TB.arrastre = {
-    ref: ref, el: el, fantasma: fantasma, hueco: hueco, dx: x - r.left, dy: y - r.top, x: x, y: y,
+    ctx: ctx, ref: ref, el: el, fantasma: fantasma, hueco: hueco, dx: x - r.left, dy: y - r.top, x: x, y: y,
     origen: el.closest('.lista').dataset.columna, despuesDeOriginal: tarjetaAnterior(hueco, el)
   };
   document.body.classList.add('con-arrastre');
@@ -437,7 +443,7 @@ function seguirArrastre(x, y) {
 function autoDesplazar() {
   const a = TB.arrastre;
   if (!a) return;
-  const tb = $('tablero');
+  const tb = a.ctx.tb();
   const b = tb.getBoundingClientRect();
   let movio = false;
   const borde = a.x < b.left + 36 ? -1 : a.x > b.right - 36 ? 1 : 0;
@@ -475,15 +481,15 @@ function soltarArrastre(cancelado) {
   TB.arrastre = null;
   document.body.classList.remove('con-arrastre');
   a.fantasma.remove();
-  $('tablero').style.scrollSnapType = '';
+  a.ctx.tb().style.scrollSnapType = '';
   TB.recienArrastrada = true;
   setTimeout(function () { TB.recienArrastrada = false; }, 400);
   const lista = a.hueco.parentNode;
-  if (cancelado || !lista) return pintarTablero();
+  if (cancelado || !lista) return a.ctx.repintar();
   const destino = lista.dataset.columna;
   const despuesDe = tarjetaAnterior(a.hueco, a.el);
-  if (destino === a.origen && despuesDe === a.despuesDeOriginal) return pintarTablero();
-  moverA(a.ref, destino, despuesDe);
+  if (destino === a.origen && despuesDe === a.despuesDeOriginal) return a.ctx.repintar();
+  a.ctx.mover(a.ref, destino, despuesDe);
 }
 
 /* ---------- Diálogos ---------- */
@@ -600,6 +606,8 @@ function guardarDetalle(ref, d) {
 
 async function abrirTarjeta(ref, sinHistoria) {
   if (!ref) return;
+  TB.tipo = /^K/.test(ref) ? 'tarea' : 'pedido';     // las tareas (Paso 4-ter) usan la misma ventana
+  if (TB.tipo === 'tarea' && !(APP.yo && APP.yo.admin)) return;
   TB.abierta = ref;
   const g = detallesGuardados()[ref];
   TB.detalle = g ? g.d : null;
@@ -620,10 +628,17 @@ async function traerTarjeta(ref) {
   if (TB.trayendo === ref) { TB.traerOtraVez = true; return; }   // cuando termine, trae de nuevo
   TB.trayendo = ref;
   const conHistoria = verDetalles();
-  const r = await api('getTarjeta', ref, { historia: conHistoria });
+  const esTarea = /^K/.test(ref);
+  const r = await api(esTarea ? 'getTarea' : 'getTarjeta', ref, { historia: conHistoria });
   TB.trayendo = null;
   if (TB.abierta !== ref) { TB.traerOtraVez = false; return; }
-  if (r.ok) {
+  if (r.ok && esTarea) {
+    const antes = TB.detalle;
+    TB.detalle = { tarea: r.tarea, items: r.items || [], recordatorios: r.recordatorios || [], comentarios: r.comentarios || [],
+                   adjuntos: r.adjuntos || [], lineas: [], partes: [], historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
+    TB.sinDetalle = '';
+    guardarDetalle(ref, TB.detalle);
+  } else if (r.ok) {
     const antes = TB.detalle;
     TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [], partes: r.partes || [],
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
@@ -674,6 +689,8 @@ function idDrive(url) { const m = /[?&]id=([\w-]+)/.exec(url) || /\/d\/([\w-]+)/
 function pintarTarjeta() {
   const ref = TB.abierta;
   if (!ref) return;
+  bloquesDeTarea(TB.tipo === 'tarea');
+  if (TB.tipo === 'tarea') return pintarTareaAbierta();      // tareas.js
   const t = buscarEnVista(ref);
   const d = TB.detalle, p = d ? d.pedido : null;
   const admin = APP.yo.admin;
@@ -795,6 +812,7 @@ function pintarTarjeta() {
 $('tj-columna').addEventListener('click', async function () {
   const ref = TB.abierta;
   if (!ref || !APP.yo.admin) return;
+  if (TB.tipo === 'tarea') return moverTareaUI(ref);
   if (TB.parte) return moverParteUI(ref, TB.parte);
   const t = buscarEnVista(ref);
   if (!t) return;
@@ -804,8 +822,8 @@ $('tj-columna').addEventListener('click', async function () {
 });
 
 /** "Mover a…" (Feli): una lista con todas las columnas y la siguiente ya elegida. Devuelve la columna o null. */
-function moverADialogo(titulo, actual, nota) {
-  const cols = columnasTb();
+function moverADialogo(titulo, actual, nota, columnas) {
+  const cols = columnas || columnasTb();
   const i = cols.findIndex(function (c) { return c.columna === actual; });
   let sig = i === -1 ? cols[0] : cols[Math.min(cols.length - 1, i + 1)];
   // De la Tanda verde, lo que sigue es cotizar (no Entrantes)
@@ -890,7 +908,10 @@ $('tj-cancelar').addEventListener('click', async function () {
 const K_VER_DETALLES = 'compras_ver_detalles';
 const LARGO_COMENTARIO = 2000;
 function verDetalles() { return guardado.leer(K_VER_DETALLES) === '1'; }
-function nombreDe(usuario) { return String(usuario || '').replace(/^formulario:\s*/, '') || 'La app'; }
+function nombreDe(usuario) {
+  const u = String(usuario || '').replace(/^formulario:\s*/, '');
+  return !u || u === 'recordatorios' || u === 'limpieza' || u === 'sistema' ? 'La app' : u;
+}
 
 function pintarActividad() {
   const ref = TB.abierta, d = TB.detalle, detalles = verDetalles();
@@ -982,6 +1003,7 @@ function fraseEvento(e, d) {
     }
     return 'cambió ' + String(e.campo).toLowerCase() + ' de ' + prod + (n ? ': "' + n + '"' : '');
   }
+  if (e.entidad === 'tarea' || e.entidad === 'checklist' || e.entidad === 'recordatorio') return fraseDeTarea(e, d);   // tareas.js
   if (e.entidad === 'parte') {
     const pt = ((d && d.partes) || []).filter(function (x) { return x.id === e.id; })[0];
     const nom = pt ? pt.nombre : 'una parte';
@@ -1611,6 +1633,7 @@ async function proveedoresParaVarios(ref) {
 $('tj-varios').addEventListener('click', function () { if (TB.abierta) proveedoresParaVarios(TB.abierta); });
 
 $('tj-editar').addEventListener('click', async function () {
+  if (TB.tipo === 'tarea') return editarTareaUI(TB.abierta);
   const ref = TB.abierta, d = TB.detalle;
   if (!ref || !d || !d.pedido || !APP.yo.admin) return;
   const t = buscarEnVista(ref);
@@ -1789,7 +1812,7 @@ function pintarAdjuntos() {
       (espera || puedeQuitar(a) ? '<button type="button" class="x" data-quitar="' + esc(a.id) + '" aria-label="Quitar ' + esc(a.nombre) + '">×</button>' : '') + '</div>';
   };
   cont.innerHTML = lista.map(function (a) { return tile(a, false); }).join('') + esperan.map(function (a) { return tile(a, true); }).join('') ||
-    '<p class="nota" style="margin:0">Fotos o PDFs del pedido: remito, presupuesto, foto del repuesto…</p>';
+    '<p class="nota" style="margin:0">' + (TB.tipo === 'tarea' ? 'Fotos o PDFs de la tarea.' : 'Fotos o PDFs del pedido: remito, presupuesto, foto del repuesto…') + '</p>';
   cont.querySelectorAll('[data-adj]').forEach(function (el) {
     el.addEventListener('click', function (e) {
       if (e.target.closest('[data-quitar]')) return;
@@ -1966,6 +1989,7 @@ $('tj-cancelar-parte').addEventListener('click', async function () {
 });
 
 $('tj-desc-editar').addEventListener('click', async function () {
+  if (TB.tipo === 'tarea') return describirTareaUI(TB.abierta);
   const ref = TB.abierta, pt = partesVista(ref).filter(function (x) { return x.id === TB.parte; })[0];
   if (!pt) return;
   const cuerpo = document.createElement('div');
@@ -2057,6 +2081,15 @@ async function mandarTandaUI() {
   if (!ids || !ids.length) return;
   bandeja.agregar('mandarTanda', [ids], 'mandar a cotizar la Tanda verde (' + ids.length + (ids.length === 1 ? ' parte)' : ' partes)'));
   if (TB.abierta) pintarTarjeta();
+}
+
+/** Muestra los bloques de la ventana que son de un pedido o de una tarea. */
+function bloquesDeTarea(tarea) {
+  ['tj-razon-b', 'tj-prod-b'].forEach(function (id) { $(id).hidden = tarea; });
+  ['tj-check-b', 'tj-rec-b'].forEach(function (id) { $(id).hidden = !tarea; });
+  $('tj-borrar-tarea').hidden = !tarea;
+  if (!tarea) $('tj-editar').textContent = '✏️ Editar pedido';
+  if (tarea) ['tj-cancelar', 'tj-cancelar-parte', 'tj-volver'].forEach(function (id) { $(id).hidden = true; });
 }
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */

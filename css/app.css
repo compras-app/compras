@@ -98,7 +98,7 @@ dd{margin:0;overflow-wrap:anywhere;font-family:var(--f-mono);font-size:13px}
 /* ============================================================
    TABLERO (Paso 3): herramientas, columnas que se deslizan, tarjetas
    ============================================================ */
-body[data-pantalla="tablero"] .contenido{max-width:none;padding:0}
+body[data-pantalla="tablero"] .contenido,body[data-pantalla="tareas"] .contenido{max-width:none;padding:0}
 .pantalla-tablero{display:flex;flex-direction:column;height:calc(100dvh - var(--alto-barra) - var(--alto-nav) - env(safe-area-inset-bottom) - var(--alto-aviso,0px))}
 @media (min-width:720px){.pantalla-tablero{height:calc(100dvh - var(--alto-barra) - 48px - var(--alto-aviso,0px))}}
 .herramientas{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1.5px solid var(--line);background:var(--bg)}
@@ -301,3 +301,24 @@ html,body{touch-action:pan-x pan-y}
 .tanda-aviso{font-size:12px;font-weight:700;color:var(--warn)}
 .sub-choice{margin-left:18px;width:calc(100% - 18px)}
 .choice .marca{font-size:18px;line-height:1}
+
+/* Tablero de tareas (Paso 4-ter) */
+.agregar-tarea{flex:none;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;text-align:left;padding:8px 6px;border-radius:8px;cursor:pointer;min-height:40px}
+.agregar-tarea:hover{background:var(--tj-hover);color:var(--fg)}
+.nueva-tarea textarea{width:100%;font:inherit;color:var(--fg);background:var(--tj);border:1.5px solid var(--accent);border-radius:10px;padding:8px 10px;resize:none}
+.nueva-tarea .comentar-b .btn{min-height:36px;padding:6px 14px}
+.checklist{margin-bottom:14px}
+.checklist .act-h{margin:6px 0 6px}
+.checklist h3 small{font-weight:600}
+.progreso{height:6px;border-radius:999px;background:var(--line);overflow:hidden;margin-bottom:8px}
+.progreso span{display:block;height:100%;background:var(--accent)}
+.item{display:flex;align-items:center;gap:10px;padding:4px 0}
+.item .txt{flex:1;min-width:0;overflow-wrap:anywhere;cursor:pointer}
+.item.hecho .txt{text-decoration:line-through;color:var(--muted)}
+.x-item{font-size:18px;min-width:36px;min-height:36px}
+.nuevo-item{display:flex;gap:8px;align-items:center;margin-top:6px}
+.nuevo-item input{min-height:40px;padding:8px 10px}
+.rec{display:flex;align-items:flex-start;gap:8px;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:6px}
+.rec .rec-c{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+.rec.pasado{opacity:.6}
+.panel.chico input[type=time]{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;min-height:48px}

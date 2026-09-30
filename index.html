@@ -29,6 +29,7 @@
     js/pantallas.js    barra, menú y pantallas (antes AppPantallas.html)
     js/envio-pedidos.js pedidos del formulario guardados en el teléfono (los manda la app o el formulario)
     js/tablero.js      el tablero: columnas, tarjetas, filtros, arrastrar, tarjeta abierta (Paso 3)
+    js/tareas.js       el tablero de tareas de los admins (Paso 4-ter; usa la ventana de la tarjeta de tablero.js)
     pedido/            el formulario de pedidos
 -->
 <!-- El color de App_Config: el último que mandó el servidor, guardado en el dispositivo.
@@ -100,6 +101,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>
       Tablero
     </button>
+    <button class="tab" type="button" data-tab="tareas" id="t-tareas" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 12l3 3 5-6"/></svg>
+      Tareas
+    </button>
     <button class="tab" type="button" data-tab="buscar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
       Buscar
@@ -132,6 +137,19 @@
         </div>
       </div>
       <div class="tablero" id="tablero" aria-label="Tablero de pedidos"></div>
+    </section>
+
+    <section id="s-tareas" class="pantalla-tablero" hidden>
+      <div class="herramientas">
+        <div class="filtros">
+          <div class="seg" role="group" aria-label="Qué tareas ver">
+            <button type="button" id="tk-mias" aria-pressed="false">Mis tareas</button>
+            <button type="button" id="tk-todas" aria-pressed="true">Todas</button>
+          </div>
+          <button type="button" class="refrescar" id="tk-refrescar" aria-label="Actualizar las tareas"><span class="ic">↻</span> <span id="tk-hace"></span></button>
+        </div>
+      </div>
+      <div class="tablero" id="tareas-tablero" aria-label="Tablero de tareas"></div>
     </section>
 
     <section id="s-buscar" hidden>
@@ -184,8 +202,17 @@
             <div class="act-h"><h3>Descripción</h3><button type="button" class="btn-chico" id="tj-desc-editar" hidden>✏️ Editar</button></div>
             <p class="texto" id="tj-desc"></p>
           </div>
-          <div class="bloque"><h3>Razón del pedido</h3><p class="texto" id="tj-razon"></p></div>
-          <div class="bloque">
+          <div class="bloque" id="tj-razon-b"><h3>Razón del pedido</h3><p class="texto" id="tj-razon"></p></div>
+          <!-- Tareas (Paso 4-ter): checklists y recordatorios -->
+          <div class="bloque" id="tj-check-b" hidden>
+            <div class="act-h"><h3>Checklists</h3><button type="button" class="btn-chico" id="tk-nuevo-checklist">+ Checklist</button></div>
+            <div id="tj-checklists"></div>
+          </div>
+          <div class="bloque" id="tj-rec-b" hidden>
+            <div class="act-h"><h3>Recordatorios</h3><button type="button" class="btn-chico" id="tk-nuevo-rec">⏰ Agregar recordatorio</button></div>
+            <div id="tj-recordatorios"></div>
+          </div>
+          <div class="bloque" id="tj-prod-b">
             <div class="act-h"><h3 id="tj-prod-t">Productos</h3><button type="button" class="btn-chico" id="tj-varios" hidden>🎯 Proveedores para varios</button></div>
             <div id="tj-productos"></div>
             <button type="button" class="btn2" id="tj-agregar" hidden style="width:auto">+ Agregar producto</button>
@@ -197,6 +224,7 @@
           </div>
           <button type="button" class="peligro" id="tj-cancelar" hidden>Cancelar pedido</button>
           <button type="button" class="peligro" id="tj-cancelar-parte" hidden>Cancelar esta parte</button>
+          <button type="button" class="peligro" id="tj-borrar-tarea" hidden>Borrar tarea</button>
         </div>
         <div class="lado">
           <div class="act-h">
@@ -249,6 +277,7 @@
 <script src="js/login.js"></script>
 <script src="js/envio-pedidos.js"></script>
 <script src="js/tablero.js"></script>
+<script src="js/tareas.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 </body>

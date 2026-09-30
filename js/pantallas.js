@@ -27,6 +27,7 @@ function pintarBarra() {
   $('b-nombre').textContent = APP.yo.nombre + (APP.yo.prueba ? ' · 🧪 encargado' : '');
   $('b-inicial').textContent = APP.yo.nombre.charAt(0).toUpperCase();
   $('t-admin').hidden = !APP.yo.admin;
+  $('t-tareas').hidden = !APP.yo.admin;             // el tablero de tareas es solo de los admins
 }
 
 function pantallaCuenta() {
