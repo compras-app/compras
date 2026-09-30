@@ -11,63 +11,146 @@
 <link rel="apple-touch-icon" href="icono-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="css/app.css">
 <!--
-  Página propia de la app de compras (GitHub Pages: compras-app.github.io).
-  Muestra la app de Apps Script en un recuadro y le guarda la llave de sesión:
-  Safari borra lo que guarda un recuadro de otro sitio al cerrarlo, pero no lo
-  que guarda esta página. No lleva datos ni claves: solo el link /exec, que ya
-  es público. Fuente: carpeta pagina/ del proyecto compras-app.
+  APP DE COMPRAS, descargada en el dispositivo (Fase 2, Paso 2-bis).
+  Vive en GitHub Pages (compras-app.github.io/compras) y queda guardada
+  con sw.js, así abre aunque no haya señal. Los datos los pide a Apps
+  Script (doPost en Api.js) con js/base.js. No lleva datos ni claves:
+  solo el link /exec, que ya es público. Fuente: carpeta pagina/ del
+  proyecto compras-app; la sube Claude con subir-pagina.sh.
+    css/app.css        estilos (antes AppEstilos.html)
+    js/base.js         servidor, guardado, bandeja de salida, navegación, avisos
+    js/login.js        entrar con el código de WhatsApp (antes AppLogin.html)
+    js/pantallas.js    barra, menú y pantallas (antes AppPantallas.html)
 -->
-<style>
-  html, body { margin: 0; height: 100%; background: #ffffff; }
-  @media (prefers-color-scheme: dark) { html, body { background: #141816; } }
-  iframe { display: block; border: 0; width: 100%; height: 100vh; height: 100dvh; }
-  p { font-family: system-ui, -apple-system, sans-serif; padding: 24px; color: #b3261e; }
-</style>
+<!-- El color de App_Config: el último que mandó el servidor, guardado en el dispositivo.
+     La primera vez, el rosa de siempre (paletaDe_ de #d6336c). -->
+<style id="estiloColor">:root{--accent:#d6336c;--accent-soft:#fae7ed;--accent-fg:#ffffff;--band:#d6336c;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;}}:root[data-theme="dark"]{--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;}</style>
+<script>try { var c = localStorage.getItem('compras_css'); if (c !== null) document.getElementById('estiloColor').textContent = c; } catch (e) {}</script>
 </head>
 <body>
-<iframe id="app" title="Compras" allow="clipboard-write"></iframe>
-<script>
-(function () {
-  var APP = 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec?app=1&marco=1';
-  var CLAVES = { compras_token: true, compras_desde: true, compras_prueba: true };
+<div id="login">
+  <div class="band" aria-hidden="true"></div>
+  <main class="wrap">
 
-  // Esta página no se deja mostrar dentro de otra: nadie puede usarla para leer la llave.
-  if (window.top !== window) {
-    document.body.innerHTML = '<p>Abrí esta página directamente.</p>';
-    return;
-  }
+    <!-- Cargando: se revisa si hay una llave guardada -->
+    <section id="p-cargando">
+      <h1>Compras</h1>
+      <p class="estado run">Abriendo…</p>
+    </section>
 
-  var marco = document.getElementById('app');
-  marco.src = APP;
+    <!-- Paso A: elegir quién sos -->
+    <section id="p-nombre" hidden>
+      <h1>Entrar</h1>
+      <p class="lead">Elegí tu nombre. Te vamos a mandar un código por WhatsApp.</p>
+      <p class="estado warn" id="e-perdida" hidden></p>
+      <div class="lista" id="usuarios" role="radiogroup" aria-label="¿Quién sos?"></div>
+      <div class="pila">
+        <p class="estado" id="e-nombre" hidden></p>
+        <button class="btn" id="b-pedir" type="button" disabled>Mandame el código</button>
+      </div>
+    </section>
 
-  // true si el mensaje viene de adentro de NUESTRO recuadro (la app está un par de niveles adentro)
-  function esDeLaApp(fuente) {
-    var w = fuente;
-    for (var i = 0; i < 6 && w; i++) {
-      if (w === marco.contentWindow) return true;
-      if (w === w.parent) return false;
-      w = w.parent;
-    }
-    return false;
-  }
+    <!-- Paso B: ingresar el código -->
+    <section id="p-codigo" hidden>
+      <h1>Código</h1>
+      <p class="lead" id="t-destino"></p>
+      <form class="pila" id="f-codigo" novalidate>
+        <label for="codigo" class="lead" style="margin:0">Código de 6 números</label>
+        <input class="codigo" id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*">
+        <p class="estado" id="e-codigo" hidden></p>
+        <button class="btn" id="b-entrar" type="submit">Entrar</button>
+        <button class="btn2" id="b-otro" type="button" disabled>Pedir otro código</button>
+      </form>
+      <button class="linkbtn" id="b-cambiar" type="button"></button>
+    </section>
 
-  window.addEventListener('message', function (ev) {
-    var d = ev.data;
-    if (!d || typeof d !== 'object' || !d.compras || d.compras === 'respuesta') return;
-    if (!/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(ev.origin)) return;
-    if (!esDeLaApp(ev.source)) return;
-    if (!CLAVES[d.clave]) return;
+    <!-- Sin conexión y sin nada guardado: la llave NO se borra -->
+    <section id="p-error" hidden>
+      <h1>Compras</h1>
+      <p class="estado bad" id="e-general"></p>
+      <button class="btn" id="b-reintentar" type="button">Reintentar</button>
+    </section>
 
-    var r = { compras: 'respuesta', id: d.id, ok: false, valor: null };
-    try {
-      if (d.compras === 'leer') { r.valor = localStorage.getItem(d.clave); r.ok = true; }
-      else if (d.compras === 'guardar') { localStorage.setItem(d.clave, String(d.valor)); r.ok = localStorage.getItem(d.clave) === String(d.valor); }
-      else if (d.compras === 'borrar') { localStorage.removeItem(d.clave); r.ok = true; }
-    } catch (e) { r.ok = false; }
-    ev.source.postMessage(r, ev.origin);
-  });
-})();
-</script>
+    <p class="estado warn" id="aviso-guardar" hidden>Este navegador no deja guardar la sesión: vas a tener que pedir el código cada vez que abras la app.</p>
+  </main>
+</div>
+
+<div id="app" hidden>
+  <header class="barra">
+    <button id="b-volver" type="button" aria-label="Volver" hidden>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h1 id="b-titulo">Compras</h1>
+    <button id="b-cuenta" type="button" aria-label="Tu cuenta">
+      <span class="yo" id="b-nombre"></span><span class="inicial" id="b-inicial" aria-hidden="true"></span>
+    </button>
+  </header>
+
+  <nav class="tabs" aria-label="Secciones">
+    <button class="tab" type="button" data-tab="tablero">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>
+      Tablero
+    </button>
+    <button class="tab" type="button" data-tab="buscar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      Buscar
+    </button>
+    <a class="tab" id="t-nuevo" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      Nuevo pedido
+    </a>
+    <button class="tab" type="button" data-tab="admin" id="t-admin" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Admin
+    </button>
+  </nav>
+
+  <div class="sinred" id="sinred" role="status" aria-live="polite" hidden></div>
+
+  <main class="contenido">
+    <section id="s-tablero">
+      <div class="vacio"><b>Tablero de pedidos</b>Llega en el Paso 3: columnas, tarjetas, filtros y "Mis pedidos".</div>
+    </section>
+
+    <section id="s-buscar" hidden>
+      <div class="vacio"><b>Buscar</b>Llega en el Paso 5: por producto, sitio, proveedor o ref, y los pedidos finalizados.</div>
+    </section>
+
+    <section id="s-admin" hidden>
+      <div class="vacio"><b>Administración</b>Llega en el Paso 6: usuarios y sesiones, proveedores, columnas, sitios y pedido masivo.</div>
+    </section>
+
+    <section id="s-cuenta" hidden>
+      <h2 class="titulo" id="c-nombre"></h2>
+      <p><span class="tag" id="c-rol"></span></p>
+      <p class="lead">Tu sesión queda guardada en este dispositivo: no vas a tener que pedir el código de nuevo.</p>
+      <div class="caja">
+        <h2>Este dispositivo</h2>
+        <dl>
+          <dt>Dispositivo</dt><dd id="c-disp"></dd>
+          <dt>Entraste</dt><dd id="c-desde"></dd>
+          <dt>Dirección</dt><dd id="c-host"></dd>
+          <dt>Versión</dt><dd id="c-version"></dd>
+        </dl>
+      </div>
+      <div class="pila">
+        <p class="estado" id="e-cuenta" hidden></p>
+        <button class="btn2" id="b-salir" type="button">Cerrar sesión en este dispositivo</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</div>
+
+<script src="js/base.js"></script>
+<script src="js/login.js"></script>
+<script src="js/pantallas.js"></script>
+<script>arrancar();</script>
 </body>
 </html>
