@@ -284,3 +284,20 @@ html,body{touch-action:pan-x pan-y}
 .adj .x{position:absolute;top:3px;right:3px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:17px;line-height:1;cursor:pointer}
 .adj .esp{position:absolute;left:3px;bottom:3px;background:rgba(0,0,0,.65);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px}
 .adj.espera img{opacity:.7}
+
+/* Mini tarjetas adentro de la tarjeta (Paso 4-bis) */
+.parte{border:1.5px solid var(--line);border-radius:12px;padding:10px 10px 4px;margin-bottom:12px;background:var(--soft)}
+.parte.cancelada{opacity:.55}
+.parte-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.parte-h b{font-size:15px}
+.parte-h .abrir{margin-left:auto}
+.parte > .sub{color:var(--muted);font-size:13px;margin:-4px 0 8px}
+.col-chip.chico{font-size:13px;padding:3px 8px;min-height:30px}
+.parte .producto{background:var(--bg)}
+.panel.chico select{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;min-height:48px}
+/* Tanda verde: "Mandar a cotizar" en la cabecera de la columna */
+.tanda-b{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:8px}
+.tanda-b small{color:var(--muted);font-size:12px}
+.tanda-aviso{font-size:12px;font-weight:700;color:var(--warn)}
+.sub-choice{margin-left:18px;width:calc(100% - 18px)}
+.choice .marca{font-size:18px;line-height:1}

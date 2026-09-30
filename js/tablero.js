@@ -22,6 +22,7 @@
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
 const K_TARJETAS = 'compras_tarjetas';    // tarjetas abiertas hace poco (para verlas sin señal)
 const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1 };
+const OPS_PARTE = { moverParte: 1, cancelarParte: 1, describirParte: 1, mandarTanda: 1 };   // mini tarjetas (Paso 4-bis)
 const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1, deshacerProducto: 1, agregarProducto: 1, quitarProducto: 1, resolverCambio: 1, reponerProducto: 1 };      // cambios de un producto (Paso 4)
 const ENTREGA_TEXTO = { Retirar: '🏃 Hay que ir a buscarlo', Envío: '🚚 Nos lo traen' };
 const ENTREGA_CORTO = { Retirar: '🏃 A buscar', Envío: '🚚 Nos lo traen' };
@@ -35,6 +36,7 @@ const TB = {
   detalle: null,                               // getTarjeta de la abierta
   cancelados: {},                              // tarjetas canceladas (para "Deshacer")
   borradores: {},                              // comentario a medio escribir, por tarjeta
+  parte: null,                                 // mini tarjeta abierta adentro de la tarjeta (Paso 4-bis)
   cargando: false
 };
 
@@ -106,6 +108,7 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
     if (m.fn === 'comentar') return comentarioMandado(m, r);
     if (OPS_PRODUCTO[m.fn]) return productoMandado(m, r);
     if (m.fn === 'quitarAdjunto') return adjuntoQuitado(m, r);
+    if (OPS_PARTE[m.fn]) return parteMandada(m, r);
     if (m.fn === 'editarPedido' && r.ok) datosDelPedidoMandados(m.args[0], m.args[1]);
     if (!OPS_TABLERO[m.fn]) return;
     if (r.ok && TB.datos) {
@@ -199,7 +202,7 @@ function pintarTablero() {
     const ts = porCol[c.columna];
     html.push('<div class="col" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
-      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span></div>' +
+      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' + (c.seccion === 'Tanda verde' && admin ? htmlTandaCabecera(ts.length) : '') + '</div>' +
       '<div class="lista" data-columna="' + esc(c.columna) + '">' +
       (ts.length ? ts.map(function (t) { return htmlTarjeta(t, c.columna === colPorRecibir()); }).join('')
                  : '<div class="vacia">Sin pedidos</div>') +
@@ -208,6 +211,8 @@ function pintarTablero() {
   cont.innerHTML = html.join('');
   cont.scrollLeft = scroll;
   cont.querySelectorAll('.lista').forEach(function (l) { if (listas[l.dataset.columna]) l.scrollTop = listas[l.dataset.columna]; });
+  const bt = $('tb-mandar-tanda');
+  if (bt) bt.addEventListener('click', mandarTandaUI);
   cont.querySelectorAll('.tarjeta').forEach(function (el) {
     const ref = el.dataset.ref;
     el.addEventListener('click', function (e) {
@@ -280,7 +285,7 @@ async function cargarTablero() {
   const r = await api('getTablero');
   TB.cargando = false;
   if (r.ok) {
-    TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado };
+    TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado, tanda: r.tanda };
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
     if (TB.abierta) { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
@@ -598,6 +603,7 @@ async function abrirTarjeta(ref, sinHistoria) {
   TB.abierta = ref;
   const g = detallesGuardados()[ref];
   TB.detalle = g ? g.d : null;
+  TB.parte = null;
   TB.sinDetalle = '';
   ponerBorrador(ref);
   pintarTarjeta();
@@ -619,7 +625,7 @@ async function traerTarjeta(ref) {
   if (TB.abierta !== ref) { TB.traerOtraVez = false; return; }
   if (r.ok) {
     const antes = TB.detalle;
-    TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
+    TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [], partes: r.partes || [],
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -631,6 +637,7 @@ async function traerTarjeta(ref) {
 
 function ocultarTarjeta() {
   TB.abierta = null;
+  TB.parte = null;
   TB.detalle = null;
   $('tarjeta-modal').hidden = true;
   document.body.classList.remove('modal-abierto');
@@ -673,11 +680,19 @@ function pintarTarjeta() {
   const columna = t ? t.columna : (p ? p.columna : '');
   const enTb = !!t;
 
+  const pts = d ? partesVista(ref) : [];
+  let parte = TB.parte ? pts.filter(function (x) { return x.id === TB.parte; })[0] : null;
+  if (TB.parte && d && !parte) TB.parte = null;
+  if (TB.parte && !d) parte = null;
+  const canceladoEntero = columna === colCancelado();
   const chip = $('tj-columna');
-  chip.textContent = (columna || '…') + (admin && enTb ? ' ⌄' : '');
-  chip.disabled = !(admin && enTb);
-  chip.title = admin && enTb ? 'Mover a otra columna' : '';
-  $('tj-titulo').textContent = (t && t.titulo) || (p && p.titulo) || ref;
+  const colChip = parte ? parte.columna : columna;
+  const puedeMover = admin && (parte ? !canceladoEntero && parte.columna !== colCancelado() : enTb);
+  chip.textContent = (colChip || '…') + (puedeMover ? ' ⌄' : '');
+  chip.disabled = !puedeMover;
+  chip.title = puedeMover ? 'Mover a…' : '';
+  $('tj-volver').hidden = !parte;
+  $('tj-titulo').textContent = parte ? tituloDeParte(d, parte) : ((t && t.titulo) || (p && p.titulo) || ref);
 
   const responsable = t ? t.responsable : (p ? p.responsable : '');
   const entrega = t ? t.entrega : (p ? p.entrega : '');
@@ -696,18 +711,30 @@ function pintarTarjeta() {
         }).join(' ')
       : esc(ENTREGA_TEXTO[entrega] || 'Sin definir'));
   }
-  if (p && p.retiro) dato('Retiró', esc(p.retiro + (p.fechaRetiro ? ' · ' + new Date(p.fechaRetiro).toLocaleDateString('es-AR') : '')));
+  if (parte && parte.retiro) dato('Retiró', esc(parte.retiro + (parte.fechaRetiro ? ' · ' + new Date(parte.fechaRetiro).toLocaleDateString('es-AR') : '')));
+  else if (!parte && p && p.retiro) dato('Retiró', esc(p.retiro + (p.fechaRetiro ? ' · ' + new Date(p.fechaRetiro).toLocaleDateString('es-AR') : '')));
   $('tj-datos').innerHTML = datos.join('');
 
   const etiquetas = [];
   if ((t && t.masivo) || (p && p.origen === 'masivo')) etiquetas.push('Pedido masivo');
   if ((t && t.manual) || (p && p.manual)) etiquetas.push('✋ Gestión manual');
   if (!enTb && p && p.columna) etiquetas.push('Finalizado: ' + p.columna);
+  if (parte) {
+    etiquetas.unshift(parte.nombre);
+    if (parte.manual) etiquetas.push('✋ Gestión manual');
+    if (parte.columna === colCancelado()) etiquetas.push('Parte cancelada');
+    if (parte.tanda) etiquetas.push(textoTanda(parte));
+  }
   $('tj-etiquetas').innerHTML = etiquetas.map(function (e) { return '<span class="etiqueta">' + esc(e) + '</span>'; }).join('');
 
   const pv = p ? pedidoConCambios(ref, p) : null;
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');
-  $('tj-editar').hidden = !(admin && p);
+  $('tj-editar').hidden = !(admin && p) || !!parte;
+  $('tj-desc-b').hidden = !parte;
+  if (parte) {
+    $('tj-desc').textContent = parte.descripcion || (admin ? 'Sin descripción.' : '—');
+    $('tj-desc-editar').hidden = !admin;
+  }
   const prods = $('tj-productos');
   if (d && d.lineas) {
     const todas = lineasConCambios(ref, d.lineas).filter(function (l) { return l.estado !== 'Rechazado' && l.estado !== 'Retirado'; });
@@ -718,16 +745,20 @@ function pintarTarjeta() {
       (esperan ? ' · ⏳ ' + esperan + ' para aprobar' : '');
     $('tj-varios').hidden = !(admin && ls.length > 1);
     // Los quitados, abajo de todo
-    const orden = todas.filter(function (l) { return l.estado !== 'Quitado'; }).concat(todas.filter(function (l) { return l.estado === 'Quitado'; }));
+    let orden = todas.filter(function (l) { return l.estado !== 'Quitado'; }).concat(todas.filter(function (l) { return l.estado === 'Quitado'; }));
     const mio = ((t && t.solicitante) || (p && p.solicitante)) === APP.yo.nombre;
-    prods.innerHTML = orden.map(function (l) { return htmlProducto(l, admin, mio); }).join('');
-    $('tj-agregar').hidden = !(admin || mio) || !enTb;
+    if (parte) orden = orden.filter(function (l) { return l.parte === parte.id; });
+    if (!parte && pts.length > 1) prods.innerHTML = htmlPartes(ref, pts, orden, admin, mio, enTb && !canceladoEntero);   // Paso 4-bis
+    else prods.innerHTML = orden.map(function (l) { return htmlProducto(l, admin, mio); }).join('');
+    $('tj-agregar').hidden = !(admin || mio) || !enTb || !!parte;
+    if (parte) $('tj-varios').hidden = true;
   } else {
     $('tj-varios').hidden = $('tj-agregar').hidden = true;
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
-  $('tj-cancelar').hidden = !(admin && enTb);
+  $('tj-cancelar').hidden = !(admin && enTb) || !!parte;
+  $('tj-cancelar-parte').hidden = !(admin && parte && enTb && parte.columna !== colCancelado());
   pintarAdjuntos();
   pintarActividad();
 
@@ -743,6 +774,12 @@ function pintarTarjeta() {
   prods.querySelectorAll('[data-foto]').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
   });
+  prods.querySelectorAll('[data-mover-parte]').forEach(function (b) {
+    b.addEventListener('click', function () { moverParteUI(ref, b.dataset.moverParte); });
+  });
+  prods.querySelectorAll('[data-abrir-parte]').forEach(function (b) {
+    b.addEventListener('click', function () { abrirParte(b.dataset.abrirParte); });
+  });
   const b = $('tj-resp');
   if (b) b.addEventListener('click', function () { cambiarResponsable(ref); });
   $('tj-datos').querySelectorAll('[data-entrega]').forEach(function (btn) {
@@ -756,22 +793,42 @@ function pintarTarjeta() {
 }
 
 $('tj-columna').addEventListener('click', async function () {
-  const ref = TB.abierta, t = buscarEnVista(ref);
-  if (!t || !APP.yo.admin) return;
-  const grupos = [];
-  columnasTb().forEach(function (c) {
-    let g = grupos.filter(function (x) { return x.titulo === c.seccion; })[0];
-    if (!g) { g = { titulo: c.seccion, opciones: [] }; grupos.push(g); }
-    g.opciones.push({ texto: c.columna + (c.columna === t.columna ? ' (está acá)' : ''), valor: c.columna });
-  });
-  const destino = await elegir('Mover a…', '', grupos, t.columna);
-  if (!destino) return;
-  const donde = await elegir('¿Dónde en "' + destino + '"?', '', [{ opciones: [
-    { texto: '⬆ Arriba de todo', valor: 'arriba' }, { texto: '⬇ Abajo de todo', valor: 'abajo' }
-  ] }], null);
-  if (!donde) return;
-  moverA(ref, destino, donde === 'arriba' ? '' : '*');
+  const ref = TB.abierta;
+  if (!ref || !APP.yo.admin) return;
+  if (TB.parte) return moverParteUI(ref, TB.parte);
+  const t = buscarEnVista(ref);
+  if (!t) return;
+  const destino = await moverADialogo('Mover el pedido a…', t.columna, 'Se mueven también sus partes.');
+  if (!destino || destino === t.columna) return;
+  moverA(ref, destino, '');
 });
+
+/** "Mover a…" (Feli): una lista con todas las columnas y la siguiente ya elegida. Devuelve la columna o null. */
+function moverADialogo(titulo, actual, nota) {
+  const cols = columnasTb();
+  const i = cols.findIndex(function (c) { return c.columna === actual; });
+  let sig = i === -1 ? cols[0] : cols[Math.min(cols.length - 1, i + 1)];
+  // De la Tanda verde, lo que sigue es cotizar (no Entrantes)
+  if (i !== -1 && cols[i].seccion === 'Tanda verde') sig = cols.filter(function (c) { return c.seccion === 'Cotización'; })[1] || sig;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  const grupos = [];
+  cols.forEach(function (c) {
+    let g = grupos.filter(function (x) { return x.s === c.seccion; })[0];
+    if (!g) { g = { s: c.seccion, o: [] }; grupos.push(g); }
+    g.o.push(c.columna);
+  });
+  cuerpo.innerHTML = '<label for="dg-col">Columna</label><select id="dg-col">' + grupos.map(function (g) {
+    return '<optgroup label="' + esc(g.s) + '">' + g.o.map(function (c) {
+      return '<option value="' + esc(c) + '">' + esc(c) + (c === actual ? ' (está acá)' : '') + '</option>';
+    }).join('') + '</optgroup>';
+  }).join('') + '</select>' + (nota ? '<p class="nota">' + esc(nota) + '</p>' : '');
+  return dialogo({
+    titulo: titulo, texto: actual ? 'Está en "' + actual + '".' : '', cuerpo: cuerpo,
+    botones: [{ texto: 'Mover', clase: 'btn', id: 'dg-ok', valor: function () { return $('dg-col').value; } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () { $('dg-col').value = sig ? sig.columna : actual; }
+  });
+}
 
 async function cambiarResponsable(ref) {
   const t = buscarEnVista(ref);
@@ -841,15 +898,17 @@ function pintarActividad() {
   bd.textContent = detalles ? 'Ocultar detalles' : 'Ver detalles';
   bd.setAttribute('aria-pressed', String(detalles));
   const items = [], ya = {};
+  const aca = TB.parte || '';        // la tarjeta grande muestra lo general; cada mini tarjeta, lo suyo
   ((d && d.comentarios) || []).forEach(function (c) {
     ya[c.id] = true;
-    items.push({ tipo: 'c', fecha: c.fecha, autor: c.autor, texto: c.texto });
+    if ((c.parte || '') === aca) items.push({ tipo: 'c', fecha: c.fecha, autor: c.autor, texto: c.texto });
   });
   // Los que esperan en la bandeja (sin señal, o saliendo)
   bandeja.lista().forEach(function (m) {
-    if (m.fn === 'comentar' && m.args[0] === ref && !ya[m.args[2]]) items.push({ tipo: 'c', fecha: m.creado, autor: APP.yo.nombre, texto: m.args[1], espera: true });
+    if (m.fn === 'comentar' && m.args[0] === ref && !ya[m.args[2]] && (m.args[3] || '') === aca) items.push({ tipo: 'c', fecha: m.creado, autor: APP.yo.nombre, texto: m.args[1], espera: true });
   });
   if (detalles && d && d.historia) d.historia.forEach(function (e) {
+    if (aca && !eventoDeParte(e, d, aca)) return;
     const f = fraseEvento(e, d);
     if (f) items.push({ tipo: 'e', fecha: e.fecha, autor: nombreDe(e.usuario), texto: f });
   });
@@ -922,6 +981,20 @@ function fraseEvento(e, d) {
       case 'Proveedores particulares': return n ? 'mandó ' + prod + ' solo a ' + n : 'le sacó los proveedores particulares (' + a + ') a ' + prod;
     }
     return 'cambió ' + String(e.campo).toLowerCase() + ' de ' + prod + (n ? ': "' + n + '"' : '');
+  }
+  if (e.entidad === 'parte') {
+    const pt = ((d && d.partes) || []).filter(function (x) { return x.id === e.id; })[0];
+    const nom = pt ? pt.nombre : 'una parte';
+    if (e.campo === 'Columna') {
+      if (n === colCancelado()) return 'canceló la parte ' + nom;
+      if (a === colCancelado()) return 'recuperó la parte ' + nom + ' (' + n + ')';
+      return 'movió ' + nom + ' de ' + a + ' a ' + n;
+    }
+    if (e.campo === 'Descripción') return 'cambió la descripción de ' + nom;
+    if (e.campo === 'Tanda') return 'mandó ' + nom + ' a cotizar con la Tanda verde';
+    if (e.campo === 'Retiró') return 'anotó que ' + nom + ' lo retiró ' + n;
+    if (e.campo === 'Entrega') return n ? 'marcó cómo llega ' + nom + ': ' + (ENTREGA_TEXTO[n] || n) : '';
+    return '';
   }
   if (e.entidad === 'adjunto') {
     if (e.accion === 'crear') return 'adjuntó "' + n + '"';
@@ -1006,7 +1079,7 @@ function enviarComentario() {
   if (texto.length > LARGO_COMENTARIO) return aviso('El comentario es muy largo (máximo ' + LARGO_COMENTARIO + ' letras).', 'bad');
   const t = buscarEnVista(ref) || (TB.detalle && TB.detalle.pedido) || {};
   const corto = texto.length > 80 ? texto.slice(0, 80) + '…' : texto;
-  bandeja.agregar('comentar', [ref, texto, 'C' + nuevoId()], 'comentar en "' + (t.titulo || ref) + '": «' + corto + '»');
+  bandeja.agregar('comentar', [ref, texto, 'C' + nuevoId(), TB.parte || ''], 'comentar en "' + (t.titulo || ref) + '": «' + corto + '»');
   cajaComentario.value = '';
   delete TB.borradores[ref];
   ajustarCaja();
@@ -1636,7 +1709,7 @@ async function adjuntar(files) {
     catch (e) { aviso('No se pudo guardar "' + nombre + '" en el teléfono.', 'bad'); continue; }
     ADJ.urls[id] = URL.createObjectURL(blob);
     const l = adjPendientes();
-    l.push({ id: id, ref: ref, nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', creado: new Date().toISOString(), token: APP.token, intentos: 0 });
+    l.push({ id: id, ref: ref, parte: TB.parte || '', nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', creado: new Date().toISOString(), token: APP.token, intentos: 0 });
     guardarAdjPendientes(l);
   }
   pintarAdjuntos();
@@ -1654,7 +1727,7 @@ async function subirAdjuntos() {
       if (!g) r = { ok: false, error: 'el archivo ya no estaba en el teléfono' };
       else {
         try {
-          r = await llamar('subirAdjunto', [p.token || APP.token, p.ref, { id: p.id, nombre: p.nombre, tipo: p.tipo, base64: await blobABase64(g.blob) }],
+          r = await llamar('subirAdjunto', [p.token || APP.token, p.ref, { id: p.id, nombre: p.nombre, tipo: p.tipo, parte: p.parte || '', base64: await blobABase64(g.blob) }],
                            p.id, { limiteMs: 180000 });
         } catch (x) {
           if (x.sinRed) break;                                   // sin señal: después
@@ -1701,8 +1774,9 @@ function pintarAdjuntos() {
   if (!ref) return;
   const quitando = {};
   bandeja.lista().forEach(function (m) { if (m.fn === 'quitarAdjunto' && m.args[0] === ref) quitando[m.args[1]] = true; });
-  const lista = ((d && d.adjuntos) || []).filter(function (a) { return !quitando[a.id]; });
-  const esperan = adjPendientes().filter(function (p) { return p.ref === ref; });
+  const aca = TB.parte || '';
+  const lista = ((d && d.adjuntos) || []).filter(function (a) { return !quitando[a.id] && (a.parte || '') === aca; });
+  const esperan = adjPendientes().filter(function (p) { return p.ref === ref && (p.parte || '') === aca; });
   $('tj-adj-t').textContent = 'Adjuntos' + (lista.length + esperan.length ? ' (' + (lista.length + esperan.length) + ')' : '');
   const puedeQuitar = function (a) { return APP.yo.admin || a.autor === APP.yo.nombre; };
   const tile = function (a, espera) {
@@ -1750,6 +1824,240 @@ $('tj-adjuntar').addEventListener('change', function () {
   this.value = '';
   if (files.length) adjuntar(files);
 });
+
+/* ---------- Mini tarjetas adentro de la tarjeta (Paso 4-bis, arquitectura de Feli) ----------
+   Una por rubro y una por grupo de proveedores particulares. Cada una con
+   su estado (una columna), productos, descripción, comentarios y adjuntos;
+   se mueve por separado con "Mover a…". La tarjeta grande está en la
+   columna de la más atrasada. Con un solo rubro no se muestran. */
+
+/** Las mini tarjetas con lo que espera en la bandeja encima. */
+function partesVista(ref) {
+  const d = TB.detalle;
+  if (!d || !d.partes) return [];
+  const pts = d.partes.map(function (x) { return Object.assign({}, x); });
+  bandeja.lista().forEach(function (m) {
+    if (m.fn === 'mandarTanda') {
+      pts.forEach(function (x) { if ((m.args[0] || []).indexOf(x.id) !== -1) { x.columna = (columnasTb().filter(function (c) { return c.seccion === 'Cotización'; })[1] || {}).columna || x.columna; x.espera = true; } });
+      return;
+    }
+    if (!OPS_PARTE[m.fn] || m.args[0] !== ref) return;
+    const x = pts.filter(function (y) { return y.id === m.args[1]; })[0];
+    if (!x) return;
+    x.espera = true;
+    if (m.fn === 'moverParte') { x.columna = m.args[2].columna; if (m.args[2].entrega !== undefined) x.entrega = m.args[2].entrega; if (m.args[2].retiro) x.retiro = m.args[2].retiro; }
+    else if (m.fn === 'cancelarParte') x.columna = colCancelado();
+    else if (m.fn === 'describirParte') x.descripcion = m.args[2];
+  });
+  return pts;
+}
+
+/** El título de una mini tarjeta: sus productos (Feli), como el título de un pedido. */
+function tituloDeParte(d, pt) {
+  const ls = lineasConCambios(TB.abierta, d.lineas).filter(function (l) { return l.parte === pt.id && vigente(l); }).map(nombreProducto);
+  if (!ls.length) return pt.nombre;
+  return ls.length <= 3 ? ls.join(', ') : ls.slice(0, 3).join(', ') + ' y ' + (ls.length - 3) + ' más';
+}
+
+function textoTanda(pt) {
+  const m = /^T(\d{4})(\d{2})(\d{2})/.exec(pt.tanda || '');
+  return '📤 Salió en la tanda' + (m ? ' del ' + Number(m[3]) + '/' + Number(m[2]) : '') +
+    (pt.tandaCon ? ' con ' + pt.tandaCon + (pt.tandaCon === 1 ? ' pedido más' : ' pedidos más') : '');
+}
+
+/** La lista de productos de la tarjeta grande, agrupada en sus mini tarjetas. */
+function htmlPartes(ref, pts, lineas, admin, mio, puedeMover) {
+  const d = TB.detalle;
+  const cancel = colCancelado();
+  const ordenadas = pts.filter(function (x) { return x.columna !== cancel; }).concat(pts.filter(function (x) { return x.columna === cancel; }));
+  const cuantos = function (lista, id) { return (lista || []).filter(function (x) { return (x.parte || '') === id; }).length; };
+  let html = ordenadas.map(function (pt) {
+    const ls = lineas.filter(function (l) { return l.parte === pt.id; });
+    const cancelada = pt.columna === cancel;
+    const nc = cuantos(d.comentarios, pt.id), na = cuantos(d.adjuntos, pt.id);
+    return '<div class="parte' + (cancelada ? ' cancelada' : '') + '">' +
+      '<div class="parte-h"><b>' + esc(pt.nombre) + '</b>' +
+        (puedeMover && admin
+          ? '<button type="button" class="col-chip chico" data-mover-parte="' + esc(pt.id) + '">' + esc(pt.columna) + (cancelada ? ' · Recuperar' : '') + ' ⌄</button>'
+          : '<span class="col-chip chico">' + esc(pt.columna) + '</span>') +
+        (pt.espera ? '<span class="espera">' + (APP.enLinea ? 'Guardando…' : '⏳') + '</span>' : '') +
+        '<button type="button" class="btn-chico abrir" data-abrir-parte="' + esc(pt.id) + '">' +
+          (nc ? '💬 ' + nc + ' ' : '') + (na ? '📎 ' + na + ' ' : '') + 'Abrir ›</button></div>' +
+      (pt.manual ? '<div class="sub">✋ Gestión manual</div>' : '') +
+      (pt.tanda ? '<div class="sub">' + esc(textoTanda(pt)) + '</div>' : '') +
+      (pt.descripcion ? '<div class="sub">' + esc(pt.descripcion) + '</div>' : '') +
+      ls.map(function (l) { return htmlProducto(l, admin, mio); }).join('') + '</div>';
+  }).join('');
+  const sueltas = lineas.filter(function (l) { return !l.parte || !pts.some(function (x) { return x.id === l.parte; }); });
+  if (sueltas.length) html += '<div class="parte"><div class="parte-h"><b>Nuevos</b></div>' + sueltas.map(function (l) { return htmlProducto(l, admin, mio); }).join('') + '</div>';
+  return html;
+}
+
+function abrirParte(id) {
+  TB.parte = id;
+  ponerBorrador(TB.abierta);
+  pintarTarjeta();
+  $('tarjeta-modal').scrollTop = 0;
+}
+$('tj-volver').addEventListener('click', function () { TB.parte = null; pintarTarjeta(); $('tarjeta-modal').scrollTop = 0; });
+
+/** ¿Este cambio de la historia es de esta mini tarjeta? */
+function eventoDeParte(e, d, id) {
+  if (e.entidad === 'parte') return e.id === id;
+  if (e.entidad === 'linea') return ((d.lineas || []).filter(function (l) { return l.id === e.id; })[0] || {}).parte === id;
+  if (e.entidad === 'adjunto') return ((d.adjuntos || []).filter(function (a) { return a.id === e.id; })[0] || {}).parte === id;
+  return false;
+}
+
+async function moverParteUI(ref, id) {
+  const pt = partesVista(ref).filter(function (x) { return x.id === id; })[0];
+  if (!pt || !APP.yo.admin) return;
+  const cancelada = pt.columna === colCancelado();
+  const destino = await moverADialogo((cancelada ? 'Recuperar "' : 'Mover "') + pt.nombre + '" a…', cancelada ? '' : pt.columna, cancelada ? 'Está cancelada.' : '');
+  if (!destino || destino === pt.columna) return;
+  const op = { columna: destino, desde: pt.columna };
+  if (destino === colPorRecibir()) {
+    const e = await preguntarEntrega(pt.entrega);
+    if (!e) return;
+    op.entrega = e;
+  }
+  if (destino === colEntregado()) {
+    const r = await preguntarRetiro();
+    if (!r) return;
+    op.retiro = r.retiro;
+    op.fechaRetiro = r.fecha;
+  }
+  bandeja.agregar('moverParte', [ref, id, op], (cancelada ? 'recuperar "' : 'mover "') + pt.nombre + '" a ' + destino);
+  pintarTarjeta();
+}
+
+$('tj-cancelar-parte').addEventListener('click', async function () {
+  const ref = TB.abierta, pt = partesVista(ref).filter(function (x) { return x.id === TB.parte; })[0];
+  if (!pt) return;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<label for="dg-motivo">¿Por qué se cancela?</label><textarea id="dg-motivo" placeholder="Ej: ya no hace falta, se consiguió por otro lado…"></textarea>';
+  const motivo = await dialogo({
+    titulo: '¿Cancelar esta parte del pedido?',
+    texto: '"' + pt.nombre + '". Las otras partes siguen. No se borra: se puede recuperar.',
+    cuerpo: cuerpo,
+    botones: [
+      { texto: 'Sí, cancelar esta parte', clase: 'btn peligro-btn', id: 'dg-ok', valor: function () { return $('dg-motivo').value.trim(); } },
+      { texto: 'No, volver', valor: null }
+    ],
+    alAbrir: function () {
+      const ok = $('dg-ok'), m = $('dg-motivo');
+      const revisar = function () { ok.disabled = m.value.trim().length < 3; };
+      m.addEventListener('input', revisar);
+      revisar();
+      m.focus();
+    }
+  });
+  if (!motivo) return;
+  const antes = pt.columna;
+  const clave = bandeja.agregar('cancelarParte', [ref, pt.id, motivo, antes], 'cancelar la parte "' + pt.nombre + '"');
+  TB.parte = null;
+  pintarTarjeta();
+  avisoConBoton('Parte cancelada.', 'Deshacer', function () {
+    if (bandeja.pendiente(clave) && !bandeja.enviando) bandeja.quitar(clave);
+    else bandeja.agregar('moverParte', [ref, pt.id, { columna: antes, desde: colCancelado() }], 'deshacer la cancelación de "' + pt.nombre + '"');
+    pintarTarjeta();
+  });
+});
+
+$('tj-desc-editar').addEventListener('click', async function () {
+  const ref = TB.abierta, pt = partesVista(ref).filter(function (x) { return x.id === TB.parte; })[0];
+  if (!pt) return;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<label for="dg-desc">Descripción</label><textarea id="dg-desc" maxlength="2000"></textarea>';
+  const texto = await dialogo({
+    titulo: 'Descripción de "' + pt.nombre + '"', cuerpo: cuerpo,
+    botones: [{ texto: 'Guardar', clase: 'btn', valor: function () { return $('dg-desc').value.trim(); } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () { $('dg-desc').value = pt.descripcion || ''; $('dg-desc').focus(); }
+  });
+  if (texto === null || texto === undefined || texto === (pt.descripcion || '')) return;
+  bandeja.agregar('describirParte', [ref, pt.id, texto], 'cambiar la descripción de "' + pt.nombre + '"');
+  pintarTarjeta();
+});
+
+/** Respuesta de un cambio de mini tarjeta. */
+function parteMandada(m, r) {
+  if (r.ok && r.parte) {
+    const poner = function (d) { if (d && d.partes) d.partes = d.partes.map(function (x) { return x.id === r.parte.id ? Object.assign({}, x, r.parte) : x; }); };
+    const todos = detallesGuardados();
+    if (todos[m.args[0]]) { poner(todos[m.args[0]].d); guardado.guardarJSON(K_TARJETAS, todos); }
+    if (TB.abierta === m.args[0]) poner(TB.detalle);
+  }
+  if (m.fn !== 'describirParte') cargarTablero();         // la tarjeta grande puede haber cambiado de columna
+  if (TB.abierta && (m.fn === 'mandarTanda' || TB.abierta === m.args[0])) traerTarjeta(TB.abierta);
+  if (m.fn === 'mandarTanda' && r.ok && !document.hidden) aviso('📤 ' + r.enviadas + (r.enviadas === 1 ? ' parte pasó' : ' partes pasaron') + ' a ' + r.columna + '.');
+}
+
+/* ---------- Tanda verde: "Mandar a cotizar" (solo admins) ---------- */
+function htmlTandaCabecera(n) {
+  const t = (TB.datos && TB.datos.tanda) || {};
+  const aviso = t.dias === null || t.dias === undefined ? '' : t.dias >= (t.cada || 14) && n
+    ? '<span class="tanda-aviso">⚠ Hace ' + t.dias + ' días que no se manda</span>' : '<small>Última: ' + (t.dias === 0 ? 'hoy' : 'hace ' + t.dias + (t.dias === 1 ? ' día' : ' días')) + '</small>';
+  return '<div class="tanda-b">' + (n ? '<button type="button" class="btn-chico si" id="tb-mandar-tanda">📤 Mandar a cotizar</button>' : '') + aviso + '</div>';
+}
+
+async function mandarTandaUI() {
+  const r = await api('datosTanda');
+  if (!r.ok) return aviso(r.sinConexion ? 'Para armar la tanda hace falta señal. Probá en un rato.' : r.error, 'bad');
+  if (!r.grupos.length) return aviso('La Tanda verde está vacía.');
+  const elegidas = {};
+  r.grupos.forEach(function (g) { g.partes.forEach(function (x) { elegidas[x.id] = true; }); });
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<p class="nota">Agrupado por rubro. Todo marcado: destildá lo que no va. Lo que se manda pasa a Por cotizar y queda anotado como una tanda.</p>' +
+    '<div class="opciones" id="tz-lista" style="max-height:55vh"></div>';
+  const ids = await dialogo({
+    titulo: 'Mandar a cotizar la Tanda verde', cuerpo: cuerpo,
+    botones: [{ texto: 'Mandar', clase: 'btn', id: 'dg-ok', valor: function () { return Object.keys(elegidas).filter(function (k) { return elegidas[k]; }); } },
+              { texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      const cont = $('tz-lista');
+      const revisar = function () {
+        const n = Object.keys(elegidas).filter(function (k) { return elegidas[k]; }).length;
+        $('dg-ok').disabled = !n;
+        $('dg-ok').textContent = 'Mandar a cotizar (' + n + ')';
+        cont.querySelectorAll('[data-g]').forEach(function (b) {
+          const g = r.grupos[Number(b.dataset.g)], todas = g.partes.every(function (x) { return elegidas[x.id]; });
+          b.setAttribute('aria-checked', String(todas));
+          b.querySelector('.marca').textContent = todas ? '☑' : g.partes.some(function (x) { return elegidas[x.id]; }) ? '◩' : '☐';
+        });
+        cont.querySelectorAll('[data-p]').forEach(function (b) {
+          b.setAttribute('aria-checked', String(!!elegidas[b.dataset.p]));
+          b.querySelector('.marca').textContent = elegidas[b.dataset.p] ? '☑' : '☐';
+        });
+      };
+      cont.innerHTML = r.grupos.map(function (g, k) {
+        return '<h4>' + esc(g.nombre) + '</h4>' +
+          '<button type="button" class="choice" data-g="' + k + '"><span class="marca">☑</span><span><b>Todo ' + esc(g.nombre) + '</b> · ' +
+            g.partes.length + (g.partes.length === 1 ? ' pedido' : ' pedidos') + '</span></button>' +
+          g.partes.map(function (x) {
+            return '<button type="button" class="choice sub-choice" data-p="' + esc(x.id) + '"><span class="marca">☑</span><span>' + esc(x.sitio) + ' · ' + esc(x.productos) +
+              '<small style="display:block;color:var(--muted);font-weight:400">' + esc(x.solicitante) + '</small></span></button>';
+          }).join('');
+      }).join('');
+      cont.querySelectorAll('[data-g]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          const g = r.grupos[Number(b.dataset.g)], todas = g.partes.every(function (x) { return elegidas[x.id]; });
+          g.partes.forEach(function (x) { elegidas[x.id] = !todas; });
+          revisar();
+        });
+      });
+      cont.querySelectorAll('[data-p]').forEach(function (b) {
+        b.addEventListener('click', function () { elegidas[b.dataset.p] = !elegidas[b.dataset.p]; revisar(); });
+      });
+      revisar();
+    }
+  });
+  if (!ids || !ids.length) return;
+  bandeja.agregar('mandarTanda', [ids], 'mandar a cotizar la Tanda verde (' + ids.length + (ids.length === 1 ? ' parte)' : ' partes)'));
+  if (TB.abierta) pintarTarjeta();
+}
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */
 function avisoConBoton(texto, boton, accion) {

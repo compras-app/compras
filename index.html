@@ -170,6 +170,7 @@
   <div class="modal" id="tarjeta-modal" hidden>
     <div class="panel" role="dialog" aria-modal="true" aria-labelledby="tj-titulo">
       <div class="panel-h">
+        <button type="button" class="btn-chico" id="tj-volver" hidden>‹ Volver al pedido</button>
         <button type="button" class="col-chip" id="tj-columna"></button>
         <button type="button" class="btn-chico" id="tj-editar" hidden>✏️ Editar pedido</button>
         <button type="button" class="icono" id="tj-cerrar" aria-label="Cerrar">×</button>
@@ -179,6 +180,10 @@
           <h2 class="tit" id="tj-titulo"></h2>
           <div class="datos" id="tj-datos"></div>
           <div class="etiquetas" id="tj-etiquetas"></div>
+          <div class="bloque" id="tj-desc-b" hidden>
+            <div class="act-h"><h3>Descripción</h3><button type="button" class="btn-chico" id="tj-desc-editar" hidden>✏️ Editar</button></div>
+            <p class="texto" id="tj-desc"></p>
+          </div>
           <div class="bloque"><h3>Razón del pedido</h3><p class="texto" id="tj-razon"></p></div>
           <div class="bloque">
             <div class="act-h"><h3 id="tj-prod-t">Productos</h3><button type="button" class="btn-chico" id="tj-varios" hidden>🎯 Proveedores para varios</button></div>
@@ -191,6 +196,7 @@
             <div class="adjuntos" id="tj-adjuntos"></div>
           </div>
           <button type="button" class="peligro" id="tj-cancelar" hidden>Cancelar pedido</button>
+          <button type="button" class="peligro" id="tj-cancelar-parte" hidden>Cancelar esta parte</button>
         </div>
         <div class="lado">
           <div class="act-h">
