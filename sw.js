@@ -4,12 +4,15 @@
 // archivos); el navegador lo nota, baja todo de nuevo por detrás y la app
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
-// Las carpetas pedido/, prueba/ y viejo/ tampoco: no son parte de la app.
-const VERSION = 'app-30617ca57e';
+// Las carpetas prueba/ y viejo/ tampoco: no son parte de la app. El formulario (pedido/) sí.
+const VERSION = 'app-b701912d54';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
-  './js/base.js', './js/login.js', './js/pantallas.js',
-  './manifest.webmanifest', './icono-180.png', './icono-192.png', './icono-512.png'
+  './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js',
+  './manifest.webmanifest', './icono-180.png', './icono-192.png', './icono-512.png',
+  // El formulario (pedido/)
+  './pedido/', './pedido/index.html', './pedido/formulario.css', './pedido/formulario.js',
+  './pedido/manifest.webmanifest', './pedido/icono-180.png', './pedido/icono-192.png', './pedido/icono-512.png'
 ];
 const FUENTES = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 const EN_PRUEBA = self.location.hostname === 'localhost';   // en la compu de Claude: siempre lo último

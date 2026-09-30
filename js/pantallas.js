@@ -14,7 +14,8 @@ pantalla('cuenta',  { titulo: 'Tu cuenta', tab: '', alMostrar: pantallaCuenta })
 function mostrarApp() {
   $('login').hidden = true;
   $('app').hidden = false;
-  $('t-nuevo').href = FORMULARIO;
+  // En la misma ventana: en el iPhone, otra ventana guardaría el pedido en otro lado
+  $('t-nuevo').href = FORMULARIO + '?desde=app';
   pintarBarra();
   pintarSinRed();
   ir('tablero');
@@ -47,3 +48,9 @@ document.querySelectorAll('.tabs .tab[data-tab]').forEach(function (t) {
 $('b-cuenta').addEventListener('click', function () { abrir('cuenta'); });
 $('b-volver').addEventListener('click', volver);
 $('b-salir').addEventListener('click', salir);
+
+// Pedidos del formulario que quedaron guardados en este teléfono: la app también los manda
+PedidosGuardados.alCambiar(function () {
+  PedidosGuardados.pendientes().then(function (n) { APP.pedidosPendientes = n; pintarSinRed(); });
+});
+PedidosGuardados.procesar();

@@ -26,6 +26,8 @@
     js/base.js         servidor, guardado, bandeja de salida, navegación, avisos
     js/login.js        entrar con el código de WhatsApp (antes AppLogin.html)
     js/pantallas.js    barra, menú y pantallas (antes AppPantallas.html)
+    js/envio-pedidos.js pedidos del formulario guardados en el teléfono (los manda la app o el formulario)
+    pedido/            el formulario de pedidos
 -->
 <!-- El color de App_Config: el último que mandó el servidor, guardado en el dispositivo.
      La primera vez, el rosa de siempre (paletaDe_ de #d6336c). -->
@@ -100,7 +102,7 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
       Buscar
     </button>
-    <a class="tab" id="t-nuevo" target="_blank" rel="noopener">
+    <a class="tab" id="t-nuevo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
       Nuevo pedido
     </a>
@@ -151,6 +153,7 @@
 
 <script src="js/base.js"></script>
 <script src="js/login.js"></script>
+<script src="js/envio-pedidos.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 </body>

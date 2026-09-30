@@ -12,8 +12,8 @@
 const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
   : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
-const FORMULARIO = './pedido/';       // "Nuevo pedido"
-const VERSION_APP = '30617ca57e';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const FORMULARIO = new URL('../pedido/', document.currentScript.src).href;   // "Nuevo pedido"
+const VERSION_APP = 'b701912d54';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -60,12 +60,13 @@ function nuevoId() {
  * "despertar"): en ese caso reintenta solo, con el mismo número de envío,
  * así un cambio no se repite (recordarEnvio_ en Api.js).
  */
-async function llamar(fn, args, id) {
+async function llamar(fn, args, id, opciones) {
   id = id || nuevoId();
+  const limite = (opciones && opciones.limiteMs) || LIMITE_MS;
   const esperas = [1500, 4000];
   for (let intento = 0; ; intento++) {
     try {
-      return await llamarUnaVez(fn, args, id);
+      return await llamarUnaVez(fn, args, id, limite);
     } catch (e) {
       if (!e.servidor || intento >= esperas.length) throw e;
       await new Promise(function (ok) { setTimeout(ok, esperas[intento]); });
@@ -74,9 +75,9 @@ async function llamar(fn, args, id) {
 }
 
 /** Una sola llamada. Sin cabeceras propias: así el navegador no pide permiso antes (CORS). */
-async function llamarUnaVez(fn, args, id) {
+async function llamarUnaVez(fn, args, id, limite) {
   const ctl = window.AbortController ? new AbortController() : null;
-  const vence = setTimeout(function () { if (ctl) ctl.abort(); }, LIMITE_MS);
+  const vence = setTimeout(function () { if (ctl) ctl.abort(); }, limite);
   let resp;
   try {
     resp = await fetch(API, {
@@ -196,15 +197,18 @@ function conexion(hay) {
 function pintarSinRed() {
   const el = $('sinred');
   if (!el) return;
-  const n = bandeja.pendientes();
+  const n = bandeja.pendientes(), m = APP.pedidosPendientes || 0;
+  const que = [m ? (m === 1 ? '1 pedido' : m + ' pedidos') : '', n ? (n === 1 ? '1 cambio' : n + ' cambios') : '']
+                .filter(Boolean).join(' y ');
+  const varios = n + m > 1;
   let texto = '';
   if (!APP.enLinea) {
-    texto = n ? '📶 Poca señal. ' + (n === 1 ? '1 cambio guardado: se manda' : n + ' cambios guardados: se mandan') + ' solo cuando vuelva la señal.'
-              : '📶 Poca señal. Podés seguir usando la app: lo que hagas se manda solo cuando vuelva la señal.';
+    texto = que ? '📶 Poca señal. ' + que + (varios ? ' guardados: se mandan solos' : ' guardado: se manda solo') + ' cuando vuelva la señal.'
+                : '📶 Poca señal. Podés seguir usando la app: lo que hagas se manda solo cuando vuelva la señal.';
     // Si lo que se ve es viejo, que se sepa
     if (APP.actualizado && Date.now() - new Date(APP.actualizado) > 5 * 60000) texto += ' Lo que ves es de ' + hace(APP.actualizado) + '.';
-  } else if (n) {
-    texto = '⏳ Mandando ' + (n === 1 ? '1 cambio' : n + ' cambios') + '…';
+  } else if (que) {
+    texto = '⏳ Mandando ' + que + '…';
   }
   el.textContent = texto;
   el.hidden = !texto;
@@ -299,9 +303,10 @@ function instalada() {
    Cuando hay una versión nueva, sw.js la guarda por detrás. Se recarga
    sola la próxima vez que se vuelve a la app, salvo en medio de entrar. */
 let hayVersionNueva = false;
+const RAIZ_APP = new URL('../', document.currentScript.src).href;   // .../compras/ (base.js está en js/)
 if ('serviceWorker' in navigator) {
   const yaHabia = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.register('sw.js').catch(function () {});
+  navigator.serviceWorker.register(RAIZ_APP + 'sw.js', { scope: RAIZ_APP }).catch(function () {});
   navigator.serviceWorker.addEventListener('controllerchange', function () { if (yaHabia) hayVersionNueva = true; });
 }
 

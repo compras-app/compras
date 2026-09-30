@@ -11,62 +11,94 @@
 <link rel="apple-touch-icon" href="icono-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700;800&display=swap">
+<link rel="stylesheet" href="formulario.css">
 <!--
-  Formulario de pedidos dentro de la página propia (compras-app.github.io/compras/pedido/),
-  sin el cartel de Apps Script. Muestra /exec?marco=1 (el mismo formulario que /exec).
-  No pide login. Guarda el borrador del pedido: Safari borra lo que guarda un recuadro
-  de otro sitio al cerrarlo, pero no lo que guarda esta página.
-  Fuente: carpeta pagina/pedido/ del proyecto compras-app.
+  FORMULARIO DE PEDIDOS, descargado en el dispositivo (Fase 2, Paso 2-bis, etapa 3).
+  compras-app.github.io/compras/pedido/ — no pide login, como el de siempre.
+  Abre sin señal (sw.js de la carpeta de arriba) con la lista de productos
+  guardada. El borrador guarda también las fotos. Al enviar, el pedido queda
+  guardado en el teléfono y se manda solo cuando hay señal (js/envio-pedidos.js).
+    formulario.css   estilos (antes en Formulario.html)
+    formulario.js    el formulario (antes en Formulario.html)
+    ../js/base.js    servidor (doPost), guardado en el dispositivo
 -->
-<style>
-  html, body { margin: 0; height: 100%; background: #ffffff; }
-  @media (prefers-color-scheme: dark) { html, body { background: #141816; } }
-  iframe { display: block; border: 0; width: 100%; height: 100vh; height: 100dvh; }
-</style>
+<style id="estiloColor">:root{--accent:#d6336c;--accent-soft:#fae7ed;--accent-fg:#ffffff;--band:#d6336c;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;}}:root[data-theme="dark"]{--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;}</style>
+<script>try { var c = localStorage.getItem('compras_css'); if (c !== null) document.getElementById('estiloColor').textContent = c; } catch (e) {}</script>
 </head>
 <body>
-<iframe id="app" title="Pedido de insumos" allow="camera"></iframe>
+
+<div class="aviso-senal" id="aviso-senal" role="status" aria-live="polite" hidden></div>
+<div class="band" aria-hidden="true"></div>
+<main class="wrap">
+  <a class="volver" id="volver" href="../" hidden>‹ Volver a Compras</a>
+  <h1>Pedido de insumos</h1>
+  <p class="lead">Cargá lo que necesita tu granja. Podés agregar todos los productos que quieras en un mismo pedido.</p>
+
+  <p class="cargando" id="cargando">Cargando el formulario…</p>
+  <div id="sin-datos" hidden>
+    <p class="estado bad" id="sin-datos-txt"></p>
+    <p><button type="button" class="btn" id="reintentar">Reintentar</button></p>
+  </div>
+
+  <form id="form" novalidate hidden>
+    <div class="q" id="q-sitio">
+      <span class="qt" id="l-sitio">Sitio<span class="req">*</span></span>
+      <div class="choices" role="radiogroup" aria-labelledby="l-sitio" data-name="sitio"></div>
+    </div>
+
+    <div class="q" id="q-urgencia">
+      <span class="qt" id="l-urg">Nivel de urgencia<span class="req">*</span></span>
+      <div class="choices" role="radiogroup" aria-labelledby="l-urg" data-name="urgencia"></div>
+    </div>
+
+    <div class="q" id="q-pide">
+      <label for="pide">Quién pide<span class="req">*</span></label>
+      <select id="pide"><option value="">Elegí tu nombre</option></select>
+    </div>
+
+    <div class="q" id="q-razon">
+      <label for="razon">Razón del pedido<span class="req">*</span></label>
+      <textarea id="razon" placeholder="Para qué se necesita, qué se rompió, en qué galpón…"></textarea>
+    </div>
+
+    <div class="sec"><h2>Productos</h2><span id="count"></span></div>
+    <div id="prods"></div>
+    <button type="button" class="btn2 add" id="addProd">+ Agregar otro producto</button>
+
+    <div class="foot">
+      <div class="estado" id="estado" role="status" aria-live="polite" hidden></div>
+      <button type="submit" class="btn" id="enviar">Enviar pedido</button>
+      <button type="button" class="linkbtn" id="reset">Empezar de cero</button>
+      <span class="saved" id="saved"></span>
+    </div>
+  </form>
+
+  <section class="ok-box" id="listo" hidden aria-live="polite">
+    <h2 id="listoTit">✓ Pedido enviado</h2>
+    <p id="listoTxt">Compras ya lo recibió. Si te preguntan por este pedido, este es el número:</p>
+    <div class="ref" id="listoRef"></div>
+    <p id="listoDet"></p>
+    <p class="paso" id="listoPaso" hidden></p>
+    <button type="button" class="btn" id="otro">Cargar otro pedido</button>
+    <button type="button" class="btn2" id="corregir" hidden>Corregirlo</button>
+  </section>
+
+  <section class="guardados" id="guardados" hidden>
+    <h2>Pedidos cargados en este teléfono</h2>
+    <p>Los que esperan señal se mandan solos. Los enviados quedan acá una semana.</p>
+    <div id="guardados-lista"></div>
+  </section>
+</main>
+
+<div id="fatal" hidden style="margin:20px;padding:14px;border-radius:10px;background:#fbeceb;color:#b3261e;font:600 15px system-ui"></div>
 <script>
-(function () {
-  var FORMULARIO = 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec?marco=1';
-  var CLAVES = { 'pedido-insumos-borrador-v3': true };
-
-  // Esta página no se deja mostrar dentro de otra
-  if (window.top !== window) {
-    document.body.innerHTML = '<p style="font-family:system-ui;padding:24px">Abrí esta página directamente.</p>';
-    return;
-  }
-
-  var marco = document.getElementById('app');
-  marco.src = FORMULARIO;
-
-  // true si el mensaje viene de adentro de NUESTRO recuadro (el formulario está un par de niveles adentro)
-  function esDelFormulario(fuente) {
-    var w = fuente;
-    for (var i = 0; i < 6 && w; i++) {
-      if (w === marco.contentWindow) return true;
-      if (w === w.parent) return false;
-      w = w.parent;
-    }
-    return false;
-  }
-
-  window.addEventListener('message', function (ev) {
-    var d = ev.data;
-    if (!d || typeof d !== 'object' || !d.compras || d.compras === 'respuesta') return;
-    if (!/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(ev.origin)) return;
-    if (!esDelFormulario(ev.source)) return;
-    if (!CLAVES[d.clave]) return;
-
-    var r = { compras: 'respuesta', id: d.id, ok: false, valor: null };
-    try {
-      if (d.compras === 'leer') { r.valor = localStorage.getItem(d.clave); r.ok = true; }
-      else if (d.compras === 'guardar') { localStorage.setItem(d.clave, String(d.valor)); r.ok = true; }
-      else if (d.compras === 'borrar') { localStorage.removeItem(d.clave); r.ok = true; }
-    } catch (e) { r.ok = false; }
-    ev.source.postMessage(r, ev.origin);
-  });
-})();
+window.addEventListener('error',function(e){var f=document.getElementById('fatal');f.hidden=false;f.textContent='Error al cargar el formulario: '+(e.message||e);});
 </script>
+<script src="../js/base.js"></script>
+<script src="../js/envio-pedidos.js"></script>
+<script src="formulario.js"></script>
 </body>
 </html>
