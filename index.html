@@ -153,7 +153,28 @@
     </section>
 
     <section id="s-buscar" hidden>
-      <div class="vacio"><b>Buscar</b>Llega en el Paso 5: por producto, sitio, proveedor o ref, y los pedidos finalizados.</div>
+      <form class="buscar-caja" id="bu-form" role="search">
+        <input type="search" id="bu-q" placeholder="Producto, granja, proveedor, ref…" aria-label="Buscar pedidos" autocomplete="off" enterkeyhint="search" maxlength="200">
+        <button type="submit" class="btn" id="bu-ir">Buscar</button>
+      </form>
+      <div class="filtros bu-filtros">
+        <div class="seg" role="group" aria-label="En qué pedidos buscar">
+          <button type="button" data-estado="todos" aria-pressed="true">Todos</button>
+          <button type="button" data-estado="curso" aria-pressed="false">En curso</button>
+          <button type="button" data-estado="terminados" aria-pressed="false">Terminados</button>
+        </div>
+        <div class="seg" role="group" aria-label="De quién">
+          <button type="button" id="bu-mios" aria-pressed="false">Mis pedidos</button>
+          <button type="button" id="bu-todos" aria-pressed="false">De todos</button>
+        </div>
+        <label class="filtro"><span>Granja</span><select id="bu-sitio"></select></label>
+        <label class="filtro"><span>Cargados</span><select id="bu-periodo">
+          <option value="">Siempre</option><option value="mes">Último mes</option><option value="3meses">Últimos 3 meses</option><option value="anio">Último año</option>
+        </select></label>
+      </div>
+      <p class="nota bu-estado" id="bu-estado" role="status" aria-live="polite"></p>
+      <div class="bu-resultados" id="bu-resultados"></div>
+      <button type="button" class="btn2 bu-mas" id="bu-mas" hidden>Ver más</button>
     </section>
 
     <section id="s-admin" hidden>
@@ -198,6 +219,7 @@
           <h2 class="tit" id="tj-titulo"></h2>
           <div class="datos" id="tj-datos"></div>
           <div class="etiquetas" id="tj-etiquetas"></div>
+          <button type="button" class="btn2 tj-reabrir" id="tj-reabrir" hidden>↩️ Reabrir el pedido</button>
           <div class="bloque" id="tj-desc-b" hidden>
             <div class="act-h"><h3>Descripción</h3><button type="button" class="btn-chico" id="tj-desc-editar" hidden>✏️ Editar</button></div>
             <p class="texto" id="tj-desc"></p>
@@ -278,6 +300,7 @@
 <script src="js/envio-pedidos.js"></script>
 <script src="js/tablero.js"></script>
 <script src="js/tareas.js"></script>
+<script src="js/buscar.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 </body>

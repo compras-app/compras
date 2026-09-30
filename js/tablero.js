@@ -35,6 +35,7 @@ const TB = {
   abierta: null,                               // ref de la tarjeta abierta
   detalle: null,                               // getTarjeta de la abierta
   cancelados: {},                              // tarjetas canceladas (para "Deshacer")
+  reabiertos: {},                              // terminados que se reabren (Paso 5): la tarjeta hasta que vuelve del servidor
   borradores: {},                              // comentario a medio escribir, por tarjeta
   parte: null,                                 // mini tarjeta abierta adentro de la tarjeta (Paso 4-bis)
   cargando: false
@@ -74,7 +75,8 @@ function aplicarOp(lista, fn, args) {
   const i = lista.findIndex(function (x) { return x.ref === ref; });
   if (fn === 'moverTarjeta') {
     const op = args[1] || {};
-    let t = i >= 0 ? lista.splice(i, 1)[0] : (TB.cancelados[ref] ? Object.assign({}, TB.cancelados[ref]) : null);
+    const guardada = TB.cancelados[ref] || TB.reabiertos[ref];
+    let t = i >= 0 ? lista.splice(i, 1)[0] : (guardada ? Object.assign({}, guardada) : null);
     if (!t || !enTablero(op.columna)) return;
     t = Object.assign({}, t, { columna: op.columna });
     if (op.entrega !== undefined) t.entrega = op.entrega;
@@ -319,7 +321,7 @@ window.addEventListener('online', function () { if (tableroALaVista()) cargarTab
 
 /* ---------- Mover (lo usan arrastrar y la tarjeta abierta) ---------- */
 async function moverA(ref, destino, despuesDe) {
-  const t = buscarEnVista(ref);
+  const t = buscarEnVista(ref) || TB.reabiertos[ref];
   if (!t) return pintarTablero();
   const op = { columna: destino, despuesDe: despuesDe, desde: t.columna };
   if (destino !== t.columna && destino === colPorRecibir()) {
@@ -333,7 +335,8 @@ async function moverA(ref, destino, despuesDe) {
     op.retiro = d.retiro;
     op.fechaRetiro = d.fecha;
   }
-  bandeja.agregar('moverTarjeta', [ref, op], (destino === t.columna ? 'reordenar "' : 'mover "') + t.titulo + '" a ' + destino);
+  const que = TB.reabiertos[ref] && !buscarEnVista(ref) ? 'reabrir "' : destino === t.columna ? 'reordenar "' : 'mover "';
+  bandeja.agregar('moverTarjeta', [ref, op], que + t.titulo + '" a ' + destino);
   pintarTablero();
   if (TB.abierta === ref) pintarTarjeta();
 }
@@ -775,6 +778,7 @@ function pintarTarjeta() {
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
   $('tj-cancelar').hidden = !(admin && enTb) || !!parte;
+  $('tj-reabrir').hidden = !(admin && !enTb && p && p.volverA) || !!parte;     // Paso 5
   $('tj-cancelar-parte').hidden = !(admin && parte && enTb && parte.columna !== colCancelado());
   pintarAdjuntos();
   pintarActividad();
@@ -821,8 +825,8 @@ $('tj-columna').addEventListener('click', async function () {
   moverA(ref, destino, '');
 });
 
-/** "Mover a…" (Feli): una lista con todas las columnas y la siguiente ya elegida. Devuelve la columna o null. */
-function moverADialogo(titulo, actual, nota, columnas) {
+/** "Mover a…" (Feli): una lista con todas las columnas y la siguiente ya elegida (o la elegida). Devuelve la columna o null. */
+function moverADialogo(titulo, actual, nota, columnas, elegida, boton) {
   const cols = columnas || columnasTb();
   const i = cols.findIndex(function (c) { return c.columna === actual; });
   let sig = i === -1 ? cols[0] : cols[Math.min(cols.length - 1, i + 1)];
@@ -843,8 +847,8 @@ function moverADialogo(titulo, actual, nota, columnas) {
   }).join('') + '</select>' + (nota ? '<p class="nota">' + esc(nota) + '</p>' : '');
   return dialogo({
     titulo: titulo, texto: actual ? 'Está en "' + actual + '".' : '', cuerpo: cuerpo,
-    botones: [{ texto: 'Mover', clase: 'btn', id: 'dg-ok', valor: function () { return $('dg-col').value; } }, { texto: 'Volver', valor: null }],
-    alAbrir: function () { $('dg-col').value = sig ? sig.columna : actual; }
+    botones: [{ texto: boton || 'Mover', clase: 'btn', id: 'dg-ok', valor: function () { return $('dg-col').value; } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () { $('dg-col').value = elegida || (sig ? sig.columna : actual); }
   });
 }
 
@@ -862,6 +866,21 @@ async function cambiarResponsable(ref) {
   bandeja.agregar('asignarResponsable', [ref, nombre], (nombre ? 'poner a ' + nombre + ' como responsable de "' : 'sacar el responsable de "') + t.titulo + '"');
   pintarTablero(); pintarTarjeta();
 }
+
+/** Reabrir un pedido terminado (Paso 5, solo admins): vuelve al tablero, a la columna que se elija. */
+$('tj-reabrir').addEventListener('click', async function () {
+  const ref = TB.abierta, p = TB.detalle && TB.detalle.pedido;
+  if (!ref || !p || !APP.yo.admin || buscarEnVista(ref)) return;
+  const destino = await moverADialogo('Reabrir el pedido', p.columna, 'Vuelve al tablero con sus partes, a la columna que elijas. Queda en la historia.', null, p.volverA, 'Reabrir');
+  if (!destino) return;
+  const pv = pedidoConCambios(ref, p);
+  TB.reabiertos[ref] = { ref: ref, titulo: pv.titulo || p.titulo, sitio: p.sitio, urgencia: pv.urgencia || p.urgencia, columna: p.columna,
+                         responsable: p.responsable, solicitante: p.solicitante, entrega: p.entrega, masivo: p.origen === 'masivo',
+                         paraAprobar: 0, manual: p.manual };
+  await moverA(ref, destino, '');
+  if (buscarEnVista(ref)) avisoConBoton('Pedido reabierto: volvió a "' + destino + '".', 'Ver en el tablero', function () { cerrarTarjeta(); ir('tablero'); });
+  if (typeof pintarResultados === 'function' && !$('s-buscar').hidden) pintarResultados();
+});
 
 $('tj-cancelar').addEventListener('click', async function () {
   const ref = TB.abierta, t = buscarEnVista(ref);
@@ -2089,7 +2108,7 @@ function bloquesDeTarea(tarea) {
   ['tj-check-b', 'tj-rec-b'].forEach(function (id) { $(id).hidden = !tarea; });
   $('tj-borrar-tarea').hidden = !tarea;
   if (!tarea) $('tj-editar').textContent = '✏️ Editar pedido';
-  if (tarea) ['tj-cancelar', 'tj-cancelar-parte', 'tj-volver'].forEach(function (id) { $(id).hidden = true; });
+  if (tarea) ['tj-cancelar', 'tj-cancelar-parte', 'tj-volver', 'tj-reabrir'].forEach(function (id) { $(id).hidden = true; });
 }
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */

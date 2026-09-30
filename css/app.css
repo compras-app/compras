@@ -322,3 +322,19 @@ html,body{touch-action:pan-x pan-y}
 .rec .rec-c{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
 .rec.pasado{opacity:.6}
 .panel.chico input[type=time]{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;min-height:48px}
+
+/* ---------- Buscar (Paso 5) ---------- */
+.buscar-caja{display:flex;gap:8px;margin-bottom:10px}
+.buscar-caja input{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;min-height:48px}
+.buscar-caja .btn{width:auto;flex:none}
+.bu-filtros{margin-bottom:6px}
+.bu-estado{margin:10px 0 8px;min-height:1.3em}
+.bu-resultados{display:flex;flex-direction:column;gap:8px}
+.tarjeta.resultado{width:100%;text-align:left;font:inherit;color:var(--fg)}
+.tarjeta.resultado.urgente{color:var(--tj-roja-fg)}
+.tarjeta.resultado.terminado{opacity:.8}
+.tarjeta .bu-col{flex:none;font-size:12px;font-weight:600;color:var(--fg);background:var(--col);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.tarjeta .bu-col.fin{color:var(--muted);text-decoration:none;border:1px dashed var(--line);background:transparent}
+.tarjeta .bu-fecha{flex:none;font-size:12px}
+.bu-mas{margin-top:12px}
+.tj-reabrir{width:auto;margin:4px 0 12px}
