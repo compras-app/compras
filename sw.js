@@ -5,10 +5,10 @@
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
 // El formulario (pedido/) también es parte de la app.
-const VERSION = 'app-003c77975c';
+const VERSION = 'app-6414ccbc33';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
-  './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js',
+  './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js', './js/tablero.js',
   './manifest.webmanifest', './icono-180.png', './icono-192.png', './icono-512.png',
   // El formulario (pedido/)
   './pedido/', './pedido/index.html', './pedido/formulario.css', './pedido/formulario.js',

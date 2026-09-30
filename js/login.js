@@ -88,6 +88,10 @@ function sesionPerdida(texto) {
   guardado.borrar(K.token);
   guardado.borrar(K.desde);
   guardado.borrar(K.inicio);
+  // Lo del tablero es de quien estaba: que el próximo no lo vea
+  guardado.borrar('compras_tablero');
+  guardado.borrar('compras_tarjetas');
+  if (typeof TB !== 'undefined') { TB.datos = null; TB.filtros = null; TB.cancelados = {}; if (TB.abierta) ocultarTarjeta(); }
   entrarDeCero(texto);
 }
 

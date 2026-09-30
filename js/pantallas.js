@@ -5,7 +5,7 @@
    en index.html. Si suma un archivo, va también en ARCHIVOS de sw.js.
    ============================================================ */
 
-pantalla('tablero', { titulo: 'Tablero' });
+// 'tablero' la registra js/tablero.js
 pantalla('buscar',  { titulo: 'Buscar' });
 pantalla('admin',   { titulo: 'Administración' });
 pantalla('cuenta',  { titulo: 'Tu cuenta', tab: '', alMostrar: pantallaCuenta });

@@ -27,6 +27,7 @@
     js/login.js        entrar con el código de WhatsApp (antes AppLogin.html)
     js/pantallas.js    barra, menú y pantallas (antes AppPantallas.html)
     js/envio-pedidos.js pedidos del formulario guardados en el teléfono (los manda la app o el formulario)
+    js/tablero.js      el tablero: columnas, tarjetas, filtros, arrastrar, tarjeta abierta (Paso 3)
     pedido/            el formulario de pedidos
 -->
 <!-- El color de App_Config: el último que mandó el servidor, guardado en el dispositivo.
@@ -115,8 +116,20 @@
   <div class="sinred" id="sinred" role="status" aria-live="polite" hidden></div>
 
   <main class="contenido">
-    <section id="s-tablero">
-      <div class="vacio"><b>Tablero de pedidos</b>Llega en el Paso 3: columnas, tarjetas, filtros y "Mis pedidos".</div>
+    <section id="s-tablero" class="pantalla-tablero">
+      <div class="herramientas">
+        <div class="secciones" id="tb-secciones" role="tablist" aria-label="Secciones del tablero"></div>
+        <div class="filtros">
+          <div class="seg" role="group" aria-label="Qué pedidos ver">
+            <button type="button" id="tb-mios" aria-pressed="false">Mis pedidos</button>
+            <button type="button" id="tb-todos" aria-pressed="false">Todos</button>
+          </div>
+          <select id="tb-sitio" aria-label="Granja" hidden></select>
+          <select id="tb-resp" aria-label="Responsable" hidden></select>
+          <button type="button" class="refrescar" id="tb-refrescar" aria-label="Actualizar el tablero">↻ <span id="tb-hace"></span></button>
+        </div>
+      </div>
+      <div class="tablero" id="tablero" aria-label="Tablero de pedidos"></div>
     </section>
 
     <section id="s-buscar" hidden>
@@ -149,11 +162,45 @@
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- Tarjeta abierta (como en Trello): encima del tablero -->
+  <div class="modal" id="tarjeta-modal" hidden>
+    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="tj-titulo">
+      <div class="panel-h">
+        <button type="button" class="col-chip" id="tj-columna"></button>
+        <button type="button" class="icono" id="tj-cerrar" aria-label="Cerrar">×</button>
+      </div>
+      <div class="panel-c">
+        <div class="izq">
+          <h2 class="tit" id="tj-titulo"></h2>
+          <div class="datos" id="tj-datos"></div>
+          <div class="etiquetas" id="tj-etiquetas"></div>
+          <div class="bloque"><h3>Razón del pedido</h3><p class="texto" id="tj-razon"></p></div>
+          <div class="bloque"><h3 id="tj-prod-t">Productos</h3><div id="tj-productos"></div></div>
+          <button type="button" class="peligro" id="tj-cancelar" hidden>Cancelar pedido</button>
+        </div>
+        <div class="lado">
+          <div class="bloque"><h3>Comentarios y actividad</h3><p class="nota">Llegan en el Paso 4: comentarios con @, adjuntos e historia del pedido.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diálogos (mover, quién retiró, responsable, cancelar) -->
+  <div class="modal encima" id="dialogo" hidden>
+    <div class="panel chico" role="dialog" aria-modal="true" aria-labelledby="dg-titulo">
+      <h2 id="dg-titulo"></h2>
+      <p id="dg-texto"></p>
+      <div class="cuerpo" id="dg-cuerpo"></div>
+      <div class="botones" id="dg-botones"></div>
+    </div>
+  </div>
 </div>
 
 <script src="js/base.js"></script>
 <script src="js/login.js"></script>
 <script src="js/envio-pedidos.js"></script>
+<script src="js/tablero.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 </body>
