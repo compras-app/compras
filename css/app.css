@@ -261,3 +261,16 @@ html,body{touch-action:pan-x pan-y}
 .urgencias-el{display:flex;flex-wrap:wrap;gap:6px}
 .urgencias-el button{border:1.5px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-weight:600;border-radius:999px;padding:6px 12px;min-height:40px;cursor:pointer}
 .urgencias-el button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+
+/* Pedidos de cambio (Paso 4, parte 3) */
+.producto.propuesto{opacity:.6;border-style:dashed}
+.producto.quitado{opacity:.5}
+.producto.quitado .prod-c b{text-decoration:line-through}
+.producto .cambio{font-size:13px;font-weight:700;color:var(--warn);margin-top:4px}
+.producto.quitado .cambio{color:var(--muted)}
+.cambio-b{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.btn-chico.si{background:var(--accent);color:var(--accent-fg)}
+.tilde[disabled]{opacity:.35;cursor:default}
+.tarjeta .aprobar{flex:none;font-size:12px;font-weight:700;color:var(--fg);background:var(--warn-soft);border-radius:999px;padding:1px 8px}
+.chip-filtro{border:1.5px solid var(--line);background:var(--bg);color:var(--muted);font:inherit;font-size:14px;font-weight:600;border-radius:10px;padding:5px 12px;min-height:36px;cursor:pointer}
+.chip-filtro[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}

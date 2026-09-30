@@ -24,14 +24,16 @@ function mostrarApp() {
 
 /** La barra según quién sos (se vuelve a pintar si inicioApp trae algo nuevo). */
 function pintarBarra() {
-  $('b-nombre').textContent = APP.yo.nombre;
+  $('b-nombre').textContent = APP.yo.nombre + (APP.yo.prueba ? ' · 🧪 encargado' : '');
   $('b-inicial').textContent = APP.yo.nombre.charAt(0).toUpperCase();
   $('t-admin').hidden = !APP.yo.admin;
 }
 
 function pantallaCuenta() {
   $('c-nombre').textContent = APP.yo.nombre;
-  $('c-rol').textContent = APP.yo.admin ? 'Administrador' : 'Usuario';
+  $('c-rol').textContent = APP.yo.prueba ? 'Encargado (prueba en este dispositivo)' : APP.yo.admin ? 'Administrador' : 'Usuario';
+  $('b-prueba').hidden = !APP.yo.adminReal;
+  $('b-prueba').textContent = APP.yo.prueba ? 'Volver a ser administrador en este dispositivo' : '🧪 Probar como encargado en este dispositivo';
   $('c-disp').textContent = dispositivo();
   $('c-host').textContent = location.host + (instalada() ? ' (app instalada)' : '');
   $('c-version').textContent = VERSION_APP;
@@ -49,6 +51,19 @@ document.querySelectorAll('.tabs .tab[data-tab]').forEach(function (t) {
 $('b-cuenta').addEventListener('click', function () { abrir('cuenta'); });
 $('b-volver').addEventListener('click', volver);
 $('b-salir').addEventListener('click', salir);
+// Solo para probar (Feli): este dispositivo como encargado. Se recarga para armar todo de nuevo.
+$('b-prueba').addEventListener('click', async function () {
+  this.disabled = true;
+  estado('e-cuenta', 'Cambiando…', 'run');
+  const r = await api('probarComoEncargado', !APP.yo.prueba);
+  this.disabled = false;
+  if (!r.ok) return estado('e-cuenta', r.sinConexion ? 'Hace falta señal para cambiarlo.' : r.error, 'bad');
+  const inicio = guardado.leerJSON(K.inicio, {}) || {};
+  inicio.yo = r.yo;
+  guardado.guardarJSON(K.inicio, inicio);
+  location.hash = '';
+  location.reload();
+});
 
 // Pedidos del formulario que quedaron guardados en este teléfono: la app también los manda
 PedidosGuardados.alCambiar(function () {

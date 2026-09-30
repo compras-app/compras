@@ -126,6 +126,7 @@
             <button type="button" id="tb-todos" aria-pressed="false">Todos</button>
           </div>
           <label class="filtro" id="tb-sitio-l" hidden><span>Granja</span><select id="tb-sitio"></select></label>
+          <button type="button" class="chip-filtro" id="tb-aprobar" aria-pressed="false" hidden>⏳ Para aprobar</button>
           <label class="filtro" id="tb-resp-l" hidden><span>Responsable</span><select id="tb-resp"></select></label>
           <button type="button" class="refrescar" id="tb-refrescar" aria-label="Actualizar el tablero"><span class="ic">↻</span> <span id="tb-hace"></span></button>
         </div>
@@ -157,6 +158,7 @@
       </div>
       <div class="pila">
         <p class="estado" id="e-cuenta" hidden></p>
+        <button class="btn2" id="b-prueba" type="button" hidden></button>
         <button class="btn2" id="b-salir" type="button">Cerrar sesión en este dispositivo</button>
       </div>
     </section>
@@ -181,6 +183,7 @@
           <div class="bloque">
             <div class="act-h"><h3 id="tj-prod-t">Productos</h3><button type="button" class="btn-chico" id="tj-varios" hidden>🎯 Proveedores para varios</button></div>
             <div id="tj-productos"></div>
+            <button type="button" class="btn2" id="tj-agregar" hidden style="width:auto">+ Agregar producto</button>
           </div>
           <button type="button" class="peligro" id="tj-cancelar" hidden>Cancelar pedido</button>
         </div>

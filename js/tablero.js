@@ -22,7 +22,7 @@
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
 const K_TARJETAS = 'compras_tarjetas';    // tarjetas abiertas hace poco (para verlas sin señal)
 const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1 };
-const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1, deshacerProducto: 1 };      // cambios de un producto (Paso 4)
+const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1, deshacerProducto: 1, agregarProducto: 1, quitarProducto: 1, resolverCambio: 1, reponerProducto: 1 };      // cambios de un producto (Paso 4)
 const ENTREGA_TEXTO = { Retirar: '🏃 Hay que ir a buscarlo', Envío: '🚚 Nos lo traen' };
 const ENTREGA_CORTO = { Retirar: '🏃 A buscar', Envío: '🚚 Nos lo traen' };
 
@@ -121,9 +121,9 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
 /* ---------- Filtros ---------- */
 function armarFiltros() {
   const admin = APP.yo.admin;
-  TB.filtros = { mios: !admin, sitio: '', resp: '' };   // pedido de Feli: los no admins entran con "Mis pedidos"
+  TB.filtros = { mios: !admin, sitio: '', resp: '', aprobar: false };   // pedido de Feli: los no admins entran con "Mis pedidos"
   const sitio = $('tb-sitio'), resp = $('tb-resp');
-  $('tb-sitio-l').hidden = $('tb-resp-l').hidden = !admin;
+  $('tb-sitio-l').hidden = $('tb-resp-l').hidden = $('tb-aprobar').hidden = !admin;
   if (admin) {
     sitio.innerHTML = '<option value="">Ver todos</option>' +
       (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
@@ -137,6 +137,7 @@ function pintarFiltros() {
   $('tb-todos').setAttribute('aria-pressed', String(!TB.filtros.mios));
   $('tb-sitio').value = TB.filtros.sitio;
   $('tb-resp').value = TB.filtros.resp;
+  $('tb-aprobar').setAttribute('aria-pressed', String(!!TB.filtros.aprobar));
 }
 function seVe(t) {
   const f = TB.filtros;
@@ -144,10 +145,12 @@ function seVe(t) {
   if (f.sitio && t.sitio !== f.sitio) return false;
   if (f.resp === '-' && t.responsable) return false;
   if (f.resp && f.resp !== '-' && t.responsable !== f.resp) return false;
+  if (f.aprobar && !t.paraAprobar) return false;
   return true;
 }
 $('tb-mios').addEventListener('click', function () { TB.filtros.mios = true; pintarFiltros(); pintarTablero(); });
 $('tb-todos').addEventListener('click', function () { TB.filtros.mios = false; pintarFiltros(); pintarTablero(); });
+$('tb-aprobar').addEventListener('click', function () { TB.filtros.aprobar = !TB.filtros.aprobar; pintarFiltros(); pintarTablero(); });
 $('tb-sitio').addEventListener('change', function () { TB.filtros.sitio = this.value; pintarTablero(); });
 $('tb-resp').addEventListener('change', function () { TB.filtros.resp = this.value; pintarTablero(); });
 
@@ -227,6 +230,7 @@ function htmlTarjeta(t, enPorRecibir) {
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
     (enPorRecibir && t.entrega ? '<span class="entrega">' + esc(ENTREGA_CORTO[t.entrega] || t.entrega) + '</span>' : '') +
+    (t.paraAprobar && APP.yo && APP.yo.admin ? '<span class="aprobar" title="Cambios para aprobar">⏳ ' + t.paraAprobar + '</span>' : '') +
     (t.responsable ? '<span class="resp" title="Responsable: ' + esc(t.responsable) + '">' + esc(inicial(t.responsable)) + '</span>' : '') +
     '</div></div>';
 }
@@ -704,13 +708,20 @@ function pintarTarjeta() {
   $('tj-editar').hidden = !(admin && p);
   const prods = $('tj-productos');
   if (d && d.lineas) {
-    const ls = lineasConCambios(ref, d.lineas);
+    const todas = lineasConCambios(ref, d.lineas).filter(function (l) { return l.estado !== 'Rechazado' && l.estado !== 'Retirado'; });
+    const ls = todas.filter(vigente);
     const comprados = ls.filter(function (l) { return l.tildado; }).length;
-    $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' comprado' + (comprados > 1 ? 's' : '') : '');
+    const esperan = todas.filter(function (l) { return l.estado === 'Para agregar' || l.estado === 'Para quitar'; }).length;
+    $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' comprado' + (comprados > 1 ? 's' : '') : '') +
+      (esperan ? ' · ⏳ ' + esperan + ' para aprobar' : '');
     $('tj-varios').hidden = !(admin && ls.length > 1);
-    prods.innerHTML = ls.map(function (l) { return htmlProducto(l, admin); }).join('');
+    // Los quitados, abajo de todo
+    const orden = todas.filter(function (l) { return l.estado !== 'Quitado'; }).concat(todas.filter(function (l) { return l.estado === 'Quitado'; }));
+    const mio = ((t && t.solicitante) || (p && p.solicitante)) === APP.yo.nombre;
+    prods.innerHTML = orden.map(function (l) { return htmlProducto(l, admin, mio); }).join('');
+    $('tj-agregar').hidden = !(admin || mio) || !enTb;
   } else {
-    $('tj-varios').hidden = true;
+    $('tj-varios').hidden = $('tj-agregar').hidden = true;
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
@@ -722,6 +733,9 @@ function pintarTarjeta() {
   });
   prods.querySelectorAll('.editar-prod').forEach(function (b) {
     b.addEventListener('click', function () { editarProducto(ref, b.dataset.id); });
+  });
+  prods.querySelectorAll('[data-cambio]').forEach(function (b) {
+    b.addEventListener('click', function () { cambioDeProducto(ref, b.dataset.id, b.dataset.cambio); });
   });
   prods.querySelectorAll('[data-foto]').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
@@ -886,8 +900,17 @@ function fraseEvento(e, d) {
   if (e.entidad === 'linea') {
     const l = ((d && d.lineas) || []).filter(function (x) { return x.id === e.id; })[0];
     const prod = l ? nombreProducto(l) : 'un producto';
-    if (e.accion === 'crear') return 'agregó ' + prod;
+    if (e.accion === 'crear') return (n === 'pedido de agregar' ? 'pidió agregar ' : 'agregó ') + prod;
     switch (e.campo) {
+      case 'Estado':
+        if (n === 'Para quitar') return 'pidió quitar ' + prod;
+        if (n === 'Quitado') return (a === 'Para quitar' ? 'aprobó quitar ' : 'quitó ') + prod;
+        if (n === 'Rechazado') return 'rechazó agregar ' + prod;
+        if (n === 'Retirado') return 'retiró su pedido de agregar ' + prod;
+        if (a === 'Para agregar') return 'aprobó agregar ' + prod;
+        if (a === 'Para quitar') return 'dejó ' + prod + ' en el pedido';
+        if (a === 'Quitado') return 'volvió a poner ' + prod;
+        return '';
       case 'Tildado': return (n === 'SI' ? 'marcó como comprado: ' : 'desmarcó como comprado: ') + prod;
       case 'Familia': return a ? 'cambió el nombre de "' + a + '" a "' + n + '"' : 'le puso el nombre "' + n + '" a "' + (l ? l.texto : prod) + '"';
       case 'Canal': return n ? 'cambió el rubro de ' + prod + ' a ' + n : 'le sacó el rubro a ' + prod;
@@ -1021,10 +1044,24 @@ function lineasConCambios(ref, lineas) {
   const datos = TB.datosProd || guardado.leerJSON(K_PRODUCTOS, null);
   bandeja.lista().forEach(function (m) {
     if (!OPS_PRODUCTO[m.fn] || m.args[0] !== ref) return;
+    if (m.fn === 'agregarProducto') {
+      const a = m.args[1] || {}, f = datos && datos.familias.filter(function (x) { return x[0] === a.familia; })[0];
+      ls.push({ id: 'espera-' + m.clave, texto: a.texto || a.familia, familia: f ? f[0] : '', canal: f ? f[1] : '', enPadron: !!f, familiaEnPadron: !!f,
+                especificacion: a.especificacion || '', cantidad: String(a.cantidad), descripcion: a.descripcion || '', fotos: [], proveedores: [],
+                estado: APP.yo.admin ? '' : 'Para agregar', propuso: APP.yo.nombre, espera: true, nuevo: true });
+      return;
+    }
     const l = ls.filter(function (x) { return x.id === m.args[1]; })[0];
     if (!l) return;
     l.espera = true;
     if (m.fn === 'tildarProducto') { l.tildado = !!m.args[2]; return; }
+    if (m.fn === 'quitarProducto') { l.estado = APP.yo.admin ? 'Quitado' : 'Para quitar'; l.propuso = APP.yo.nombre; return; }
+    if (m.fn === 'reponerProducto') { l.estado = ''; return; }
+    if (m.fn === 'resolverCambio') {
+      if (l.estado === 'Para agregar') l.estado = m.args[2] ? '' : 'Rechazado';
+      else if (l.estado === 'Para quitar') l.estado = m.args[2] ? 'Quitado' : '';
+      return;
+    }
     let c = m.args[2] || {};
     if (m.fn === 'deshacerProducto') { c = (l.deshacer && l.deshacer.antes) || {}; l.deshacer = null; }
     else l.deshacer = null;           // el último cambio pasa a ser este (se ve bien cuando se guarda)
@@ -1058,7 +1095,9 @@ function pedidoConCambios(ref, p) {
   return v;
 }
 
-function htmlProducto(l, admin) {
+function vigente(l) { return !l.estado || l.estado === 'Para quitar'; }
+
+function htmlProducto(l, admin, mio) {
   const sub = [];
   // Lo que escribió el encargado, solo si el producto no estaba en el padrón (si lo eligió de la lista, no hace falta)
   if (!l.enPadron && l.familia && l.texto && l.texto.toLowerCase() !== l.familia.toLowerCase()) sub.push(esc('Escribió: "' + l.texto + '"'));
@@ -1073,18 +1112,105 @@ function htmlProducto(l, admin) {
                 '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w200" alt="Foto" loading="lazy"></a>' : '';
   }).join('');
   const fuera = l.familiaEnPadron === undefined ? !l.enPadron : !l.familiaEnPadron;
-  return '<div class="producto' + (l.tildado ? ' tildado' : '') + '">' +
+  const e = l.estado || '', suyo = l.propuso === APP.yo.nombre;
+  const boton = function (texto, cambio, clase) {
+    return l.nuevo ? '' : '<button type="button" class="' + (clase || 'btn-chico') + '" data-id="' + esc(l.id) + '" data-cambio="' + cambio + '">' + texto + '</button>';
+  };
+  // Pedidos de cambio: qué dice y qué botones tiene
+  let nota = '', botones = '';
+  if (e === 'Para agregar') {
+    nota = '⏳ ' + esc(l.propuso) + ' pidió agregarlo: espera aprobación';
+    if (admin) botones = boton('Aprobar', 'aprobar', 'btn-chico si') + boton('Rechazar', 'rechazar');
+    else if (suyo) botones = boton('Retirar mi pedido', 'retirar');
+  } else if (e === 'Para quitar') {
+    nota = '⏳ ' + esc(l.propuso) + ' pidió quitarlo: espera aprobación';
+    if (admin) botones = boton('Quitarlo', 'aprobar', 'btn-chico si') + boton('Dejarlo', 'rechazar');
+    else if (suyo) botones = boton('Retirar mi pedido', 'retirar');
+  } else if (e === 'Quitado') {
+    nota = 'Quitado del pedido';
+    if (admin) botones = boton('Volver a ponerlo', 'reponer');
+  }
+  const activo = vigente(l) && e !== 'Para agregar';
+  return '<div class="producto' + (l.tildado ? ' tildado' : '') + (e === 'Para agregar' ? ' propuesto' : '') + (e === 'Quitado' ? ' quitado' : '') + '">' +
     '<button type="button" class="tilde" data-id="' + esc(l.id) + '" aria-pressed="' + !!l.tildado + '" aria-label="Comprado" title="' +
-      (l.tildado ? 'Comprado (tocá para desmarcar)' : 'Marcar como comprado') + '">✓</button>' +
+      (l.tildado ? 'Comprado (tocá para desmarcar)' : 'Marcar como comprado') + '"' + (activo && !l.nuevo ? '' : ' disabled') + '>✓</button>' +
     '<div class="prod-c"><b>' + esc(l.cantidad) + ' × ' + esc(nombreProducto(l)) + '</b>' +
-    (l.tildado ? '<span class="comprado">Comprado</span>' : '') +
-    (fuera ? '<span class="fuera">Fuera del padrón</span>' : '') +
+    (l.tildado && activo ? '<span class="comprado">Comprado</span>' : '') +
+    (fuera && e !== 'Quitado' ? '<span class="fuera">Fuera del padrón</span>' : '') +
     (l.espera ? '<span class="espera">' + (APP.enLinea ? 'Guardando…' : '⏳') + '</span>' : '') +
-    sub.map(function (x) { return '<div class="sub">' + x + '</div>'; }).join('') +
-    (fotos ? '<div class="fotos">' + fotos + '</div>' : '') + '</div>' +
-    (admin ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" aria-label="Editar el producto" title="Editar">✏️</button>' : '') +
+    (nota ? '<div class="cambio">' + nota + '</div>' : '') +
+    (e === 'Quitado' ? '' : sub.map(function (x) { return '<div class="sub">' + x + '</div>'; }).join('')) +
+    (fotos && e !== 'Quitado' ? '<div class="fotos">' + fotos + '</div>' : '') +
+    (botones ? '<div class="cambio-b">' + botones + '</div>' : '') + '</div>' +
+    (admin && activo && !l.nuevo ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" aria-label="Editar el producto" title="Editar">✏️</button>'
+      : (!admin && mio && e === '' && !l.nuevo ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" data-cambio="quitar" aria-label="Pedir que lo quiten" title="Pedir que lo quiten">✕</button>' : '')) +
     '</div>';
 }
+
+/** Botones de los pedidos de cambio: quitar (encargado), aprobar/rechazar (admin), retirar (quien lo pidió). */
+async function cambioDeProducto(ref, id, cambio) {
+  const l = lineaVista(ref, id);
+  if (!l) return;
+  const nombre = '"' + nombreProducto(l) + '"';
+  if (cambio === 'quitar') {
+    const si = await dialogo({ titulo: '¿Pedir que quiten ' + nombre + '?', texto: 'Un admin lo tiene que aprobar. Mientras tanto sigue en el pedido.',
+      botones: [{ texto: 'Sí, pedir que lo quiten', clase: 'btn', valor: true }, { texto: 'No, volver', valor: null }] });
+    if (!si) return;
+    bandeja.agregar('quitarProducto', [ref, id], 'pedir que quiten ' + nombre);
+  } else if (cambio === 'aprobar' || cambio === 'rechazar') {
+    const que = l.estado === 'Para agregar' ? (cambio === 'aprobar' ? 'aprobar que se agregue ' : 'rechazar que se agregue ')
+                                             : (cambio === 'aprobar' ? 'quitar ' : 'dejar ');
+    bandeja.agregar('resolverCambio', [ref, id, cambio === 'aprobar'], que + nombre);
+  } else if (cambio === 'reponer') {
+    bandeja.agregar('reponerProducto', [ref, id], 'volver a poner ' + nombre);
+  } else if (cambio === 'quitarAdmin') {
+    const si = await dialogo({ titulo: '¿Quitar ' + nombre + ' del pedido?', texto: 'No se borra: queda tachado y lo podés volver a poner.',
+      botones: [{ texto: 'Sí, quitarlo', clase: 'btn peligro-btn', valor: true }, { texto: 'No, volver', valor: null }] });
+    if (!si) return;
+    bandeja.agregar('quitarProducto', [ref, id], 'quitar ' + nombre);
+  } else if (cambio === 'retirar') {
+    bandeja.agregar('resolverCambio', [ref, id, false], 'retirar tu pedido sobre ' + nombre);
+  }
+  pintarTarjeta();
+}
+
+/** Agregar un producto: el admin lo agrega directo; el encargado (en un pedido suyo) lo pide y un admin lo aprueba. */
+async function agregarProductoAlPedido(ref) {
+  const datos = await datosProductos();
+  const familias = datos ? datos.familias : [];
+  let elegida = null;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML =
+    (APP.yo.admin ? '' : '<p class="nota">Un admin lo tiene que aprobar. Hasta entonces se ve en gris.</p>') +
+    '<div class="campo"><label for="ap-nombre">Producto</label><input type="text" id="ap-nombre" autocomplete="off" placeholder="Buscalo o escribilo">' +
+      '<div class="sugerencias" id="ap-nombres" hidden></div></div>' +
+    '<div class="fila2"><div class="campo"><label for="ap-espec">Especificación</label><input type="text" id="ap-espec" autocomplete="off" placeholder="Medida, modelo…"></div>' +
+      '<div class="campo"><label for="ap-cant">Cantidad</label><input type="text" id="ap-cant" inputmode="decimal" autocomplete="off"></div></div>' +
+    '<div class="campo"><label for="ap-desc">Detalle (opcional)</label><input type="text" id="ap-desc" autocomplete="off" placeholder="Para qué es, marca…"></div>';
+  const d = await dialogo({
+    titulo: APP.yo.admin ? 'Agregar un producto' : 'Pedir agregar un producto', cuerpo: cuerpo,
+    botones: [{ texto: APP.yo.admin ? 'Agregar' : 'Pedir que lo agreguen', clase: 'btn', id: 'dg-ok', valor: function () {
+      const texto = $('ap-nombre').value.trim();
+      return { familia: elegida && elegida === texto ? elegida : '', texto: texto, especificacion: $('ap-espec').value.trim(),
+               cantidad: $('ap-cant').value.trim().replace(',', '.'), descripcion: $('ap-desc').value.trim() };
+    } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      const revisar = function () { $('dg-ok').disabled = !$('ap-nombre').value.trim() || !(Number($('ap-cant').value.trim().replace(',', '.')) > 0); };
+      ['ap-nombre', 'ap-cant'].forEach(function (i) { $(i).addEventListener('input', revisar); });
+      conSugerencias($('ap-nombre'), $('ap-nombres'), function (q) {
+        if (!q) return [];
+        return familias.filter(function (f) { return coincide(f[0], q); }).slice(0, 8).map(function (f) { return { texto: f[0], valor: f[0] }; });
+      }, function (f) { $('ap-nombre').value = f; elegida = f; revisar(); $('ap-espec').focus(); });
+      revisar();
+      $('ap-nombre').focus();
+    }
+  });
+  if (!d) return;
+  bandeja.agregar('agregarProducto', [ref, d], (APP.yo.admin ? 'agregar ' : 'pedir que agreguen ') + '"' + d.texto + '"');
+  pintarTarjeta();
+}
+$('tj-agregar').addEventListener('click', function () { if (TB.abierta) agregarProductoAlPedido(TB.abierta); });
 
 function lineaVista(ref, id) {
   const d = TB.detalle;
@@ -1105,7 +1231,8 @@ function productoMandado(m, r) {
   if (r.ok && r.linea) {
     const poner = function (d) {
       if (!d || !d.lineas) return;
-      d.lineas = d.lineas.map(function (l) { return l.id === r.linea.id ? r.linea : l; });
+      if (d.lineas.some(function (l) { return l.id === r.linea.id; })) d.lineas = d.lineas.map(function (l) { return l.id === r.linea.id ? r.linea : l; });
+      else d.lineas = d.lineas.concat([r.linea]);          // agregado
     };
     const todos = detallesGuardados();
     if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
@@ -1264,6 +1391,7 @@ async function editarProducto(ref, id) {
       '<div class="campo"><label for="ep-cant">Cantidad</label><input type="text" id="ep-cant" inputmode="decimal" autocomplete="off"></div></div>' +
     '<div class="campo"><label for="ep-rubro">Rubro</label><select id="ep-rubro"></select><p class="nota" id="ep-rubro-nota" hidden>Con proveedores particulares va sin rubro: el pedido les llega solo a ellos.</p></div>' +
     '<div class="campo"><label for="sp-q">Proveedores particulares (opcional)</label>' + htmlSelectorProv() + '</div>' +
+    '<button type="button" class="peligro" id="ep-quitar" style="margin-top:0;align-self:flex-start">Quitar este producto del pedido</button>' +
     '<p class="nota"><b>Solo en este pedido:</b> cambia este pedido. <b>También en el padrón:</b> además queda para los pedidos que vengan (nombre, rubro y proveedores; la especificación y la cantidad son de este pedido).</p>';
 
   const inicial = { familia: l.familia || '', especificacion: l.especificacion || '', cantidad: String(l.cantidad || ''), canal: l.canal || '',
@@ -1319,10 +1447,12 @@ async function editarProducto(ref, id) {
         revisar();
       });
       if (u) $('ep-deshacer').addEventListener('click', function () { if (cerrarDialogoActual) cerrarDialogoActual({ deshacer: true }); });
+      $('ep-quitar').addEventListener('click', function () { if (cerrarDialogoActual) cerrarDialogoActual({ quitar: true }); });
       armarSelectorProv({ provs: provs, proveedores: proveedores, datos: datos, rubro: function () { return sel.value; }, alCambiar: revisar });
     }
   });
   if (!res) return;
+  if (res.quitar) return cambioDeProducto(ref, id, 'quitarAdmin');
   if (res.deshacer) {
     bandeja.agregar('deshacerProducto', [ref, id], 'deshacer el cambio de "' + nombreProducto(l) + '" (' + u.resumen + ')');
     return pintarTarjeta();
