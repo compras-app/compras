@@ -570,6 +570,8 @@
   input[readonly]{background:var(--head);color:var(--ink-soft)}
   .enviados{margin-top:6px;font-size:13px;color:var(--ink-soft)}
   .tab[hidden],.paso .fila[hidden]{display:none}
+  #motorestado{justify-content:center;margin:0 auto 12px;max-width:760px;text-align:left}
+  .recibidos .uno.pend .granja::after{content:' · pendientes';color:var(--accent)}
   /* Celular: la pantalla del programa, apilada (lo que más se usa ahí es Armar pedido) */
   @media (max-width:700px){
     .topbar{flex-wrap:wrap;gap:0 14px;padding:0 12px;align-items:center}
@@ -615,6 +617,7 @@
     <div class="error" id="error"></div>
 
     <div class="bajar" id="bajar">
+      <p class="estado" id="motorestado"></p>
       <button class="btn grande" id="bajarbtn">Bajar existencias de Albor</button>
       <label class="field">Existencias hasta <input type="date" id="bajarhasta"></label>
       <p class="nota">Entra a Albor y trae las tres oficinas y las granjas en un solo reporte, hasta la
@@ -656,7 +659,9 @@
       <span class="botones">
         <button class="btn" id="excel">Exportar a Excel</button>
         <button class="btn" id="print">Imprimir / PDF</button>
+        <button class="btn" id="conteoguardar" title="El conteo real queda en esta computadora; esto lo guarda también en la planilla (2 meses)">Guardar en el historial</button>
       </span>
+      <span class="aviso" id="conteoaviso"></span>
     </div>
 
     <div class="excl" id="excl">
@@ -3183,11 +3188,94 @@
   var RECIBIDOS = [];         // los pedidos que esperan en compras
   var PEDIDO_ELEGIDO = null;  // el que la oficina está usando ahora
 
-  /* El que maneja Albor. Antes era Python dentro del programa (pywebview);
-     ahora es el Programa de Compras instalado en la computadora, sin pantalla
-     (Paso T2). Mientras no esté, null: la pantalla hace lo de siempre en el
-     navegador (bajar el archivo para Albor, arrastrar el CSV de existencias). */
-  function motor(){ return null; }
+  /* ---------- El motor de Albor (Paso T2) ----------
+     Antes era Python dentro del programa (window.pywebview.api). Ahora es el
+     Programa de Compras instalado en ESTA computadora, sin pantalla: escucha
+     en 127.0.0.1 y solo le contesta a la app. motor() devuelve lo mismo que
+     antes (las mismas funciones), o null si el programa no está abierto: ahí
+     la pantalla hace lo del navegador (bajar el archivo para Albor,
+     arrastrar el CSV de existencias).
+     Lo que antes Python le empujaba a la pantalla (avance y pausas) ahora se
+     pregunta cada medio segundo mientras dura un pedido (/avance). */
+  var MOTOR = { url: 'http://127.0.0.1:47615', vivo: false, n: 0, pausaVista: '' };
+  var EN_CELULAR = /iPhone|iPad|iPod|Android/.test(navigator.userAgent);
+
+  function pedirMotor(ruta, cuerpo, limiteMs){
+    var ctl = window.AbortController ? new AbortController() : null;
+    var t = limiteMs ? setTimeout(function(){ if(ctl) ctl.abort(); }, limiteMs) : null;
+    return fetch(MOTOR.url + ruta, {
+      method: cuerpo ? 'POST' : 'GET', cache: 'no-store', signal: ctl ? ctl.signal : undefined,
+      headers: cuerpo ? { 'Content-Type': 'application/json', 'X-Compras': '1' } : { 'X-Compras': '1' },
+      body: cuerpo ? JSON.stringify(cuerpo) : undefined
+    }).then(function(r){ return r.json(); }).finally(function(){ if(t) clearTimeout(t); });
+  }
+
+  /* Lo que llegó desde la última vez: líneas de avance y pausas. */
+  function leerAvance(){
+    return pedirMotor('/avance?desde=' + MOTOR.n, null, 4000).then(function(r){
+      (r.eventos || []).forEach(function(e){
+        MOTOR.n = Math.max(MOTOR.n, e.n);
+        if(e.tipo === 'linea'){ var f = window[e.salida]; if(f) f(e.texto); }
+      });
+      // La pausa a la vista (también si se recargó la página en el medio)
+      var p = r.pausa;
+      if(p && MOTOR.pausaVista !== p.texto){ MOTOR.pausaVista = p.texto; window.__alborPausa(p.texto, p.boton); }
+      if(!p) MOTOR.pausaVista = '';
+    }).catch(function(){});
+  }
+
+  function llamarMotor(fn, args){
+    var corriendo = true;
+    (function mirar(){
+      if(!corriendo) return;
+      leerAvance().then(function(){ setTimeout(mirar, 500); });
+    })();
+    return pedirMotor('/llamar', { fn: fn, args: args })
+      .then(function(r){ return leerAvance().then(function(){ return r; }); })
+      .catch(function(e){ return { ok: false, motivo: 'Se perdió la conexión con el Programa de Compras de esta computadora (' + e.message + ').' }; })
+      .finally(function(){ corriendo = false; });
+  }
+
+  var MOTOR_API = {
+    bajar_existencias: function(puntos, hasta){ return llamarMotor('bajar_existencias', [puntos, hasta]); },
+    cargar_transferencia: function(b, a, e){ return llamarMotor('cargar_transferencia', [b, a, e]); },
+    cargar_egresos: function(c, a, e){ return llamarMotor('cargar_egresos', [c, a, e]); },
+    responder_carga: function(que){ MOTOR.pausaVista = ''; return pedirMotor('/llamar', { fn: 'responder_carga', args: [que] }); },
+    cerrar_albor: function(){ return pedirMotor('/llamar', { fn: 'cerrar_albor', args: [] }); },
+    abrir_carpeta: function(ruta){ return pedirMotor('/llamar', { fn: 'abrir_carpeta', args: [ruta] }); }
+  };
+
+  function motor(){ return MOTOR.vivo ? MOTOR_API : null; }
+
+  /* ¿Está abierto el programa en esta computadora? Se pregunta al abrir y
+     cada 15 segundos (si se abre después, la pantalla se entera sola). */
+  function buscarMotor(){
+    if(!ES_ADMIN || EN_CELULAR) return;
+    pedirMotor('/estado', null, 2500).then(function(r){
+      var antes = MOTOR.vivo;
+      MOTOR.vivo = !!(r && r.ok);
+      if(MOTOR.vivo && !antes){ MOTOR.n = r.n || 0; }
+      pintarMotor();
+    }).catch(function(){ MOTOR.vivo = false; pintarMotor(); });
+  }
+
+  /* Con el programa: "Bajar existencias de Albor" y "Cargar en Albor". Sin
+     él: arrastrar el CSV y el archivo para Albor, como en el navegador. */
+  function pintarMotor(){
+    var vivo = MOTOR.vivo;
+    document.documentElement.toggleAttribute('data-app', vivo);
+    $('bajar').classList.toggle('on', ES_ADMIN && !EN_CELULAR);
+    $('rebajar').classList.toggle('on', vivo);
+    $('bajarbtn').disabled = !vivo;
+    $('motorestado').innerHTML = vivo
+      ? '<span class="punto"></span>Programa de Compras de esta computadora: <b>listo</b>.'
+      : '<span class="punto"></span>El <b>Programa de Compras</b> no está abierto en esta computadora. ' +
+        'Abrilo (arranca solo al prender la compu) para usar Albor desde acá. Hasta entonces podés arrastrar el CSV abajo. ' +
+        'Si Chrome pregunta si esta página puede acceder a otros dispositivos de la red local, tocá <b>Permitir</b>.';
+    $('motorestado').className = 'estado ' + (vivo ? 'ok' : 'falta');
+    $('pcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
+    $('gcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
+  }
 
   function errorA(msg){ var e = $('aerror'); e.textContent = msg; e.classList.add('on'); }
   function limpiarErrorA(){ $('aerror').classList.remove('on'); }
@@ -3641,11 +3729,13 @@
   /* Los que mandaron las granjas y todavía no se transfirieron. */
   async function refrescarRecibidos(){
     if(!ES_ADMIN) return;
-    var r = await api('listarPedidosGranja', ['Enviado']);
+    var r = await api('listarPedidosGranja', ['Enviado'], true);
     if(!r.ok){ if(!r.sinConexion) errorP('No se pudieron traer los pedidos: ' + (r.error || '')); return; }
     RECIBIDOS = (r.pedidos || []).map(function(p){
-      return { ruta: p.id, id: p.id, granja: p.granja, quien: p.quien, observaciones: p.observaciones,
-               fecha: new Date(p.fecha).toLocaleString('sv-SE').slice(0, 16), renglones: p.renglones };
+      var pend = p.estado !== 'Enviado';                // transferido, con pendientes por transferir
+      return { ruta: p.id + (pend ? '#p' : ''), id: p.id, granja: p.granja, quien: p.quien, observaciones: p.observaciones,
+               fecha: new Date(pend ? p.procesado || p.fecha : p.fecha).toLocaleString('sv-SE').slice(0, 16),
+               renglones: pend ? p.quedan : p.renglones, modo: pend ? 'pendientes' : '', pendientes: p.pendientes };
     });
     pintarRecibidos();
     actualizarBadge();
@@ -3653,7 +3743,7 @@
 
   function actualizarBadge(){
     var v = vistos();
-    var nuevos = RECIBIDOS.filter(function(p){ return !v[p.id || p.archivo]; }).length;
+    var nuevos = RECIBIDOS.filter(function(p){ return !p.modo && !v[p.id || p.archivo]; }).length;   // los pendientes no cuentan como nuevos
     var b = $('badgepedidos');
     b.textContent = nuevos || '';
     b.classList.toggle('on', nuevos > 0);
@@ -3669,15 +3759,19 @@
       h.push('<div class="vacio">No hay pedidos esperando.</div>');
     }
     RECIBIDOS.forEach(function(p){
-      var nuevo = !v[p.id || p.archivo];
+      var nuevo = !p.modo && !v[p.id || p.archivo];
       var elegido = PEDIDO_ELEGIDO && PEDIDO_ELEGIDO.ruta === p.ruta;
-      h.push('<div class="uno' + (elegido ? ' elegido' : '') + '" data-ruta="' + esc(p.ruta) + '">');
+      h.push('<div class="uno' + (elegido ? ' elegido' : '') + (p.modo ? ' pend' : '') + '" data-ruta="' + esc(p.ruta) + '"' +
+             (p.modo ? ' title="Transferir lo que quedó pendiente de este pedido"' : '') + '>');
       h.push(nuevo ? '<span class="nuevo" title="Sin abrir"></span>' : '<span class="visto"></span>');
       h.push('<span class="quien">' + esc(p.quien || 'sin nombre') + '</span>');
       h.push('<span class="granja">' + esc(p.granja || '') + '</span>');
       h.push('<span class="cuando">' + esc(p.fecha || '') + '</span>');
-      h.push('<span class="cuanto">' + p.renglones + ' insumos</span>');
+      h.push('<span class="cuanto">' + p.renglones + (p.modo ? ' pendiente' + (p.renglones === 1 ? '' : 's') : ' insumos') + '</span>');
       h.push('</div>');
+      if(elegido && p.modo && p.pendientes){
+        h.push('<div class="obs"><b>Pendientes:</b> ' + esc(p.pendientes) + '</div>');
+      }
       if(elegido && p.observaciones){
         h.push('<div class="obs"><b>Observaciones:</b> ' + esc(p.observaciones) + '</div>');
       }
@@ -3693,9 +3787,13 @@
   async function usarPedidoRecibido(ruta){
     var resumen = RECIBIDOS.filter(function(p){ return p.ruta === ruta; })[0];
     if(!resumen) return;
-    var d = await api('leerPedidoGranja', ruta);
+    var d = await api('leerPedidoGranja', resumen.id);
     if(!d || !d.ok){ errorP('No se pudo leer el pedido: ' + ((d && d.error) || '')); return; }
-    d.pedido.items = d.items;
+    /* Los pendientes de un pedido ya transferido se cargan como un pedido
+       nuevo, con lo que todavía falta (Feli). */
+    d.pedido.items = resumen.modo === 'pendientes'
+      ? d.items.filter(function(i){ return i.queda > 0; }).map(function(i){ return Object.assign({}, i, { cantidad: i.queda }); })
+      : d.items;
 
     var items = d.pedido.items || [];
     PEDIDO = {
@@ -3703,7 +3801,7 @@
       filas: items.map(function(i){ return [i.cod, i.nombre, i.cantidad, i.cuenta || '']; }),
       filaCab: -1,
       mapa: {cod:0, nom:1, cant:2, cta:3},
-      nombre: (d.pedido.granja || '') + ' · ' + (d.pedido.quien || '')
+      nombre: (resumen.modo === 'pendientes' ? 'Pendientes de ' : '') + (d.pedido.granja || '') + ' · ' + (d.pedido.quien || '')
     };
     PEDIDO_ELEGIDO = resumen;
     marcarVisto(resumen.id || resumen.archivo);
@@ -3715,7 +3813,8 @@
        Primero se busca el punto de destino exacto, que es el dato firme;
        recién si no aparece se prueba por el nombre del envío. */
     var granja = norm(d.pedido.granja || '');
-    var calza = DESTINOS.filter(function(x){
+    var calza = DESTINOS.filter(function(x){ return norm(granjaDeEnvio(x)) === granja; })[0] ||
+      DESTINOS.filter(function(x){
       return x.bloques.some(function(b){ return norm(b.destinoNombre) === granja; });
     })[0] || DESTINOS.filter(function(x){
       return granja && norm(x.nombre).indexOf(granja) >= 0;
@@ -3828,21 +3927,28 @@
 
   /* Las granjas que puede elegir el encargado salen de la misma lista de
      envíos que usa la oficina: un solo lugar donde mantenerlas. Una por
-     envío, la del primer comprobante: La Colorada (envío doble) sale una
-     sola vez, como "G4 - LA COLORADA" (Feli: GRANJA LA COLORADA no se usa).
+     envío, con los destinos de sus comprobantes juntos: La Colorada (envío
+     doble) sale como "G4 - LA COLORADA/GRANJA LA COLORADA" (Feli), un solo
+     pedido que la oficina transfiere en sus dos mitades.
      Cada encargado ve solo las suyas (Admin → Personas); los admins, todas. */
+  function granjaDeEnvio(d){
+    var n = [];
+    d.bloques.forEach(function(b){ if(b.destinoNombre && n.indexOf(b.destinoNombre) < 0) n.push(b.destinoNombre); });
+    return n.join('/');
+  }
   function granjasDelPedido(){
     var nombres = [];
     DESTINOS.forEach(function(d){
-      var n = d.bloques[0] && d.bloques[0].destinoNombre;
+      var n = granjaDeEnvio(d);
       if(n && nombres.indexOf(n) < 0 && puedoArmarPara(n)) nombres.push(n);
     });
     return nombres.sort(cmp);
   }
+  /* "A/B" (envío doble) vale si la persona tiene "A/B", "A" o "B". */
   function puedoArmarPara(granja){
     if(!TR.granjas) return true;                       // admins: todas
-    var k = norm(String(granja || '').trim());
-    return TR.granjas.some(function(g){ return norm(String(g).trim()) === k; });
+    var partes = [granja].concat(String(granja || '').split('/')).map(function(x){ return norm(String(x).trim()); });
+    return TR.granjas.some(function(g){ return partes.indexOf(norm(String(g).trim())) >= 0; });
   }
 
   function llenarGranjasDelPedido(){
@@ -3924,7 +4030,7 @@
 
   async function bajarDeAlbor(puntos, boton, etiqueta, hasta, usar){
     if(bajando || CARGANDO) return;
-    if(!motor()){ mostrarError('Esto funciona dentro del programa, no desde el navegador.'); return; }
+    if(!motor()){ mostrarError('Abrí el Programa de Compras en esta computadora: es el que entra a Albor.'); return; }
     if(!puntos.length){
       mostrarError('No hay puntos de stock para pedir. Revisá la lista de granjas.');
       return;
@@ -4090,15 +4196,29 @@
              lineaFallados(x.fallados) + '</li>';
     });
 
-    // El pedido de la granja ya se usó: pasa a Procesados con el número.
+    /* El pedido de la granja ya se usó: en la planilla queda "Transferido",
+       con lo que faltó en la columna Pendientes (Feli). Si eran los
+       pendientes de un pedido, se tachan los que salieron. */
     if(r && r.ok && pedido){
       var nros = hechos.map(function(x){ return x.comprobante; }).filter(Boolean).join(' / ');
-      var m = await motor().marcar_procesado(pedido.ruta, nros);
-      if(m && m.ok){
-        lineas.push('<li>El pedido de ' + esc(pedido.granja || '') + ' pasó a Procesados.</li>');
-        PEDIDO_ELEGIDO = null;
-        refrescarRecibidos();
+      var m;
+      if(pedido.modo === 'pendientes'){
+        m = await api('marcarPendientesTransferidos', pedido.id, { comprobantes: nros,
+              items: ANALISIS.items.map(function(i){ return { cod: i.cod, transferido: i.total }; }) });
+        if(m.ok) lineas.push('<li>Pendientes de ' + esc(pedido.granja || '') + ': ' + (m.quedan
+                               ? 'se anotó lo que salió. Todavía falta' + (m.quedan === 1 ? ' 1 pendiente' : 'n ' + m.quedan + ' pendientes') +
+                                 ' (los que salieron completos quedaron tachados en la planilla).'
+                               : 'quedaron todos tachados en la planilla. Ya no queda ninguno.') + '</li>');
+      }else{
+        m = await api('marcarTransferido', pedido.id, { comprobantes: nros,
+              items: ANALISIS.items.map(function(i){ return { cod: i.cod, transferido: i.total, pendiente: i.pendiente }; }) });
+        if(m.ok) lineas.push('<li>El pedido de ' + esc(pedido.granja || '') + ' quedó como Transferido' +
+                             (m.quedan ? ', con ' + m.quedan + ' pendiente' + (m.quedan === 1 ? '' : 's') + '.' : '.') + '</li>');
       }
+      if(!m.ok) lineas.push('<li style="color:#b3261e">No se pudo anotar en la planilla: ' + esc(m.error || '') +
+                            '. La transferencia en Albor quedó hecha.</li>');
+      PEDIDO_ELEGIDO = null;
+      refrescarRecibidos();
     }
     terminarAlbor(r, lineas);
   }
@@ -4188,6 +4308,30 @@
   });
 
   function pedidoActivo(){ return $('panel-pedido').classList.contains('on'); }
+
+  /* ---------- Historial de conteos (Paso T2) ----------
+     El conteo real queda en esta computadora (Feli). Este botón lo guarda
+     además en la planilla (App_Conteos), con lo que decía el sistema y la
+     diferencia. El historial dura 2 meses. */
+  async function guardarConteoEnHistorial(){
+    var aviso = $('conteoaviso');
+    if(!DATA){ aviso.textContent = 'Primero cargá las existencias.'; return; }
+    var filas = DATA.insumos.map(function(it){
+      var v = numEscrito(CONTEO[clave(it.cod)]);
+      return v === null ? null : { cod: it.cod, nombre: it.nombre, cat: it.cat, sistema: it.total, conteo: v };
+    }).filter(Boolean);
+    if(!filas.length){ aviso.textContent = 'Todavía no cargaste ningún conteo real.'; return; }
+    if(!confirm('¿Guardar en el historial el conteo de ' + filas.length + ' insumos?\n\n' +
+                'Queda en la planilla 2 meses. En esta computadora sigue como está.')) return;
+    var b = $('conteoguardar');
+    b.disabled = true; aviso.textContent = 'Guardando…';
+    var r = await api('guardarConteo', { id: 'Q' + nuevoId().slice(1), responsable: $('resp').value.trim(),
+                                         hasta: DATA.hasta || '', filas: filas });
+    b.disabled = false;
+    aviso.textContent = r.ok ? 'Guardado en el historial: ' + r.n + ' insumos.'
+                             : (r.sinConexion ? 'Hace falta señal para guardarlo. Probá de nuevo en un rato.' : 'No se pudo: ' + (r.error || ''));
+  }
+  $('conteoguardar').addEventListener('click', guardarConteoEnHistorial);
 
   /* ============ Arranque ============ */
 
@@ -4289,6 +4433,9 @@
     bandeja.procesar();
     traerDatos();
     refrescarInicio();
+    pintarMotor();
+    buscarMotor();
+    if(!window.__buscandoMotor) window.__buscandoMotor = setInterval(function(){ if(!document.hidden && !CARGANDO && !bajando) buscarMotor(); }, 15000);
   }
 
   // Hooks de verificación / automatización: la misma ruta que la carga de archivo.

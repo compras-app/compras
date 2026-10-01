@@ -450,38 +450,39 @@ label.check input{width:22px;height:22px;min-height:0;flex:none;margin:1px 0 0;a
 
 
 /* ---------- Prueba (Feli, 2026-10-01): Compras con el aspecto de Transferencias ----------
-   <html data-aspecto="programa" data-theme="light">, solo en el dispositivo que lo elige
-   (Tu cuenta). Los colores, la letra y los recuadros del Programa de Compras
-   (pagina/transferencias). "html" adelante: así le gana al color de cada uno (#estiloColor). */
+   <html data-aspecto="programa">, solo en el dispositivo que lo elige (Tu cuenta). Los
+   colores, la letra y los recuadros del Programa de Compras (pagina/transferencias) con
+   fondo oscuro (Feli: "que quede en fondo oscuro, como Transferencias").
+   "html" adelante: así le gana al color de cada uno (#estiloColor). */
 html:root[data-aspecto="programa"]{
-  --bg:#f6f6f4; --fg:#1c1c1a; --muted:#6b6b66; --line:#dcdcd6; --soft:#efefeb;
-  --accent:#7a1f2b; --accent-soft:#f3e9ea; --accent-fg:#ffffff;
-  --danger:#b3261e; --danger-soft:#fdf1f1; --warn:#8a5a00; --warn-soft:#fdf3dd;
-  --band:#ffffff; --band-fg:#1c1c1a; --tablero:#f6f6f4;
-  --col:#efefeb; --tj:#ffffff; --tj-sombra:0 1px 2px rgba(0,0,0,.08); --tj-hover:#fbfbf9;
-  --tj-roja:#fbd4d2; --tj-roja-hover:#f8c3c0; --tj-roja-fg:#5c1111;
+  --bg:#141416; --fg:#eceae5; --muted:#a3a099; --line:#33333a; --soft:#1d1d20;
+  --accent:#d08a93; --accent-soft:#33232a; --accent-fg:#1a1013;
+  --danger:#f08b84; --danger-soft:#3a1f1d; --warn:#e8c070; --warn-soft:#332a17;
+  --band:#1d1d20; --band-fg:#eceae5; --tablero:#141416;
+  --col:#1d1d20; --tj:#26262c; --tj-sombra:0 1px 2px rgba(0,0,0,.35); --tj-hover:#2d2d34;
+  --tj-roja:#5a2028; --tj-roja-hover:#6a2630; --tj-roja-fg:#ffe9ea;
   --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  color-scheme:light}
+  color-scheme:dark}
 html[data-aspecto="programa"] body{font-size:15px;-webkit-font-smoothing:antialiased}
 html[data-aspecto="programa"] .barra{box-shadow:none;border-bottom:1px solid var(--line)}
-html[data-aspecto="programa"] .barra button:hover{background:var(--soft)}
+html[data-aspecto="programa"] .barra button:hover{background:#26262c}
 html[data-aspecto="programa"] .barra h1{font-weight:650;font-size:16px;letter-spacing:-.01em}
 html[data-aspecto="programa"] .inicial{background:var(--accent-soft);color:var(--accent)}
-html[data-aspecto="programa"] .apartados{background:var(--soft)}
-html[data-aspecto="programa"] .apartados a[aria-current="page"]{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08)}
-html[data-aspecto="programa"] .tabs{background:#fff;border-color:var(--line)}
-html[data-aspecto="programa"] .caja,html[data-aspecto="programa"] .panel{background:#fff}
+html[data-aspecto="programa"] .apartados{background:#26262c}
+html[data-aspecto="programa"] .apartados a[aria-current="page"]{background:#141416;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+html[data-aspecto="programa"] .tabs{background:var(--soft);border-color:var(--line)}
+html[data-aspecto="programa"] .caja,html[data-aspecto="programa"] .panel{background:var(--soft)}
 html[data-aspecto="programa"] .caja{border-width:1px;border-radius:10px}
 html[data-aspecto="programa"] .caja h2{font-size:13px;font-weight:600}
 html[data-aspecto="programa"] .btn{border-radius:6px}
-html[data-aspecto="programa"] .btn2,html[data-aspecto="programa"] .choice,html[data-aspecto="programa"] input{border-width:1px;border-radius:6px;background:#fff}
+html[data-aspecto="programa"] .btn2,html[data-aspecto="programa"] .choice,html[data-aspecto="programa"] input{border-width:1px;border-radius:6px;background:var(--soft)}
 html[data-aspecto="programa"] .tablero,
 html[data-aspecto="programa"][data-estilo] .tablero{background:var(--bg)}
 html[data-aspecto="programa"] .tablero .col,
 html[data-aspecto="programa"][data-estilo] .tablero .col{background:var(--col);border:1px solid var(--line);border-top:1px solid var(--line);border-radius:10px;box-shadow:none}
 html[data-aspecto="programa"] .tablero .tarjeta,
-html[data-aspecto="programa"][data-estilo] .tablero .tarjeta{background:#fff;color:var(--fg);border:1px solid var(--line);border-radius:7px;box-shadow:var(--tj-sombra)}
+html[data-aspecto="programa"][data-estilo] .tablero .tarjeta{background:var(--tj);color:var(--fg);border:1px solid var(--line);border-radius:7px;box-shadow:var(--tj-sombra)}
 html[data-aspecto="programa"] .tablero .tarjeta:hover,
 html[data-aspecto="programa"][data-estilo] .tablero .tarjeta:hover{background:var(--tj-hover);border-color:var(--accent)}
 html[data-aspecto="programa"] .tablero .tarjeta.urgente,
-html[data-aspecto="programa"][data-estilo] .tablero .tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg);border-color:#e9c3c3}
+html[data-aspecto="programa"][data-estilo] .tablero .tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg);border-color:#7a2a34}

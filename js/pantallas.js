@@ -123,11 +123,11 @@ function pintarAspecto() {
     b.addEventListener('click', function () { cambiarAspecto({ color: b.dataset.color }); });
   });
 }
-/** '' = como siempre (oscuro); 'programa' = como Transferencias (claro, bordó, letra del sistema). */
+/** '' = como siempre; 'programa' = como Transferencias (oscuro, como se ve el Programa de Compras con fondo oscuro; Feli). */
 function aspectoGeneral(cual) {
   const html = document.documentElement;
-  if (cual === 'programa') { html.dataset.aspecto = 'programa'; html.dataset.theme = 'light'; guardado.guardar('compras_aspecto', 'programa'); }
-  else { delete html.dataset.aspecto; html.dataset.theme = 'dark'; guardado.borrar('compras_aspecto'); }
+  if (cual === 'programa') { html.dataset.aspecto = 'programa'; guardado.guardar('compras_aspecto', 'programa'); }
+  else { delete html.dataset.aspecto; guardado.borrar('compras_aspecto'); }
   pintarAspecto();
 }
 
