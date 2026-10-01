@@ -72,6 +72,7 @@ dd{margin:0;overflow-wrap:anywhere;font-family:var(--f-mono);font-size:13px}
 .apartados a:hover{opacity:1}
 .apartados a[aria-current="page"]{background:rgba(255,255,255,.2);opacity:1}
 @media (max-width:420px){.apartados a{padding:7px 7px;font-size:13px}}
+@media (max-width:520px){.barra .apartados:not([hidden]) ~ #b-cuenta .yo{display:none}}   /* con los apartados no entra el nombre: queda la inicial */
 .inicial{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.18);display:grid;place-items:center;font-weight:800;font-size:14px}
 .contenido{max-width:960px;margin:0 auto;padding:16px 16px calc(var(--alto-nav) + 32px + env(safe-area-inset-bottom))}
 .contenido h2.titulo{font-size:24px;font-weight:800;margin:8px 0 4px}
@@ -446,3 +447,41 @@ label.check input{width:22px;height:22px;min-height:0;flex:none;margin:1px 0 0;a
 .asp-color i{flex:none;width:28px;height:28px;border-radius:50%}
 .asp-color[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 @media (max-width:420px){.asp-estilo small{display:none}}
+
+
+/* ---------- Prueba (Feli, 2026-10-01): Compras con el aspecto de Transferencias ----------
+   <html data-aspecto="programa" data-theme="light">, solo en el dispositivo que lo elige
+   (Tu cuenta). Los colores, la letra y los recuadros del Programa de Compras
+   (pagina/transferencias). "html" adelante: así le gana al color de cada uno (#estiloColor). */
+html:root[data-aspecto="programa"]{
+  --bg:#f6f6f4; --fg:#1c1c1a; --muted:#6b6b66; --line:#dcdcd6; --soft:#efefeb;
+  --accent:#7a1f2b; --accent-soft:#f3e9ea; --accent-fg:#ffffff;
+  --danger:#b3261e; --danger-soft:#fdf1f1; --warn:#8a5a00; --warn-soft:#fdf3dd;
+  --band:#ffffff; --band-fg:#1c1c1a; --tablero:#f6f6f4;
+  --col:#efefeb; --tj:#ffffff; --tj-sombra:0 1px 2px rgba(0,0,0,.08); --tj-hover:#fbfbf9;
+  --tj-roja:#fbd4d2; --tj-roja-hover:#f8c3c0; --tj-roja-fg:#5c1111;
+  --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color-scheme:light}
+html[data-aspecto="programa"] body{font-size:15px;-webkit-font-smoothing:antialiased}
+html[data-aspecto="programa"] .barra{box-shadow:none;border-bottom:1px solid var(--line)}
+html[data-aspecto="programa"] .barra button:hover{background:var(--soft)}
+html[data-aspecto="programa"] .barra h1{font-weight:650;font-size:16px;letter-spacing:-.01em}
+html[data-aspecto="programa"] .inicial{background:var(--accent-soft);color:var(--accent)}
+html[data-aspecto="programa"] .apartados{background:var(--soft)}
+html[data-aspecto="programa"] .apartados a[aria-current="page"]{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+html[data-aspecto="programa"] .tabs{background:#fff;border-color:var(--line)}
+html[data-aspecto="programa"] .caja,html[data-aspecto="programa"] .panel{background:#fff}
+html[data-aspecto="programa"] .caja{border-width:1px;border-radius:10px}
+html[data-aspecto="programa"] .caja h2{font-size:13px;font-weight:600}
+html[data-aspecto="programa"] .btn{border-radius:6px}
+html[data-aspecto="programa"] .btn2,html[data-aspecto="programa"] .choice,html[data-aspecto="programa"] input{border-width:1px;border-radius:6px;background:#fff}
+html[data-aspecto="programa"] .tablero,
+html[data-aspecto="programa"][data-estilo] .tablero{background:var(--bg)}
+html[data-aspecto="programa"] .tablero .col,
+html[data-aspecto="programa"][data-estilo] .tablero .col{background:var(--col);border:1px solid var(--line);border-top:1px solid var(--line);border-radius:10px;box-shadow:none}
+html[data-aspecto="programa"] .tablero .tarjeta,
+html[data-aspecto="programa"][data-estilo] .tablero .tarjeta{background:#fff;color:var(--fg);border:1px solid var(--line);border-radius:7px;box-shadow:var(--tj-sombra)}
+html[data-aspecto="programa"] .tablero .tarjeta:hover,
+html[data-aspecto="programa"][data-estilo] .tablero .tarjeta:hover{background:var(--tj-hover);border-color:var(--accent)}
+html[data-aspecto="programa"] .tablero .tarjeta.urgente,
+html[data-aspecto="programa"][data-estilo] .tablero .tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg);border-color:#e9c3c3}

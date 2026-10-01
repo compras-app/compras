@@ -101,6 +101,13 @@ function pintarAspecto() {
   const colores = (APP.config && APP.config.colores) || [];
   const mio = (APP.yo && APP.yo.color) || 'Azul';     // si no eligió, Azul (Feli)
   $('c-aspecto').hidden = !colores.length;          // una versión vieja del servidor todavía no los manda
+  // Prueba (Feli, 2026-10-01): ver Compras con el aspecto de Transferencias, solo en este dispositivo
+  $('c-prueba-aspecto').hidden = !(APP.yo && APP.yo.adminReal);
+  const gral = document.documentElement.dataset.aspecto || '';
+  $('c-aspecto-gral').querySelectorAll('button').forEach(function (b) {
+    b.setAttribute('aria-pressed', String(b.dataset.aspecto === gral));
+    b.onclick = function () { aspectoGeneral(b.dataset.aspecto); };
+  });
   $('c-estilos').innerHTML = ESTILOS.map(function (e) {
     return '<button type="button" class="asp-estilo" data-estilo="' + e.id + '" aria-pressed="' + (e.id === estilo) + '">' +
       '<span class="asp-mini" data-mini="' + e.id + '"><i></i><i></i><i></i></span><b>' + esc(e.nombre) + '</b><small>' + esc(e.nota) + '</small></button>';
@@ -116,6 +123,14 @@ function pintarAspecto() {
     b.addEventListener('click', function () { cambiarAspecto({ color: b.dataset.color }); });
   });
 }
+/** '' = como siempre (oscuro); 'programa' = como Transferencias (claro, bordó, letra del sistema). */
+function aspectoGeneral(cual) {
+  const html = document.documentElement;
+  if (cual === 'programa') { html.dataset.aspecto = 'programa'; html.dataset.theme = 'light'; guardado.guardar('compras_aspecto', 'programa'); }
+  else { delete html.dataset.aspecto; html.dataset.theme = 'dark'; guardado.borrar('compras_aspecto'); }
+  pintarAspecto();
+}
+
 function cambiarAspecto(a) {
   const yo = APP.yo;
   const color = a.color || yo.color || 'Azul';
