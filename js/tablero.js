@@ -208,8 +208,7 @@ function pintarTablero() {
     const ts = porCol[c.columna];
     html.push('<div class="col" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
-      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
-      (admin && c.columna === colPorCotizar() ? '<button type="button" class="btn-chico si cot-col" id="tb-cotizar-col">📤 Pedir cotizaciones</button>' : '') + '</div>' +
+      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span></div>' +
       '<div class="lista" data-columna="' + esc(c.columna) + '">' +
       (ts.length ? ts.map(function (t) { return htmlTarjeta(t, c.columna === colPorRecibir()); }).join('')
                  : '<div class="vacia">Sin pedidos</div>') +
@@ -218,8 +217,6 @@ function pintarTablero() {
   cont.innerHTML = html.join('');
   cont.scrollLeft = scroll;
   cont.querySelectorAll('.lista').forEach(function (l) { if (listas[l.dataset.columna]) l.scrollTop = listas[l.dataset.columna]; });
-  const bc = $('tb-cotizar-col');
-  if (bc) bc.addEventListener('click', pedirCotizacionesColumna);
   cont.querySelectorAll('[data-cotizar]').forEach(function (b) {
     b.addEventListener('click', function (e) { e.stopPropagation(); if (!TB.recienArrastrada) abrirPedirCotizacion(b.dataset.cotizar); });
   });
@@ -801,7 +798,6 @@ function pintarTarjeta() {
     const esperan = todas.filter(function (l) { return l.estado === 'Para agregar' || l.estado === 'Para quitar'; }).length;
     $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' comprado' + (comprados > 1 ? 's' : '') : '') +
       (esperan ? ' · ⏳ ' + esperan + ' para aprobar' : '');
-    $('tj-varios').hidden = !(admin && ls.length > 1) || trabajo;
     // Los quitados, abajo de todo
     const orden = todas.filter(function (l) { return l.estado !== 'Quitado'; }).concat(todas.filter(function (l) { return l.estado === 'Quitado'; }));
     const mio = ((t && t.solicitante) || (p && p.solicitante)) === APP.yo.nombre;
@@ -810,7 +806,7 @@ function pintarTarjeta() {
                               : htmlPorRubro(orden, admin, mio, d.tarjetas || []);
     $('tj-agregar').hidden = !(admin || mio) || !enTb || trabajo;
   } else {
-    $('tj-varios').hidden = $('tj-agregar').hidden = true;
+    $('tj-agregar').hidden = true;
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
@@ -1694,72 +1690,7 @@ async function editarProducto(ref, id) {
   pintarTarjeta();
 }
 
-/** Proveedores particulares para varios productos del pedido a la vez (solo en este pedido). */
-async function proveedoresParaVarios(ref) {
-  const d = TB.detalle;
-  if (!d || !d.lineas || !APP.yo.admin) return;
-  const ls = lineasConCambios(ref, d.lineas).filter(vigente);     // los quitados (o sin aprobar) no se proponen (Feli)
-  const datos = await datosProductos();
-  const proveedores = datos ? datos.proveedores.slice() : [];
-  const elegidos = {}, provs = [];
-  const cuerpo = document.createElement('div');
-  cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML =
-    (datos ? '' : '<p class="estado warn">Hay poca señal: la lista de proveedores se ve cuando vuelva.</p>') +
-    '<div class="campo"><div style="display:flex;align-items:center;justify-content:space-between"><label>Productos</label>' +
-      '<button type="button" class="linkbtn" id="pv-todos" style="padding:4px 0;min-height:36px">Elegir todos</button></div>' +
-      '<div class="opciones" id="pv-prods" style="max-height:40vh"></div></div>' +
-    '<div class="campo"><label for="sp-q">Proveedores particulares</label>' + htmlSelectorProv() + '</div>' +
-    '<p class="nota">Solo en este pedido. Los productos elegidos quedan "🎯 Va solo a…" y sin rubro. Sin ningún proveedor, les saca los que tengan y vuelven a su rubro.</p>';
-  const res = await dialogo({
-    titulo: 'Proveedores para varios productos', cuerpo: cuerpo,
-    botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () { return true; } }, { texto: 'Volver', valor: null }],
-    alAbrir: function () {
-      const cont = $('pv-prods');
-      const revisar = function () {
-        const n = Object.keys(elegidos).length;
-        $('dg-ok').disabled = !n;
-        $('dg-ok').textContent = !n ? 'Guardar' : provs.length ? 'Guardar en ' + n + ' producto' + (n > 1 ? 's' : '') : 'Sacarles los proveedores (' + n + ')';
-        $('pv-todos').textContent = n === ls.length ? 'Ninguno' : 'Elegir todos';
-      };
-      ls.forEach(function (l) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'choice';
-        b.setAttribute('aria-checked', 'false');
-        const provTxt = (l.proveedores || []).length ? ' · 🎯 ' + l.proveedores.map(function (x) { return x.nombre; }).join(', ') : (l.canal ? ' · ' + l.canal : '');
-        b.innerHTML = '<span aria-hidden="true" class="marca">☐</span><span>' + esc(l.cantidad + ' × ' + nombreProducto(l)) + '<small style="display:block;color:var(--muted);font-weight:400">' + esc(provTxt.replace(/^ · /, '')) + '</small></span>';
-        b.addEventListener('click', function () {
-          if (elegidos[l.id]) delete elegidos[l.id]; else elegidos[l.id] = l;
-          b.setAttribute('aria-checked', String(!!elegidos[l.id]));
-          b.querySelector('.marca').textContent = elegidos[l.id] ? '☑' : '☐';
-          revisar();
-        });
-        cont.appendChild(b);
-      });
-      $('pv-todos').addEventListener('click', function () {
-        const todos = Object.keys(elegidos).length !== ls.length;
-        cont.querySelectorAll('.choice').forEach(function (b, k) {
-          if (todos) elegidos[ls[k].id] = ls[k]; else delete elegidos[ls[k].id];
-          b.setAttribute('aria-checked', String(todos));
-          b.querySelector('.marca').textContent = todos ? '☑' : '☐';
-        });
-        revisar();
-      });
-      armarSelectorProv({ provs: provs, proveedores: proveedores, datos: datos, rubro: function () { return ''; }, alCambiar: revisar });
-    }
-  });
-  if (!res) return;
-  const ids = provs.map(function (x) { return x.id; });
-  Object.keys(elegidos).forEach(function (id) {
-    const l = elegidos[id];
-    if ((l.proveedores || []).map(function (x) { return x.id; }).join(',') === ids.join(',')) return;   // ya estaba así
-    bandeja.agregar('editarProducto', [ref, id, { proveedores: ids }, { padron: false }], 'cambiar los proveedores de "' + nombreProducto(l) + '"');
-  });
-  pintarTarjeta();
-}
-
-$('tj-varios').addEventListener('click', function () { if (TB.abierta) proveedoresParaVarios(TB.abierta); });
+// "🎯 Proveedores para varios" se mudó a la ventana de Pedir cotización (Feli, Fase 3): ver cotizar.js
 
 $('tj-editar').addEventListener('click', async function () {
   if (TB.tipo === 'tarea') return editarTareaUI(TB.abierta);

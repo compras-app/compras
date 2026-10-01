@@ -2,18 +2,17 @@
 /* ============================================================
    PEDIR COTIZACIÓN (Fase 3, Paso 2)
    ------------------------------------------------------------
-   - En Por cotizar, cada pedido tiene "📤 Pedir cotización": la ventana
-     muestra un bloque por proveedor con sus productos (los sugeridos ya
-     marcados). Se saca o se suma un proveedor, o un producto de un
-     proveedor, solo para esta vez.
+   - En Por cotizar, cada pedido tiene "📤 Pedir cotización" (uno por
+     tarjeta; Feli sacó el de la columna entera): la ventana muestra un
+     bloque por rubro con sus productos y "ver cuáles" (solo para mirar).
+     "🎯 Proveedores para varios" cambia a quién va un producto, solo
+     para esta vez.
    - Enviar va por la bandeja: si justo no hay señal, sale cuando vuelve.
      El número del envío ("Q…") lo arma la app: un reintento no manda dos
      veces. Si el pedido cambió desde que se abrió la ventana, el
      servidor no lo manda y queda en "Cambios que no se aplicaron".
    - En la tarjeta, el bloque Cotizaciones: a quién se le pidió, qué,
      cuándo, con qué código y en qué estado (lo ven todos).
-   - Arriba de Por cotizar, "📤 Pedir cotizaciones": todo lo que falta
-     pedir, agrupado por rubro, a los proveedores sugeridos.
    ============================================================ */
 
 const OPS_COTIZAR = { pedirCotizacion: 1, reintentarCotizacion: 1 };
@@ -41,97 +40,146 @@ function htmlMarcaCotizar(t) {
   else if (!t.pedidoA) txt = '📤 Pedir cotización';
   else txt = '⏳ Pedido a ' + t.pedidoA + (t.pedidoA === 1 ? ' proveedor' : ' proveedores') + (t.sinPedir ? ' · 📤 ' + t.sinPedir + ' sin pedir' : '');
   const admin = APP.yo && APP.yo.admin;
-  return admin ? '<button type="button" class="marca-cot" data-cotizar="' + esc(t.ref) + '">' + esc(txt) + '</button>'
+  return admin ? '<button type="button" class="marca-cot btn-chico si" data-cotizar="' + esc(t.ref) + '">' + esc(txt) + '</button>'
                : '<div class="marca-cot">' + esc(txt) + '</div>';
 }
 
-/* ---------- La ventana "Pedir cotización" ---------- */
+/* ---------- La ventana "Pedir cotización" ----------
+   Un bloque por rubro (Feli): "Proveedores de Ferretería (4)", con sus productos
+   para tildar o destildar y "ver cuáles" (solo para mirar: de ahí no se cambian).
+   Los productos con proveedores particulares van en su propio bloque ("🎯 …").
+   "🎯 Proveedores para varios": a los productos que se elijan se los manda a los
+   proveedores que se elijan, solo esta vez (no cambia el rubro ni el padrón). */
+let pidiendoCotizar = false;
 async function abrirPedirCotizacion(ref) {
-  if (!APP.yo.admin) return;
+  if (!APP.yo.admin || pidiendoCotizar) return;
+  pidiendoCotizar = true;
+  aviso('📤 Buscando los proveedores…');
   const r = await api('datosCotizar', ref);
+  pidiendoCotizar = false;
   if (!r.ok) return aviso(r.sinConexion ? '📶 Para abrir "Pedir cotización" hace falta señal (tiene que ver a quién ya se le pidió). Probá en un rato.' : r.error, 'bad');
   if (r.manual) return aviso('Es un pedido ✋ manual: se cotiza a mano, por fuera de la app.');
   if (!r.productos.length) return aviso('Este pedido no tiene productos para pedir.');
   const provs = {};
   r.proveedores.forEach(function (p) { provs[p.id] = p; });
-  // bloques: {proveedor: {incluido, lineas: {id: true}}}, en el orden en que aparecen
-  const orden = [], bloques = {};
-  const sumar = function (id, marcados) {
-    if (!bloques[id]) { bloques[id] = { incluido: true, lineas: {} }; orden.push(id); }
-    marcados.forEach(function (l) { bloques[id].lineas[l] = true; });
-  };
-  r.productos.forEach(function (x) {
-    x.sugeridos.forEach(function (p) { if (provs[p] && !x.ya[p]) sumar(p, [x.id]); });
-  });
+  const nombreProv = function (id) { return (provs[id] || {}).nombre || id; };
   const prod = {};
   r.productos.forEach(function (x) { prod[x.id] = x; });
-  const sinProveedor = function () {
-    return r.productos.filter(function (x) {
-      return !Object.keys(x.ya).length && !orden.some(function (p) { return bloques[p].incluido && bloques[p].lineas[x.id]; });
+  const puntual = {};             // ID Línea → [proveedores], solo esta vez ("🎯 Proveedores para varios")
+  const fuera = {};               // ID Línea → true: destildado (no va en este envío)
+  const abiertos = {};            // bloques con "ver cuáles" abierto
+  let varios = null;              // el panel de "Proveedores para varios": {lineas: {}, provs: {}, q}
+  const provsDe = function (x) { return puntual[x.id] || x.sugeridos; };
+  const pendientes = function (x) { return provsDe(x).filter(function (p) { return !x.ya[p] && provs[p] && provs[p].activo !== false; }); };
+  const bloqueDe = function (x) {
+    if (puntual[x.id]) return { clave: 'u:' + puntual[x.id].slice().sort().join(','), titulo: '🎯 ' + puntual[x.id].map(nombreProv).join(', '), sub: 'Solo esta vez', provs: puntual[x.id], puntual: true };
+    if (x.particulares) return { clave: 'p:' + x.sugeridos.slice().sort().join(','), titulo: '🎯 ' + x.sugeridos.map(nombreProv).join(', '), sub: 'Proveedores particulares', provs: x.sugeridos };
+    return { clave: 'r:' + x.rubro, titulo: 'Proveedores de ' + x.rubro, provs: x.sugeridos, rubro: x.rubro };
+  };
+  const llega = function (p) { return !!provs[p] && (provs[p].telefono || r.prueba.si); };
+  const mensajes = function () {
+    const porProv = {};
+    r.productos.forEach(function (x) {
+      if (fuera[x.id]) return;
+      pendientes(x).forEach(function (p) { if (llega(p)) (porProv[p] = porProv[p] || []).push(x.id); });
     });
+    return Object.keys(porProv).map(function (p) { return { proveedor: p, lineas: porProv[p] }; });
   };
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo cotizar';
   const pintar = function () {
-    const sin = sinProveedor();
-    const porRubro = {};
-    sin.forEach(function (x) { (porRubro[x.rubro || 'Sin rubro'] = porRubro[x.rubro || 'Sin rubro'] || []).push(x); });
-    const usados = {};
-    orden.forEach(function (p) { usados[p] = true; });
-    cuerpo.innerHTML =
-      (r.prueba.si ? '<p class="estado warn">🧪 Modo prueba: todos los mensajes le llegan al número de prueba (' + esc(r.prueba.numero) + '), no a los proveedores.</p>' : '') +
-      '<p class="nota">' + esc(r.titulo) + ' · ' + esc(r.sitio) + (r.codigo ? ' · Código ' + esc(r.codigo) : '') + '</p>' +
-      Object.keys(porRubro).map(function (rb) {
-        return '<p class="estado warn">' + (rb === 'Sin rubro' || rb === 'OTROS' ? '✋ ' + esc(rb) + ': elegí a quién pedírselo con "+ Sumar proveedor".'
-          : 'No hay proveedores para ' + esc(rb) + '. Sumá uno a mano.') + ' (' + esc(porRubro[rb].map(function (x) { return x.nombre; }).join(', ')) + ')</p>';
-      }).join('') +
-      orden.map(function (p) {
-        const b = bloques[p], pr = provs[p] || { nombre: p };
-        const sinTel = !pr.telefono && !r.prueba.si;
-        return '<div class="cot-bloque' + (b.incluido && !sinTel ? '' : ' fuera') + '">' +
-          '<button type="button" class="choice" data-prov="' + esc(p) + '" aria-checked="' + (b.incluido && !sinTel) + '"' + (sinTel ? ' disabled' : '') + '>' +
-            '<span class="marca">' + (b.incluido && !sinTel ? '☑' : '☐') + '</span><span><b>' + esc(pr.nombre) + '</b>' +
-            (sinTel ? '<small class="sub">Sin teléfono: cargalo en Admin → Proveedores</small>' : (!pr.telefono ? '<small class="sub">Sin teléfono (en modo prueba sale igual)</small>' : '')) + '</span></button>' +
-          r.productos.map(function (x) {
-            const ya = x.ya[p];
-            const marcado = !ya && b.lineas[x.id];
-            return '<button type="button" class="choice sub-choice" data-prov-linea="' + esc(p) + '|' + esc(x.id) + '"' + (ya || !b.incluido || sinTel ? ' disabled' : '') +
-              ' aria-checked="' + !!marcado + '"><span class="marca">' + (marcado ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + 'x ' + x.nombre) +
-              (x.nota ? ' — ' + esc(x.nota) : '') + (x.fotos.length ? ' 📷' : '') +
-              (ya ? '<small class="sub">Ya se le pidió el ' + esc(fechaCorta(ya)) + '</small>' : '') + '</span></button>';
-          }).join('') + '</div>';
-      }).join('') +
-      '<div class="campo"><label for="cz-sumar">+ Sumar proveedor (solo esta vez)</label><select id="cz-sumar"><option value="">Elegí un proveedor…</option>' +
-        r.proveedores.filter(function (p) { return !usados[p.id]; }).map(function (p) {
-          return '<option value="' + esc(p.id) + '">' + esc(p.nombre) + (p.telefono ? '' : ' (sin teléfono)') + '</option>';
-        }).join('') + '</select></div>';
-    cuerpo.querySelectorAll('[data-prov]').forEach(function (el) {
-      el.addEventListener('click', function () { const b = bloques[el.dataset.prov]; b.incluido = !b.incluido; pintar(); });
+    const bloques = [], porClave = {};
+    r.productos.forEach(function (x) {
+      const b = bloqueDe(x);
+      if (!porClave[b.clave]) { porClave[b.clave] = Object.assign(b, { productos: [] }); bloques.push(porClave[b.clave]); }
+      porClave[b.clave].productos.push(x);
     });
-    cuerpo.querySelectorAll('[data-prov-linea]').forEach(function (el) {
+    let html = (r.prueba.si ? '<p class="estado warn">🧪 Modo prueba: todos los mensajes le llegan al número de prueba (' + esc(r.prueba.numero) + '), no a los proveedores.</p>' : '') +
+      '<p class="nota">' + esc(r.titulo) + ' · ' + esc(r.sitio) + (r.codigo ? ' · Código ' + esc(r.codigo) : '') + '</p>';
+    html += bloques.map(function (b) {
+      const activos = b.provs.filter(function (p) { return provs[p] && provs[p].activo !== false; });
+      const sinNadie = !activos.length;
+      const k = esc(b.clave);
+      return '<div class="cot-bloque">' +
+        '<div class="cot-bloque-h"><div><b>' + esc(b.titulo) + '</b>' + (activos.length ? ' <span class="n">(' + activos.length + ')</span>' : '') +
+          (b.sub ? '<small class="sub">' + esc(b.sub) + '</small>' : '') + '</div>' +
+          (activos.length ? '<button type="button" class="linkbtn" data-ver="' + k + '">' + (abiertos[b.clave] ? 'ocultar' : 'ver cuáles') + '</button>' : '') +
+          (b.puntual ? '<button type="button" class="linkbtn" data-deshacer="' + k + '">deshacer</button>' : '') + '</div>' +
+        (abiertos[b.clave] ? '<div class="cot-ver">' + activos.map(function (p) {
+          return '<div>' + esc(nombreProv(p)) + (provs[p].telefono ? '' : r.prueba.si ? ' <small>(sin teléfono: en modo prueba sale igual)</small>' : ' <small>(sin teléfono: no le llega)</small>') + '</div>';
+        }).join('') + '</div>' : '') +
+        (sinNadie ? '<p class="estado warn">' + (b.rubro === 'Sin rubro' || b.rubro === 'OTROS' ? '✋ ' + esc(b.rubro) + ': elegí a quién pedírselo con "🎯 Proveedores para varios".'
+          : 'No hay proveedores para ' + esc(b.rubro) + '. Usá "🎯 Proveedores para varios".') + '</p>' : '') +
+        b.productos.map(function (x) {
+          const pend = pendientes(x), ya = Object.keys(x.ya);
+          const todo = !pend.length && ya.length;
+          const marcado = !fuera[x.id] && pend.length > 0;
+          return '<button type="button" class="choice sub-choice" data-linea="' + esc(x.id) + '"' + (pend.length ? '' : ' disabled') +
+            ' aria-checked="' + marcado + '"><span class="marca">' + (marcado ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + 'x ' + x.nombre) +
+            (x.nota ? ' — ' + esc(x.nota) : '') + (x.fotos.length ? ' 📷' : '') +
+            (todo ? '<small class="sub">Ya se le pidió a todos (' + esc(fechaCorta(x.ya[ya[0]])) + ')</small>'
+                  : ya.length ? '<small class="sub">Ya se le pidió a ' + ya.length + ': va a los otros ' + pend.length + '</small>' : '') + '</span></button>';
+        }).join('') + '</div>';
+    }).join('');
+    // "🎯 Proveedores para varios": elegir productos y proveedores, solo esta vez
+    if (!varios) html += '<button type="button" class="btn2" id="cz-varios">🎯 Proveedores para varios</button>';
+    else {
+      const q = sinTildes(varios.q || '');
+      const lista = r.proveedores.filter(function (p) { return p.activo !== false && (!q || sinTildes(p.nombre).indexOf(q) !== -1); }).slice(0, 40);
+      html += '<div class="cot-varios"><b>🎯 Proveedores para varios</b><p class="nota" style="margin:4px 0 8px">Solo esta vez: no cambia el rubro ni el padrón.</p>' +
+        '<small class="sub">Productos</small>' + r.productos.map(function (x) {
+          return '<button type="button" class="choice sub-choice" data-vl="' + esc(x.id) + '" aria-checked="' + !!varios.lineas[x.id] + '"><span class="marca">' +
+            (varios.lineas[x.id] ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + 'x ' + x.nombre) + '</span></button>';
+        }).join('') +
+        '<small class="sub">Proveedores</small><input type="search" id="cz-q" placeholder="Buscar proveedor…" value="' + esc(varios.q || '') + '">' +
+        Object.keys(varios.provs).filter(function (p) { return !lista.some(function (x) { return x.id === p; }); }).map(function (p) {
+          return '<button type="button" class="choice sub-choice" data-vp="' + esc(p) + '" aria-checked="true"><span class="marca">☑</span><span>' + esc(nombreProv(p)) + '</span></button>';
+        }).join('') +
+        lista.map(function (p) {
+          return '<button type="button" class="choice sub-choice" data-vp="' + esc(p.id) + '" aria-checked="' + !!varios.provs[p.id] + '"><span class="marca">' +
+            (varios.provs[p.id] ? '☑' : '☐') + '</span><span>' + esc(p.nombre) + (p.telefono ? '' : ' <small>(sin teléfono)</small>') + '</span></button>';
+        }).join('') +
+        '<div class="cot-varios-b"><button type="button" class="btn" id="cz-varios-ok">Aplicar</button><button type="button" class="btn2" id="cz-varios-no">Cancelar</button></div></div>';
+    }
+    cuerpo.innerHTML = html;
+    cuerpo.querySelectorAll('[data-linea]').forEach(function (el) {
+      el.addEventListener('click', function () { const id = el.dataset.linea; if (fuera[id]) delete fuera[id]; else fuera[id] = true; pintar(); });
+    });
+    cuerpo.querySelectorAll('[data-ver]').forEach(function (el) {
+      el.addEventListener('click', function () { abiertos[el.dataset.ver] = !abiertos[el.dataset.ver]; pintar(); });
+    });
+    cuerpo.querySelectorAll('[data-deshacer]').forEach(function (el) {
       el.addEventListener('click', function () {
-        const x = el.dataset.provLinea.split('|'), b = bloques[x[0]];
-        if (b.lineas[x[1]]) delete b.lineas[x[1]]; else b.lineas[x[1]] = true;
+        r.productos.forEach(function (x) { if (bloqueDe(x).clave === el.dataset.deshacer) delete puntual[x.id]; });
         pintar();
       });
     });
-    $('cz-sumar').addEventListener('change', function () {
-      const id = this.value;
-      if (!id) return;
-      // Lo que no tiene a quién pedírselo viene marcado; lo demás se marca a mano
-      sumar(id, sinProveedor().map(function (x) { return x.id; }));
-      pintar();
-    });
-    const n = mensajes().length;
-    const ok = $('dg-ok');
-    if (ok) { ok.disabled = !n; ok.textContent = n ? 'Enviar ' + n + (n === 1 ? ' mensaje' : ' mensajes') : 'Enviar'; }
-  };
-  const mensajes = function () {
-    return orden.filter(function (p) {
-      return bloques[p].incluido && (provs[p] && (provs[p].telefono || r.prueba.si));
-    }).map(function (p) {
-      return { proveedor: p, lineas: Object.keys(bloques[p].lineas).filter(function (l) { return prod[l] && !prod[l].ya[p]; }) };
-    }).filter(function (m) { return m.lineas.length; });
+    if ($('cz-varios')) $('cz-varios').addEventListener('click', function () { varios = { lineas: {}, provs: {}, q: '' }; pintar(); });
+    if (varios) {
+      cuerpo.querySelectorAll('[data-vl]').forEach(function (el) {
+        el.addEventListener('click', function () { const id = el.dataset.vl; if (varios.lineas[id]) delete varios.lineas[id]; else varios.lineas[id] = true; pintar(); });
+      });
+      cuerpo.querySelectorAll('[data-vp]').forEach(function (el) {
+        el.addEventListener('click', function () { const id = el.dataset.vp; if (varios.provs[id]) delete varios.provs[id]; else varios.provs[id] = true; pintar(); });
+      });
+      const q = $('cz-q');
+      q.addEventListener('input', function () {
+        varios.q = q.value;
+        const pos = q.selectionStart;
+        pintar();
+        const q2 = $('cz-q'); q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (e) {}
+      });
+      $('cz-varios-ok').addEventListener('click', function () {
+        const ls = Object.keys(varios.lineas), ps = Object.keys(varios.provs);
+        if (!ls.length || !ps.length) return aviso('Elegí al menos un producto y un proveedor.', 'bad');
+        ls.forEach(function (id) { puntual[id] = ps.slice(); delete fuera[id]; });
+        varios = null;
+        pintar();
+      });
+      $('cz-varios-no').addEventListener('click', function () { varios = null; pintar(); });
+    }
+    const n = mensajes().length, ok = $('dg-ok');
+    if (ok) { ok.disabled = !n || !!varios; ok.textContent = n ? 'Enviar a ' + n + (n === 1 ? ' proveedor' : ' proveedores') : 'Enviar'; }
   };
   const listo = await dialogo({
     titulo: '📤 Pedir cotización', cuerpo: cuerpo,
@@ -147,70 +195,6 @@ async function abrirPedirCotizacion(ref) {
   pintarTablero();
   if (TB.abierta === ref) pintarTarjeta();
   aviso(APP.enLinea ? '📤 Mandando el pedido de cotización…' : '📶 Poca señal: el pedido de cotización se manda solo cuando vuelva.');
-}
-
-/* ---------- "📤 Pedir cotizaciones", arriba de Por cotizar ---------- */
-async function pedirCotizacionesColumna() {
-  const r = await api('datosCotizarColumna');
-  if (!r.ok) return aviso(r.sinConexion ? '📶 Para esto hace falta señal. Probá en un rato.' : r.error, 'bad');
-  // Lo que falta pedir (a nadie se le pidió) y tiene proveedores sugeridos, agrupado por rubro
-  const grupos = {}, sinProv = [], elegidos = {};
-  r.pedidos.forEach(function (d) {
-    d.productos.forEach(function (x) {
-      if (Object.keys(x.ya).length) return;
-      if (!x.sugeridos.length) { sinProv.push(d.titulo + ': ' + x.nombre); return; }
-      const g = x.particulares ? '🎯 Proveedores particulares' : x.rubro;
-      (grupos[g] = grupos[g] || []).push({ d: d, x: x });
-      elegidos[d.ref + '|' + x.id] = true;
-    });
-  });
-  const nombres = Object.keys(grupos).sort();
-  if (!nombres.length) return aviso(sinProv.length ? 'Lo que falta pedir no tiene proveedores sugeridos: pedilo desde la tarjeta de cada pedido.' : 'No hay nada para pedir en ' + colPorCotizar() + '.');
-  const prueba = r.pedidos[0] && r.pedidos[0].prueba.si ? r.pedidos[0].prueba.numero : '';
-  const cuerpo = document.createElement('div');
-  cuerpo.className = 'cuerpo cotizar';
-  const pintar = function () {
-    cuerpo.innerHTML = (prueba ? '<p class="estado warn">🧪 Modo prueba: todo le llega al número de prueba (' + esc(prueba) + ').</p>' : '') +
-      '<p class="nota">Todo marcado: destildá lo que no va. Cada pedido sale a los proveedores sugeridos de sus productos. Para cambiar a quién, usá la tarjeta del pedido.</p>' +
-      (sinProv.length ? '<p class="estado warn">Sin proveedor sugerido (pedilo desde su tarjeta): ' + esc(sinProv.join(' · ')) + '</p>' : '') +
-      '<div class="opciones" style="max-height:50vh">' + nombres.map(function (g) {
-        return '<h4>' + esc(g) + '</h4>' + grupos[g].map(function (it) {
-          const k = it.d.ref + '|' + it.x.id;
-          return '<button type="button" class="choice sub-choice" data-k="' + esc(k) + '" aria-checked="' + !!elegidos[k] + '"><span class="marca">' + (elegidos[k] ? '☑' : '☐') +
-            '</span><span>' + esc(it.x.cantidad + 'x ' + it.x.nombre) + '<small class="sub">' + esc(it.d.sitio + ' · ' + it.d.titulo) + '</small></span></button>';
-        }).join('');
-      }).join('') + '</div>';
-    cuerpo.querySelectorAll('[data-k]').forEach(function (b) {
-      b.addEventListener('click', function () { if (elegidos[b.dataset.k]) delete elegidos[b.dataset.k]; else elegidos[b.dataset.k] = true; pintar(); });
-    });
-    const n = Object.keys(elegidos).length, ok = $('dg-ok');
-    if (ok) { ok.disabled = !n; ok.textContent = n ? 'Pedir (' + n + (n === 1 ? ' producto)' : ' productos)') : 'Pedir'; }
-  };
-  const si = await dialogo({
-    titulo: '📤 Pedir cotizaciones', cuerpo: cuerpo,
-    botones: [{ texto: 'Pedir', clase: 'btn', id: 'dg-ok', valor: true }, { texto: 'Volver', valor: null }], alAbrir: pintar
-  });
-  if (!si) return;
-  let n = 0;
-  r.pedidos.forEach(function (d) {
-    const porProv = {};
-    d.productos.forEach(function (x) {
-      if (!elegidos[d.ref + '|' + x.id]) return;
-      x.sugeridos.forEach(function (p) { if (!x.ya[p]) (porProv[p] = porProv[p] || []).push(x.id); });
-    });
-    const tels = {};
-    d.proveedores.forEach(function (p) { tels[p.id] = p.telefono; });
-    const mensajes = Object.keys(porProv).filter(function (p) { return tels[p] || d.prueba.si; })
-      .map(function (p) { return { proveedor: p, lineas: porProv[p] }; });
-    if (!mensajes.length) return;
-    const huellas = {};
-    d.productos.forEach(function (x) { huellas[x.id] = x.huella; });
-    bandeja.agregar('pedirCotizacion', [d.ref, { id: 'Q' + nuevoId(), mensajes: mensajes, huellas: huellas }],
-      'pedir cotización de "' + d.titulo + '" a ' + mensajes.length + (mensajes.length === 1 ? ' proveedor' : ' proveedores'));
-    n++;
-  });
-  pintarTablero();
-  aviso(n ? '📤 Pidiendo cotización de ' + n + (n === 1 ? ' pedido' : ' pedidos') + '…' : 'Ningún proveedor sugerido tiene teléfono: cargalos en Admin → Proveedores.');
 }
 
 /* ---------- El bloque Cotizaciones de la tarjeta abierta ---------- */
