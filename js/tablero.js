@@ -22,7 +22,6 @@
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
 const K_TARJETAS = 'compras_tarjetas';    // tarjetas abiertas hace poco (para verlas sin señal)
 const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1 };
-const OPS_PARTE = { moverParte: 1, cancelarParte: 1, describirParte: 1, mandarTanda: 1 };   // mini tarjetas (Paso 4-bis)
 const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1, deshacerProducto: 1, agregarProducto: 1, quitarProducto: 1, resolverCambio: 1, reponerProducto: 1 };      // cambios de un producto (Paso 4)
 const ENTREGA_TEXTO = { Retirar: '🏃 Hay que ir a buscarlo', Envío: '🚚 Nos lo traen' };
 const ENTREGA_CORTO = { Retirar: '🏃 A buscar', Envío: '🚚 Nos lo traen' };
@@ -37,7 +36,6 @@ const TB = {
   cancelados: {},                              // tarjetas canceladas (para "Deshacer")
   reabiertos: {},                              // terminados que se reabren (Paso 5): la tarjeta hasta que vuelve del servidor
   borradores: {},                              // comentario a medio escribir, por tarjeta
-  parte: null,                                 // mini tarjeta abierta adentro de la tarjeta (Paso 4-bis)
   cargando: false
 };
 
@@ -111,7 +109,6 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
     if (m.fn === 'comentar') return comentarioMandado(m, r);
     if (OPS_PRODUCTO[m.fn]) return productoMandado(m, r);
     if (m.fn === 'quitarAdjunto') return adjuntoQuitado(m, r);
-    if (OPS_PARTE[m.fn]) return parteMandada(m, r);
     if (m.fn === 'editarPedido' && r.ok) datosDelPedidoMandados(m.args[0], m.args[1]);
     if (!OPS_TABLERO[m.fn]) return;
     if (r.ok && TB.datos) {
@@ -128,9 +125,9 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
 /* ---------- Filtros ---------- */
 function armarFiltros() {
   const admin = APP.yo.admin;
-  TB.filtros = { mios: !admin, sitio: '', resp: '', aprobar: false };   // pedido de Feli: los no admins entran con "Mis pedidos"
+  TB.filtros = { mios: !admin, sitio: '', resp: '' };   // pedido de Feli: los no admins entran con "Mis pedidos"
   const sitio = $('tb-sitio'), resp = $('tb-resp');
-  $('tb-sitio-l').hidden = $('tb-resp-l').hidden = $('tb-aprobar').hidden = !admin;
+  $('tb-sitio-l').hidden = $('tb-resp-l').hidden = !admin;
   if (admin) {
     sitio.innerHTML = '<option value="">Ver todos</option>' +
       (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
@@ -144,22 +141,23 @@ function pintarFiltros() {
   $('tb-todos').setAttribute('aria-pressed', String(!TB.filtros.mios));
   $('tb-sitio').value = TB.filtros.sitio;
   $('tb-resp').value = TB.filtros.resp;
-  $('tb-aprobar').setAttribute('aria-pressed', String(!!TB.filtros.aprobar));
 }
 function seVe(t) {
   const f = TB.filtros;
   if (f.mios && !esMio(t)) return false;
-  if (f.sitio && t.sitio !== f.sitio) return false;
+  // Una tarjeta de trabajo puede juntar pedidos de varias granjas (Tanda verde): "G1 - …, G3 - …"
+  if (f.sitio && t.sitio !== f.sitio && String(t.sitio || '').split(', ').indexOf(f.sitio) === -1) return false;
   if (f.resp === '-' && t.responsable) return false;
   if (f.resp && f.resp !== '-' && t.responsable !== f.resp) return false;
-  if (f.aprobar && !t.paraAprobar) return false;
   return true;
 }
-/** "Mis pedidos": los que pidió, y los masivos que le compartieron (Paso 6). */
-function esMio(t) { return t.solicitante === APP.yo.nombre || (t.compartido || []).indexOf(APP.yo.nombre) !== -1; }
+/** "Mis pedidos": los que pidió, los masivos que le compartieron (Paso 6) y las tarjetas de trabajo que salieron de los suyos (Fase 3). */
+function esMio(t) {
+  const yo = APP.yo.nombre;
+  return t.solicitante === yo || (t.solicitantes || []).indexOf(yo) !== -1 || (t.compartido || []).indexOf(yo) !== -1;
+}
 $('tb-mios').addEventListener('click', function () { TB.filtros.mios = true; pintarFiltros(); pintarTablero(); });
 $('tb-todos').addEventListener('click', function () { TB.filtros.mios = false; pintarFiltros(); pintarTablero(); });
-$('tb-aprobar').addEventListener('click', function () { TB.filtros.aprobar = !TB.filtros.aprobar; pintarFiltros(); pintarTablero(); });
 $('tb-sitio').addEventListener('change', function () { TB.filtros.sitio = this.value; pintarTablero(); });
 $('tb-resp').addEventListener('change', function () { TB.filtros.resp = this.value; pintarTablero(); });
 
@@ -210,7 +208,7 @@ function pintarTablero() {
     const ts = porCol[c.columna];
     html.push('<div class="col" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
-      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' + (c.seccion === 'Tanda verde' && admin ? htmlTandaCabecera(ts.length) : '') + '</div>' +
+      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span></div>' +
       '<div class="lista" data-columna="' + esc(c.columna) + '">' +
       (ts.length ? ts.map(function (t) { return htmlTarjeta(t, c.columna === colPorRecibir()); }).join('')
                  : '<div class="vacia">Sin pedidos</div>') +
@@ -219,8 +217,6 @@ function pintarTablero() {
   cont.innerHTML = html.join('');
   cont.scrollLeft = scroll;
   cont.querySelectorAll('.lista').forEach(function (l) { if (listas[l.dataset.columna]) l.scrollTop = listas[l.dataset.columna]; });
-  const bt = $('tb-mandar-tanda');
-  if (bt) bt.addEventListener('click', mandarTandaUI);
   cont.querySelectorAll('.tarjeta').forEach(function (el) {
     const ref = el.dataset.ref;
     el.addEventListener('click', function (e) {
@@ -232,8 +228,32 @@ function pintarTablero() {
       el.addEventListener('mousedown', function (e) { conMouse(e, el, ref); });
     }
   });
+  pintarProcesando();
   pintarSecciones();
   pintarHace();
+}
+
+/* ---------- Procesando (Fase 3): plegada, arriba de la Tanda verde ----------
+   Los pedidos cuyos productos ya están todos en tarjetas de trabajo. Una
+   línea por pedido, con dónde está cada tarjeta. Se toca y abre el pedido. */
+const K_PROCESANDO = 'compras_procesando_abierto';
+function pintarProcesando() {
+  const cont = $('tb-procesando');
+  const lista = ((TB.datos && TB.datos.procesando) || []).filter(seVe);
+  cont.hidden = !lista.length;
+  if (!lista.length) { cont.innerHTML = ''; return; }
+  const abierto = guardado.leer(K_PROCESANDO) === '1';
+  cont.innerHTML = '<button type="button" class="proc-h" id="tb-proc-h" aria-expanded="' + abierto + '">' + (abierto ? '▾' : '▸') +
+    ' 📦 Procesando <span class="n">(' + lista.length + ')</span></button>' +
+    (abierto ? '<div class="proc-l">' + lista.map(function (x) {
+      return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
+        '<small>' + esc(x.resumen || '') + '</small></button>';
+    }).join('') + '</div>' : '');
+  $('tb-proc-h').addEventListener('click', function () {
+    guardado.guardar(K_PROCESANDO, abierto ? '' : '1');
+    pintarProcesando();
+  });
+  cont.querySelectorAll('.proc-i').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
 }
 
 /** La urgencia más alta (la primera de App_Config, ej. 🔴): la tarjeta se pinta de rojo (pedido de Feli). */
@@ -243,6 +263,7 @@ function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
+    (t.trabajo ? '<span class="trabajo" title="Tarjeta de trabajo">📋</span>' : '') +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
     (enPorRecibir && t.entrega ? '<span class="entrega">' + esc(ENTREGA_CORTO[t.entrega] || t.entrega) + '</span>' : '') +
     (t.paraAprobar && APP.yo && APP.yo.admin ? '<span class="aprobar" title="Cambios para aprobar">⏳ ' + t.paraAprobar + '</span>' : '') +
@@ -293,7 +314,7 @@ async function cargarTablero() {
   const r = await api('getTablero');
   TB.cargando = false;
   if (r.ok) {
-    TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado, tanda: r.tanda };
+    TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, procesando: r.procesando || [], porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado };
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
     if (TB.abierta && TB.tipo !== 'tarea') { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
@@ -618,7 +639,6 @@ async function abrirTarjeta(ref, sinHistoria) {
   TB.abierta = ref;
   const g = detallesGuardados()[ref];
   TB.detalle = g ? g.d : null;
-  TB.parte = null;
   TB.sinDetalle = '';
   ponerBorrador(ref);
   pintarTarjeta();
@@ -642,12 +662,13 @@ async function traerTarjeta(ref) {
   if (r.ok && esTarea) {
     const antes = TB.detalle;
     TB.detalle = { tarea: r.tarea, items: r.items || [], recordatorios: r.recordatorios || [], comentarios: r.comentarios || [],
-                   adjuntos: r.adjuntos || [], lineas: [], partes: [], historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
+                   adjuntos: r.adjuntos || [], lineas: [], historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
   } else if (r.ok) {
     const antes = TB.detalle;
-    TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [], partes: r.partes || [],
+    TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
+                   trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {},
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -659,7 +680,6 @@ async function traerTarjeta(ref) {
 
 function ocultarTarjeta() {
   TB.abierta = null;
-  TB.parte = null;
   TB.detalle = null;
   $('tarjeta-modal').hidden = true;
   document.body.classList.remove('modal-abierto');
@@ -694,6 +714,9 @@ function fechaLinda(iso) {
 
 function idDrive(url) { const m = /[?&]id=([\w-]+)/.exec(url) || /\/d\/([\w-]+)/.exec(url); return m ? m[1] : ''; }
 
+/** Una tarjeta de trabajo (Fase 3): productos de uno o varios pedidos, que se mueve por su lado. */
+function esTrabajo(ref) { return /^W/.test(ref || ''); }
+
 function pintarTarjeta() {
   const ref = TB.abierta;
   if (!ref) return;
@@ -704,20 +727,14 @@ function pintarTarjeta() {
   const admin = APP.yo.admin;
   const columna = t ? t.columna : (p ? p.columna : '');
   const enTb = !!t;
+  const trabajo = esTrabajo(ref);
 
-  const pts = d ? partesVista(ref) : [];
-  let parte = TB.parte ? pts.filter(function (x) { return x.id === TB.parte; })[0] : null;
-  if (TB.parte && d && !parte) TB.parte = null;
-  if (TB.parte && !d) parte = null;
-  const canceladoEntero = columna === colCancelado();
   const chip = $('tj-columna');
-  const colChip = parte ? parte.columna : columna;
-  const puedeMover = admin && (parte ? !canceladoEntero && parte.columna !== colCancelado() : enTb);
-  chip.textContent = (colChip || '…') + (puedeMover ? ' ⌄' : '');
+  const puedeMover = admin && enTb;
+  chip.textContent = (columna || '…') + (puedeMover ? ' ⌄' : '');
   chip.disabled = !puedeMover;
   chip.title = puedeMover ? 'Mover a…' : '';
-  $('tj-volver').hidden = !parte;
-  $('tj-titulo').textContent = parte ? tituloDeParte(d, parte) : ((t && t.titulo) || (p && p.titulo) || ref);
+  $('tj-titulo').textContent = (t && t.titulo) || (p && p.titulo) || ref;
 
   const responsable = t ? t.responsable : (p ? p.responsable : '');
   const entrega = t ? t.entrega : (p ? p.entrega : '');
@@ -725,8 +742,8 @@ function pintarTarjeta() {
   const dato = function (etiqueta, html) { datos.push('<div class="dato"><small>' + esc(etiqueta) + '</small><div class="v">' + html + '</div></div>'); };
   dato('Sitio', esc((t && t.sitio) || (p && p.sitio) || ''));
   dato('Urgencia', esc((t && t.urgencia) || (p && p.urgencia) || ''));
-  dato('Pidió', esc((t && t.solicitante) || (p && p.solicitante) || ''));
-  if (p) dato('Cargado', esc(fechaLinda(p.fecha)));
+  dato('Pidió', esc((p && p.solicitante) || (t && (t.solicitante || (t.solicitantes || []).join(', '))) || ''));
+  if (p) dato(trabajo ? 'Armada' : 'Cargado', esc(fechaLinda(p.fecha)));
   // Masivo (Paso 6): con qué encargados se compartió
   if ((t && t.masivo) || (p && p.origen === 'masivo')) {
     const comp = (p ? pedidoConCambios(ref, p).compartido : t.compartido) || [];
@@ -741,34 +758,26 @@ function pintarTarjeta() {
         }).join(' ')
       : esc(ENTREGA_TEXTO[entrega] || 'Sin definir'));
   }
-  if (parte && parte.retiro) dato('Retiró', esc(parte.retiro + (parte.fechaRetiro ? ' · ' + new Date(parte.fechaRetiro).toLocaleDateString('es-AR') : '')));
-  else if (!parte && p && p.retiro) dato('Retiró', esc(p.retiro + (p.fechaRetiro ? ' · ' + new Date(p.fechaRetiro).toLocaleDateString('es-AR') : '')));
+  if (p && p.retiro) dato('Retiró', esc(p.retiro + (p.fechaRetiro ? ' · ' + new Date(p.fechaRetiro).toLocaleDateString('es-AR') : '')));
   $('tj-datos').innerHTML = datos.join('');
 
   const etiquetas = [];
+  if (trabajo) etiquetas.push('📋 Tarjeta de trabajo');
   if ((t && t.masivo) || (p && p.origen === 'masivo')) etiquetas.push('Pedido masivo');
   if ((t && t.manual) || (p && p.manual)) etiquetas.push('✋ Gestión manual');
-  if (!enTb && p && p.columna) etiquetas.push('Finalizado: ' + p.columna);
-  if (parte) {
-    etiquetas.unshift(parte.nombre);
-    if (parte.manual) etiquetas.push('✋ Gestión manual');
-    if (parte.columna === colCancelado()) etiquetas.push('Parte cancelada');
-    if (parte.tanda) etiquetas.push(textoTanda(parte));
-  }
+  if (!enTb && p && p.columna) etiquetas.push((p.columna === 'Procesando' ? '📦 ' : 'Finalizado: ') + p.columna);
   $('tj-etiquetas').innerHTML = etiquetas.map(function (e) { return '<span class="etiqueta">' + esc(e) + '</span>'; }).join('');
+  pintarEnlaces(d, trabajo);
 
   const pv = p ? pedidoConCambios(ref, p) : null;
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');
-  if (pv && !pv.razon && pv.descripcion) $('tj-razon-b').hidden = true;      // masivo libre sin razón: con la descripción alcanza
-  $('tj-editar').hidden = !(admin && p) || !!parte;
-  // Descripción: la de la mini tarjeta abierta, o la del pedido masivo libre (Paso 6)
-  $('tj-desc-b').hidden = !parte && !(pv && pv.descripcion);
-  if (parte) {
-    $('tj-desc').textContent = parte.descripcion || (admin ? 'Sin descripción.' : '—');
-    $('tj-desc-editar').hidden = !admin;
-  } else if (pv && pv.descripcion) {
+  $('tj-razon-b').hidden = trabajo || !!(pv && !pv.razon && pv.descripcion);   // masivo libre sin razón: con la descripción alcanza
+  $('tj-editar').hidden = !(admin && p) || trabajo;
+  // Descripción: la del pedido masivo libre (Paso 6), o la de una tarjeta de trabajo
+  $('tj-desc-b').hidden = !(pv && pv.descripcion);
+  if (pv && pv.descripcion) {
     $('tj-desc').textContent = pv.descripcion;
-    $('tj-desc-editar').hidden = !admin;
+    $('tj-desc-editar').hidden = !admin || trabajo;
   }
   const prods = $('tj-productos');
   if (d && d.lineas) {
@@ -778,23 +787,23 @@ function pintarTarjeta() {
     const esperan = todas.filter(function (l) { return l.estado === 'Para agregar' || l.estado === 'Para quitar'; }).length;
     $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' comprado' + (comprados > 1 ? 's' : '') : '') +
       (esperan ? ' · ⏳ ' + esperan + ' para aprobar' : '');
-    $('tj-varios').hidden = !(admin && ls.length > 1);
+    $('tj-varios').hidden = !(admin && ls.length > 1) || trabajo;
     // Los quitados, abajo de todo
-    let orden = todas.filter(function (l) { return l.estado !== 'Quitado'; }).concat(todas.filter(function (l) { return l.estado === 'Quitado'; }));
+    const orden = todas.filter(function (l) { return l.estado !== 'Quitado'; }).concat(todas.filter(function (l) { return l.estado === 'Quitado'; }));
     const mio = ((t && t.solicitante) || (p && p.solicitante)) === APP.yo.nombre;
-    if (parte) orden = orden.filter(function (l) { return l.parte === parte.id; });
-    if (!parte && pts.length > 1) prods.innerHTML = htmlPartes(ref, pts, orden, admin, mio, enTb && !canceladoEntero);   // Paso 4-bis
-    else prods.innerHTML = orden.map(function (l) { return htmlProducto(l, admin, mio); }).join('');
-    $('tj-agregar').hidden = !(admin || mio) || !enTb || !!parte;
-    if (parte) $('tj-varios').hidden = true;
+    // En una tarjeta de trabajo, los productos se tildan; se editan en su pedido
+    prods.innerHTML = trabajo ? orden.map(function (l) { return htmlProducto(l, false, false); }).join('')
+                              : htmlPorRubro(orden, admin, mio, d.tarjetas || []);
+    $('tj-agregar').hidden = !(admin || mio) || !enTb || trabajo;
   } else {
     $('tj-varios').hidden = $('tj-agregar').hidden = true;
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
-  $('tj-cancelar').hidden = !(admin && enTb) || !!parte;
-  $('tj-reabrir').hidden = !(admin && !enTb && p && p.volverA) || !!parte;     // Paso 5
-  $('tj-cancelar-parte').hidden = !(admin && parte && enTb && parte.columna !== colCancelado());
+  $('tj-cancelar').hidden = !(admin && enTb);
+  $('tj-cancelar').textContent = trabajo ? 'Cancelar esta tarjeta' : 'Cancelar pedido';
+  $('tj-reabrir').hidden = !(admin && !enTb && p && p.volverA);     // Paso 5
+  $('tj-reabrir').textContent = trabajo ? '↩️ Reabrir la tarjeta' : '↩️ Reabrir el pedido';
   pintarAdjuntos();
   pintarActividad();
 
@@ -810,11 +819,8 @@ function pintarTarjeta() {
   prods.querySelectorAll('[data-foto]').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
   });
-  prods.querySelectorAll('[data-mover-parte]').forEach(function (b) {
-    b.addEventListener('click', function () { moverParteUI(ref, b.dataset.moverParte); });
-  });
-  prods.querySelectorAll('[data-abrir-parte]').forEach(function (b) {
-    b.addEventListener('click', function () { abrirParte(b.dataset.abrirParte); });
+  prods.querySelectorAll('[data-abrir-ref]').forEach(function (b) {
+    b.addEventListener('click', function () { abrirTarjeta(b.dataset.abrirRef); });
   });
   const b = $('tj-resp');
   if (b) b.addEventListener('click', function () { cambiarResponsable(ref); });
@@ -828,14 +834,68 @@ function pintarTarjeta() {
   });
 }
 
+/**
+ * Ida y vuelta (Fase 3): una tarjeta de trabajo dice de qué pedidos viene;
+ * un pedido muestra las tarjetas de trabajo que salieron de él.
+ */
+function pintarEnlaces(d, trabajo) {
+  const cont = $('tj-enlaces');
+  const ir = function (ref, texto, detalle) {
+    return '<button type="button" class="ir" data-abrir-ref="' + esc(ref) + '"><span>' + esc(texto) +
+      (detalle ? '<small style="display:block">' + esc(detalle) + '</small>' : '') + '</span>›</button>';
+  };
+  let html = '';
+  if (trabajo && d && d.trabajo && d.trabajo.pedidos.length) {
+    html = '<small>' + (d.trabajo.pedidos.length === 1 ? 'Viene del pedido' : 'Viene de los pedidos') + '</small>' +
+      d.trabajo.pedidos.map(function (x) { return ir(x.ref, '📦 ' + (x.titulo || x.ref), x.sitio + ' · ' + x.solicitante); }).join('');
+  } else if (!trabajo && d && d.tarjetas && d.tarjetas.length) {
+    html = '<small>Sus tarjetas</small>' +
+      d.tarjetas.map(function (w) { return ir(w.id, '📋 ' + w.nombre + ' · ' + w.estado, w.titulo); }).join('');
+  }
+  cont.hidden = !html;
+  cont.innerHTML = html;
+  cont.querySelectorAll('[data-abrir-ref]').forEach(function (b) {
+    b.addEventListener('click', function () { abrirTarjeta(b.dataset.abrirRef); });
+  });
+}
+
+/**
+ * Los productos de un pedido agrupados por rubro (o por sus proveedores particulares), solo como lista.
+ * Con un solo grupo, como siempre. Si un producto ya está en una tarjeta de trabajo, lo dice y la abre.
+ */
+function htmlPorRubro(lineas, admin, mio, tarjetas) {
+  const deTarjeta = {};
+  tarjetas.forEach(function (w) { deTarjeta[w.id] = w; });
+  const conTarjeta = function (l) {
+    const w = l.tarjeta && deTarjeta[l.tarjeta];
+    return htmlProducto(l, admin, mio, w ? '<button type="button" class="en-tarjeta" data-abrir-ref="' + esc(w.id) + '">📋 ' +
+      esc(w.nombre + ' · ' + w.estado) + ' ›</button>' : '');
+  };
+  const grupo = function (l) {
+    if (l.estado === 'Quitado') return '';
+    if ((l.proveedores || []).length) return '🎯 ' + l.proveedores.map(function (x) { return x.nombre; }).join(', ');
+    return l.canal || 'Sin rubro';
+  };
+  const grupos = [], porGrupo = {};
+  lineas.forEach(function (l) {
+    const g = grupo(l);
+    if (!porGrupo[g]) { porGrupo[g] = []; grupos.push(g); }
+    porGrupo[g].push(l);
+  });
+  const conNombre = grupos.filter(String);
+  if (conNombre.length <= 1) return lineas.map(conTarjeta).join('');
+  return conNombre.map(function (g) {
+    return '<div class="parte"><div class="parte-h"><b>' + esc(g) + '</b></div>' + porGrupo[g].map(conTarjeta).join('') + '</div>';
+  }).join('') + (porGrupo[''] || []).map(conTarjeta).join('');
+}
+
 $('tj-columna').addEventListener('click', async function () {
   const ref = TB.abierta;
   if (!ref || !APP.yo.admin) return;
   if (TB.tipo === 'tarea') return moverTareaUI(ref);
-  if (TB.parte) return moverParteUI(ref, TB.parte);
   const t = buscarEnVista(ref);
   if (!t) return;
-  const destino = await moverADialogo('Mover el pedido a…', t.columna, 'Se mueven también sus partes.');
+  const destino = await moverADialogo(esTrabajo(ref) ? 'Mover la tarjeta a…' : 'Mover el pedido a…', t.columna, '');
   if (!destino || destino === t.columna) return;
   moverA(ref, destino, '');
 });
@@ -886,14 +946,15 @@ async function cambiarResponsable(ref) {
 $('tj-reabrir').addEventListener('click', async function () {
   const ref = TB.abierta, p = TB.detalle && TB.detalle.pedido;
   if (!ref || !p || !APP.yo.admin || buscarEnVista(ref)) return;
-  const destino = await moverADialogo('Reabrir el pedido', p.columna, 'Vuelve al tablero con sus partes, a la columna que elijas. Queda en la historia.', null, p.volverA, 'Reabrir');
+  const trabajo = esTrabajo(ref);
+  const destino = await moverADialogo(trabajo ? 'Reabrir la tarjeta' : 'Reabrir el pedido', p.columna, 'Vuelve al tablero, a la columna que elijas. Queda en la historia.', null, p.volverA, 'Reabrir');
   if (!destino) return;
   const pv = pedidoConCambios(ref, p);
   TB.reabiertos[ref] = { ref: ref, titulo: pv.titulo || p.titulo, sitio: p.sitio, urgencia: pv.urgencia || p.urgencia, columna: p.columna,
                          responsable: p.responsable, solicitante: p.solicitante, entrega: p.entrega, masivo: p.origen === 'masivo',
                          paraAprobar: 0, manual: p.manual };
   await moverA(ref, destino, '');
-  if (buscarEnVista(ref)) avisoConBoton('Pedido reabierto: volvió a "' + destino + '".', 'Ver en el tablero', function () { cerrarTarjeta(); ir('tablero'); });
+  if (buscarEnVista(ref)) avisoConBoton((trabajo ? 'Tarjeta reabierta' : 'Pedido reabierto') + ': volvió a "' + destino + '".', 'Ver en el tablero', function () { cerrarTarjeta(); ir('tablero'); });
   if (typeof pintarResultados === 'function' && !$('s-buscar').hidden) pintarResultados();
 });
 
@@ -903,12 +964,14 @@ $('tj-cancelar').addEventListener('click', async function () {
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = '<label for="dg-motivo">¿Por qué se cancela?</label><textarea id="dg-motivo" placeholder="Ej: ya no hace falta, se consiguió por otro lado…"></textarea>';
+  const trabajo = esTrabajo(ref);
   const motivo = await dialogo({
-    titulo: '¿Cancelar este pedido?',
-    texto: '"' + t.titulo + '" (' + t.sitio + '). La tarjeta se va a mover a Finalizados. No se borra: se puede recuperar.',
+    titulo: trabajo ? '¿Cancelar esta tarjeta?' : '¿Cancelar este pedido?',
+    texto: '"' + t.titulo + '" (' + t.sitio + '). La tarjeta se va a mover a Finalizados. No se borra: se puede recuperar.' +
+      (trabajo ? ' El motivo queda también en su pedido.' : ''),
     cuerpo: cuerpo,
     botones: [
-      { texto: 'Sí, cancelar el pedido', clase: 'btn peligro-btn', id: 'dg-ok', valor: function () { return $('dg-motivo').value.trim(); } },
+      { texto: trabajo ? 'Sí, cancelar la tarjeta' : 'Sí, cancelar el pedido', clase: 'btn peligro-btn', id: 'dg-ok', valor: function () { return $('dg-motivo').value.trim(); } },
       { texto: 'No, volver', valor: null }
     ],
     alAbrir: function () {
@@ -927,7 +990,7 @@ $('tj-cancelar').addEventListener('click', async function () {
   const clave = bandeja.agregar('cancelarPedido', [ref, motivo, t.columna], 'cancelar "' + t.titulo + '"');
   cerrarTarjeta();
   pintarTablero();
-  avisoConBoton('Pedido cancelado: pasó a Finalizados.', 'Deshacer', function () {
+  avisoConBoton((trabajo ? 'Tarjeta cancelada' : 'Pedido cancelado') + ': pasó a Finalizados.', 'Deshacer', function () {
     if (bandeja.pendiente(clave) && !bandeja.enviando) bandeja.quitar(clave);      // todavía no salió: se saca
     else bandeja.agregar('moverTarjeta', [ref, { columna: antes.columna, desde: colCancelado(), despuesDe: antes.despuesDe }], 'deshacer la cancelación de "' + t.titulo + '"');
     pintarTablero();
@@ -944,7 +1007,7 @@ const LARGO_COMENTARIO = 2000;
 function verDetalles() { return guardado.leer(K_VER_DETALLES) === '1'; }
 function nombreDe(usuario) {
   const u = String(usuario || '').replace(/^formulario:\s*/, '');
-  return !u || u === 'recordatorios' || u === 'limpieza' || u === 'sistema' ? 'La app' : u;
+  return !u || u === 'recordatorios' || u === 'limpieza' || u === 'sistema' || u === 'instalación' ? 'La app' : u;
 }
 
 function pintarActividad() {
@@ -953,17 +1016,16 @@ function pintarActividad() {
   bd.textContent = detalles ? 'Ocultar detalles' : 'Ver detalles';
   bd.setAttribute('aria-pressed', String(detalles));
   const items = [], ya = {};
-  const aca = TB.parte || '';        // la tarjeta grande muestra lo general; cada mini tarjeta, lo suyo
+  const viejas = (d && d.partesViejas) || {};     // las mini tarjetas de antes (Paso 4-bis): su nombre al lado
   ((d && d.comentarios) || []).forEach(function (c) {
     ya[c.id] = true;
-    if ((c.parte || '') === aca) items.push({ tipo: 'c', fecha: c.fecha, autor: c.autor, texto: c.texto });
+    items.push({ tipo: 'c', fecha: c.fecha, autor: c.autor, texto: c.texto, de: c.parte ? viejas[c.parte] || '' : '' });
   });
   // Los que esperan en la bandeja (sin señal, o saliendo)
   bandeja.lista().forEach(function (m) {
-    if (m.fn === 'comentar' && m.args[0] === ref && !ya[m.args[2]] && (m.args[3] || '') === aca) items.push({ tipo: 'c', fecha: m.creado, autor: APP.yo.nombre, texto: m.args[1], espera: true });
+    if (m.fn === 'comentar' && m.args[0] === ref && !ya[m.args[2]]) items.push({ tipo: 'c', fecha: m.creado, autor: APP.yo.nombre, texto: m.args[1], espera: true });
   });
   if (detalles && d && d.historia) d.historia.forEach(function (e) {
-    if (aca && !eventoDeParte(e, d, aca)) return;
     const f = fraseEvento(e, d);
     if (f) items.push({ tipo: 'e', fecha: e.fecha, autor: nombreDe(e.usuario), texto: f });
   });
@@ -979,7 +1041,7 @@ function htmlActividad(x) {
   const cuando = '<small title="' + esc(new Date(x.fecha).toLocaleString('es-AR')) + '">' + esc(hace(x.fecha)) + '</small>';
   if (x.tipo === 'e') return '<div class="act ev">' + av + '<div><b>' + esc(x.autor) + '</b> ' + esc(x.texto) + ' · ' + cuando + '</div></div>';
   return '<div class="act' + (x.espera ? ' espera' : '') + '">' + av + '<div class="act-c">' +
-    '<div class="quien"><b>' + esc(x.autor) + '</b> ' +
+    '<div class="quien"><b>' + esc(x.autor) + '</b> ' + (x.de ? '<small>· ' + esc(x.de) + '</small> ' : '') +
     (x.espera ? '<small>' + (APP.enLinea ? 'Enviando…' : '⏳ Se manda solo cuando vuelva la señal') + '</small>' : cuando) + '</div>' +
     '<div class="burbuja">' + conMenciones(x.texto) + '</div></div></div>';
 }
@@ -997,7 +1059,14 @@ function conMenciones(texto) {
 /** Un cambio de la historia, en palabras ("lo movió de Entrantes a Por cotizar"). */
 function fraseEvento(e, d) {
   const a = e.antes, n = e.despues;
-  if (e.entidad === 'pedido') {
+  if (e.entidad === 'pedido' || e.entidad === 'tarjeta') {
+    if (e.entidad === 'tarjeta' && e.accion === 'crear') return 'armó esta tarjeta';
+    if (e.entidad === 'tarjeta' && e.campo === 'Columna') {
+      if (n === colCancelado()) return 'canceló la tarjeta';
+      if (a === colCancelado()) return 'la recuperó: volvió a ' + n;
+      return 'la movió de ' + a + ' a ' + n;
+    }
+    if (e.campo === 'Columna' && n === 'Procesando') return 'pasó solo a Procesando: todos sus productos están en tarjetas';
     if (e.accion === 'crear') return 'cargó el pedido' + (/^formulario/.test(n) ? ' desde el formulario' : /^masivo/.test(n) ? ' como pedido masivo' : '');
     switch (e.campo) {
       case 'Columna':
@@ -1034,13 +1103,16 @@ function fraseEvento(e, d) {
       case 'Especificación': return 'cambió la especificación de ' + prod + ' a "' + n + '"';
       case 'Cantidad': return 'cambió la cantidad de ' + prod + ' de ' + a + ' a ' + n;
       case 'Proveedores particulares': return n ? 'mandó ' + prod + ' solo a ' + n : 'le sacó los proveedores particulares (' + a + ') a ' + prod;
+      case 'Tarjeta': {
+        const w = ((d && d.tarjetas) || []).filter(function (x) { return x.id === n; })[0];
+        return n ? 'pasó ' + prod + ' a la tarjeta ' + (w ? '"' + w.nombre + '"' : n) : 'sacó ' + prod + ' de su tarjeta';
+      }
     }
     return 'cambió ' + String(e.campo).toLowerCase() + ' de ' + prod + (n ? ': "' + n + '"' : '');
   }
   if (e.entidad === 'tarea' || e.entidad === 'checklist' || e.entidad === 'recordatorio') return fraseDeTarea(e, d);   // tareas.js
-  if (e.entidad === 'parte') {
-    const pt = ((d && d.partes) || []).filter(function (x) { return x.id === e.id; })[0];
-    const nom = pt ? pt.nombre : 'una parte';
+  if (e.entidad === 'parte') {                // las mini tarjetas de antes (Paso 4-bis)
+    const nom = ((d && d.partesViejas) || {})[e.id] || 'una parte';
     if (e.campo === 'Columna') {
       if (n === colCancelado()) return 'canceló la parte ' + nom;
       if (a === colCancelado()) return 'recuperó la parte ' + nom + ' (' + n + ')';
@@ -1135,7 +1207,7 @@ function enviarComentario() {
   if (texto.length > LARGO_COMENTARIO) return aviso('El comentario es muy largo (máximo ' + LARGO_COMENTARIO + ' letras).', 'bad');
   const t = buscarEnVista(ref) || (TB.detalle && TB.detalle.pedido) || {};
   const corto = texto.length > 80 ? texto.slice(0, 80) + '…' : texto;
-  bandeja.agregar('comentar', [ref, texto, 'C' + nuevoId(), TB.parte || ''], 'comentar en "' + (t.titulo || ref) + '": «' + corto + '»');
+  bandeja.agregar('comentar', [ref, texto, 'C' + nuevoId()], 'comentar en "' + (t.titulo || ref) + '": «' + corto + '»');
   cajaComentario.value = '';
   delete TB.borradores[ref];
   ajustarCaja();
@@ -1234,7 +1306,8 @@ function pedidoConCambios(ref, p) {
 
 function vigente(l) { return !l.estado || l.estado === 'Para quitar'; }
 
-function htmlProducto(l, admin, mio) {
+/** extra: html al final del producto (Fase 3: en qué tarjeta de trabajo está). */
+function htmlProducto(l, admin, mio, extra) {
   const sub = [];
   // Lo que escribió el encargado, solo si el producto no estaba en el padrón (si lo eligió de la lista, no hace falta)
   if (!l.enPadron && l.familia && l.texto && l.texto.toLowerCase() !== l.familia.toLowerCase()) sub.push(esc('Escribió: "' + l.texto + '"'));
@@ -1278,7 +1351,7 @@ function htmlProducto(l, admin, mio) {
     (nota ? '<div class="cambio">' + nota + '</div>' : '') +
     (e === 'Quitado' ? '' : sub.map(function (x) { return '<div class="sub">' + x + '</div>'; }).join('')) +
     (fotos && e !== 'Quitado' ? '<div class="fotos">' + fotos + '</div>' : '') +
-    (botones ? '<div class="cambio-b">' + botones + '</div>' : '') + '</div>' +
+    (botones ? '<div class="cambio-b">' + botones + '</div>' : '') + (extra || '') + '</div>' +
     (admin && activo && !l.nuevo ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" aria-label="Editar el producto" title="Editar">✏️</button>'
       : (!admin && mio && e === '' && !l.nuevo ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" data-cambio="quitar" aria-label="Pedir que lo quiten" title="Pedir que lo quiten">✕</button>' : '')) +
     '</div>';
@@ -1763,7 +1836,6 @@ function comprimirFoto(file) {
 async function adjuntar(files, ref) {
   ref = ref || TB.abierta;
   if (!ref) return;
-  const parte = ref === TB.abierta ? (TB.parte || '') : '';
   for (let k = 0; k < files.length; k++) {
     const f = files[k];
     const esPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
@@ -1780,7 +1852,7 @@ async function adjuntar(files, ref) {
     catch (e) { aviso('No se pudo guardar "' + nombre + '" en el teléfono.', 'bad'); continue; }
     ADJ.urls[id] = URL.createObjectURL(blob);
     const l = adjPendientes();
-    l.push({ id: id, ref: ref, parte: parte, nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', creado: new Date().toISOString(), token: APP.token, intentos: 0 });
+    l.push({ id: id, ref: ref, nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', creado: new Date().toISOString(), token: APP.token, intentos: 0 });
     guardarAdjPendientes(l);
   }
   pintarAdjuntos();
@@ -1798,7 +1870,7 @@ async function subirAdjuntos() {
       if (!g) r = { ok: false, error: 'el archivo ya no estaba en el teléfono' };
       else {
         try {
-          r = await llamar('subirAdjunto', [p.token || APP.token, p.ref, { id: p.id, nombre: p.nombre, tipo: p.tipo, parte: p.parte || '', base64: await blobABase64(g.blob) }],
+          r = await llamar('subirAdjunto', [p.token || APP.token, p.ref, { id: p.id, nombre: p.nombre, tipo: p.tipo, base64: await blobABase64(g.blob) }],
                            p.id, { limiteMs: 180000 });
         } catch (x) {
           if (x.sinRed) break;                                   // sin señal: después
@@ -1845,9 +1917,8 @@ function pintarAdjuntos() {
   if (!ref) return;
   const quitando = {};
   bandeja.lista().forEach(function (m) { if (m.fn === 'quitarAdjunto' && m.args[0] === ref) quitando[m.args[1]] = true; });
-  const aca = TB.parte || '';
-  const lista = ((d && d.adjuntos) || []).filter(function (a) { return !quitando[a.id] && (a.parte || '') === aca; });
-  const esperan = adjPendientes().filter(function (p) { return p.ref === ref && (p.parte || '') === aca; });
+  const lista = ((d && d.adjuntos) || []).filter(function (a) { return !quitando[a.id]; });
+  const esperan = adjPendientes().filter(function (p) { return p.ref === ref; });
   $('tj-adj-t').textContent = 'Adjuntos' + (lista.length + esperan.length ? ' (' + (lista.length + esperan.length) + ')' : '');
   const puedeQuitar = function (a) { return APP.yo.admin || a.autor === APP.yo.nombre; };
   const tile = function (a, espera) {
@@ -1896,162 +1967,9 @@ $('tj-adjuntar').addEventListener('change', function () {
   if (files.length) adjuntar(files);
 });
 
-/* ---------- Mini tarjetas adentro de la tarjeta (Paso 4-bis, arquitectura de Feli) ----------
-   Una por rubro y una por grupo de proveedores particulares. Cada una con
-   su estado (una columna), productos, descripción, comentarios y adjuntos;
-   se mueve por separado con "Mover a…". La tarjeta grande está en la
-   columna de la más atrasada. Con un solo rubro no se muestran. */
-
-/** Las mini tarjetas con lo que espera en la bandeja encima. */
-function partesVista(ref) {
-  const d = TB.detalle;
-  if (!d || !d.partes) return [];
-  const pts = d.partes.map(function (x) { return Object.assign({}, x); });
-  bandeja.lista().forEach(function (m) {
-    if (m.fn === 'mandarTanda') {
-      pts.forEach(function (x) { if ((m.args[0] || []).indexOf(x.id) !== -1) { x.columna = (columnasTb().filter(function (c) { return c.seccion === 'Cotización'; })[1] || {}).columna || x.columna; x.espera = true; } });
-      return;
-    }
-    if (!OPS_PARTE[m.fn] || m.args[0] !== ref) return;
-    const x = pts.filter(function (y) { return y.id === m.args[1]; })[0];
-    if (!x) return;
-    x.espera = true;
-    if (m.fn === 'moverParte') { x.columna = m.args[2].columna; if (m.args[2].entrega !== undefined) x.entrega = m.args[2].entrega; if (m.args[2].retiro) x.retiro = m.args[2].retiro; }
-    else if (m.fn === 'cancelarParte') x.columna = colCancelado();
-    else if (m.fn === 'describirParte') x.descripcion = m.args[2];
-  });
-  return pts;
-}
-
-/** El título de una mini tarjeta: sus productos (Feli), como el título de un pedido. */
-function tituloDeParte(d, pt) {
-  const ls = lineasConCambios(TB.abierta, d.lineas).filter(function (l) { return l.parte === pt.id && vigente(l); }).map(nombreProducto);
-  if (!ls.length) return pt.nombre;
-  return ls.length <= 3 ? ls.join(', ') : ls.slice(0, 3).join(', ') + ' y ' + (ls.length - 3) + ' más';
-}
-
-function textoTanda(pt) {
-  const m = /^T(\d{4})(\d{2})(\d{2})/.exec(pt.tanda || '');
-  return '📤 Salió en la tanda' + (m ? ' del ' + Number(m[3]) + '/' + Number(m[2]) : '') +
-    (pt.tandaCon ? ' con ' + pt.tandaCon + (pt.tandaCon === 1 ? ' pedido más' : ' pedidos más') : '');
-}
-
-/** La lista de productos de la tarjeta grande, agrupada en sus mini tarjetas. */
-function htmlPartes(ref, pts, lineas, admin, mio, puedeMover) {
-  const d = TB.detalle;
-  const cancel = colCancelado();
-  const ordenadas = pts.filter(function (x) { return x.columna !== cancel; }).concat(pts.filter(function (x) { return x.columna === cancel; }));
-  const cuantos = function (lista, id) { return (lista || []).filter(function (x) { return (x.parte || '') === id; }).length; };
-  let html = ordenadas.map(function (pt) {
-    const ls = lineas.filter(function (l) { return l.parte === pt.id; });
-    const cancelada = pt.columna === cancel;
-    const nc = cuantos(d.comentarios, pt.id), na = cuantos(d.adjuntos, pt.id);
-    return '<div class="parte' + (cancelada ? ' cancelada' : '') + '">' +
-      '<div class="parte-h"><b>' + esc(pt.nombre) + '</b>' +
-        (puedeMover && admin
-          ? '<button type="button" class="col-chip chico" data-mover-parte="' + esc(pt.id) + '">' + esc(pt.columna) + (cancelada ? ' · Recuperar' : '') + ' ⌄</button>'
-          : '<span class="col-chip chico">' + esc(pt.columna) + '</span>') +
-        (pt.espera ? '<span class="espera">' + (APP.enLinea ? 'Guardando…' : '⏳') + '</span>' : '') +
-        '<button type="button" class="btn-chico abrir" data-abrir-parte="' + esc(pt.id) + '">' +
-          (nc ? '💬 ' + nc + ' ' : '') + (na ? '📎 ' + na + ' ' : '') + 'Abrir ›</button></div>' +
-      (pt.manual ? '<div class="sub">✋ Gestión manual</div>' : '') +
-      (pt.tanda ? '<div class="sub">' + esc(textoTanda(pt)) + '</div>' : '') +
-      (pt.descripcion ? '<div class="sub">' + esc(pt.descripcion) + '</div>' : '') +
-      ls.map(function (l) { return htmlProducto(l, admin, mio); }).join('') + '</div>';
-  }).join('');
-  const sueltas = lineas.filter(function (l) { return !l.parte || !pts.some(function (x) { return x.id === l.parte; }); });
-  if (sueltas.length) html += '<div class="parte"><div class="parte-h"><b>Nuevos</b></div>' + sueltas.map(function (l) { return htmlProducto(l, admin, mio); }).join('') + '</div>';
-  return html;
-}
-
-function abrirParte(id) {
-  TB.parte = id;
-  ponerBorrador(TB.abierta);
-  pintarTarjeta();
-  $('tarjeta-modal').scrollTop = 0;
-}
-$('tj-volver').addEventListener('click', function () { TB.parte = null; pintarTarjeta(); $('tarjeta-modal').scrollTop = 0; });
-
-/** ¿Este cambio de la historia es de esta mini tarjeta? */
-function eventoDeParte(e, d, id) {
-  if (e.entidad === 'parte') return e.id === id;
-  if (e.entidad === 'linea') return ((d.lineas || []).filter(function (l) { return l.id === e.id; })[0] || {}).parte === id;
-  if (e.entidad === 'adjunto') return ((d.adjuntos || []).filter(function (a) { return a.id === e.id; })[0] || {}).parte === id;
-  return false;
-}
-
-async function moverParteUI(ref, id) {
-  const pt = partesVista(ref).filter(function (x) { return x.id === id; })[0];
-  if (!pt || !APP.yo.admin) return;
-  const cancelada = pt.columna === colCancelado();
-  const destino = await moverADialogo((cancelada ? 'Recuperar "' : 'Mover "') + pt.nombre + '" a…', cancelada ? '' : pt.columna, cancelada ? 'Está cancelada.' : '');
-  if (!destino || destino === pt.columna) return;
-  const op = { columna: destino, desde: pt.columna };
-  if (destino === colPorRecibir()) {
-    const e = await preguntarEntrega(pt.entrega);
-    if (!e) return;
-    op.entrega = e;
-  }
-  if (destino === colEntregado()) {
-    const r = await preguntarRetiro();
-    if (!r) return;
-    op.retiro = r.retiro;
-    op.fechaRetiro = r.fecha;
-  }
-  bandeja.agregar('moverParte', [ref, id, op], (cancelada ? 'recuperar "' : 'mover "') + pt.nombre + '" a ' + destino);
-  pintarTarjeta();
-}
-
-$('tj-cancelar-parte').addEventListener('click', async function () {
-  const ref = TB.abierta, pt = partesVista(ref).filter(function (x) { return x.id === TB.parte; })[0];
-  if (!pt) return;
-  const cuerpo = document.createElement('div');
-  cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<label for="dg-motivo">¿Por qué se cancela?</label><textarea id="dg-motivo" placeholder="Ej: ya no hace falta, se consiguió por otro lado…"></textarea>';
-  const motivo = await dialogo({
-    titulo: '¿Cancelar esta parte del pedido?',
-    texto: '"' + pt.nombre + '". Las otras partes siguen. No se borra: se puede recuperar.',
-    cuerpo: cuerpo,
-    botones: [
-      { texto: 'Sí, cancelar esta parte', clase: 'btn peligro-btn', id: 'dg-ok', valor: function () { return $('dg-motivo').value.trim(); } },
-      { texto: 'No, volver', valor: null }
-    ],
-    alAbrir: function () {
-      const ok = $('dg-ok'), m = $('dg-motivo');
-      const revisar = function () { ok.disabled = m.value.trim().length < 3; };
-      m.addEventListener('input', revisar);
-      revisar();
-      m.focus();
-    }
-  });
-  if (!motivo) return;
-  const antes = pt.columna;
-  const clave = bandeja.agregar('cancelarParte', [ref, pt.id, motivo, antes], 'cancelar la parte "' + pt.nombre + '"');
-  TB.parte = null;
-  pintarTarjeta();
-  avisoConBoton('Parte cancelada.', 'Deshacer', function () {
-    if (bandeja.pendiente(clave) && !bandeja.enviando) bandeja.quitar(clave);
-    else bandeja.agregar('moverParte', [ref, pt.id, { columna: antes, desde: colCancelado() }], 'deshacer la cancelación de "' + pt.nombre + '"');
-    pintarTarjeta();
-  });
-});
-
-$('tj-desc-editar').addEventListener('click', async function () {
+$('tj-desc-editar').addEventListener('click', function () {
   if (TB.tipo === 'tarea') return describirTareaUI(TB.abierta);
-  if (!TB.parte) return describirPedidoUI(TB.abierta);
-  const ref = TB.abierta, pt = partesVista(ref).filter(function (x) { return x.id === TB.parte; })[0];
-  if (!pt) return;
-  const cuerpo = document.createElement('div');
-  cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<label for="dg-desc">Descripción</label><textarea id="dg-desc" maxlength="2000"></textarea>';
-  const texto = await dialogo({
-    titulo: 'Descripción de "' + pt.nombre + '"', cuerpo: cuerpo,
-    botones: [{ texto: 'Guardar', clase: 'btn', valor: function () { return $('dg-desc').value.trim(); } }, { texto: 'Volver', valor: null }],
-    alAbrir: function () { $('dg-desc').value = pt.descripcion || ''; $('dg-desc').focus(); }
-  });
-  if (texto === null || texto === undefined || texto === (pt.descripcion || '')) return;
-  bandeja.agregar('describirParte', [ref, pt.id, texto], 'cambiar la descripción de "' + pt.nombre + '"');
-  pintarTarjeta();
+  describirPedidoUI(TB.abierta);
 });
 
 /** La descripción del pedido (la del masivo libre, Paso 6): va por editarPedido. */
@@ -2072,91 +1990,13 @@ async function describirPedidoUI(ref) {
   pintarTarjeta();
 }
 
-/** Respuesta de un cambio de mini tarjeta. */
-function parteMandada(m, r) {
-  if (r.ok && r.parte) {
-    const poner = function (d) { if (d && d.partes) d.partes = d.partes.map(function (x) { return x.id === r.parte.id ? Object.assign({}, x, r.parte) : x; }); };
-    const todos = detallesGuardados();
-    if (todos[m.args[0]]) { poner(todos[m.args[0]].d); guardado.guardarJSON(K_TARJETAS, todos); }
-    if (TB.abierta === m.args[0]) poner(TB.detalle);
-  }
-  if (m.fn !== 'describirParte') cargarTablero();         // la tarjeta grande puede haber cambiado de columna
-  if (TB.abierta && (m.fn === 'mandarTanda' || TB.abierta === m.args[0])) traerTarjeta(TB.abierta);
-  if (m.fn === 'mandarTanda' && r.ok && !document.hidden) aviso('📤 ' + r.enviadas + (r.enviadas === 1 ? ' parte pasó' : ' partes pasaron') + ' a ' + r.columna + '.');
-}
-
-/* ---------- Tanda verde: "Mandar a cotizar" (solo admins) ---------- */
-function htmlTandaCabecera(n) {
-  const t = (TB.datos && TB.datos.tanda) || {};
-  const aviso = t.dias === null || t.dias === undefined ? '' : t.dias >= (t.cada || 14) && n
-    ? '<span class="tanda-aviso">⚠ Hace ' + t.dias + ' días que no se manda</span>' : '<small>Última: ' + (t.dias === 0 ? 'hoy' : 'hace ' + t.dias + (t.dias === 1 ? ' día' : ' días')) + '</small>';
-  return '<div class="tanda-b">' + (n ? '<button type="button" class="btn-chico si" id="tb-mandar-tanda">📤 Mandar a cotizar</button>' : '') + aviso + '</div>';
-}
-
-async function mandarTandaUI() {
-  const r = await api('datosTanda');
-  if (!r.ok) return aviso(r.sinConexion ? 'Para armar la tanda hace falta señal. Probá en un rato.' : r.error, 'bad');
-  if (!r.grupos.length) return aviso('La Tanda verde está vacía.');
-  const elegidas = {};
-  r.grupos.forEach(function (g) { g.partes.forEach(function (x) { elegidas[x.id] = true; }); });
-  const cuerpo = document.createElement('div');
-  cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<p class="nota">Agrupado por rubro. Todo marcado: destildá lo que no va. Lo que se manda pasa a Por cotizar y queda anotado como una tanda.</p>' +
-    '<div class="opciones" id="tz-lista" style="max-height:55vh"></div>';
-  const ids = await dialogo({
-    titulo: 'Mandar a cotizar la Tanda verde', cuerpo: cuerpo,
-    botones: [{ texto: 'Mandar', clase: 'btn', id: 'dg-ok', valor: function () { return Object.keys(elegidas).filter(function (k) { return elegidas[k]; }); } },
-              { texto: 'Volver', valor: null }],
-    alAbrir: function () {
-      const cont = $('tz-lista');
-      const revisar = function () {
-        const n = Object.keys(elegidas).filter(function (k) { return elegidas[k]; }).length;
-        $('dg-ok').disabled = !n;
-        $('dg-ok').textContent = 'Mandar a cotizar (' + n + ')';
-        cont.querySelectorAll('[data-g]').forEach(function (b) {
-          const g = r.grupos[Number(b.dataset.g)], todas = g.partes.every(function (x) { return elegidas[x.id]; });
-          b.setAttribute('aria-checked', String(todas));
-          b.querySelector('.marca').textContent = todas ? '☑' : g.partes.some(function (x) { return elegidas[x.id]; }) ? '◩' : '☐';
-        });
-        cont.querySelectorAll('[data-p]').forEach(function (b) {
-          b.setAttribute('aria-checked', String(!!elegidas[b.dataset.p]));
-          b.querySelector('.marca').textContent = elegidas[b.dataset.p] ? '☑' : '☐';
-        });
-      };
-      cont.innerHTML = r.grupos.map(function (g, k) {
-        return '<h4>' + esc(g.nombre) + '</h4>' +
-          '<button type="button" class="choice" data-g="' + k + '"><span class="marca">☑</span><span><b>Todo ' + esc(g.nombre) + '</b> · ' +
-            g.partes.length + (g.partes.length === 1 ? ' pedido' : ' pedidos') + '</span></button>' +
-          g.partes.map(function (x) {
-            return '<button type="button" class="choice sub-choice" data-p="' + esc(x.id) + '"><span class="marca">☑</span><span>' + esc(x.sitio) + ' · ' + esc(x.productos) +
-              '<small style="display:block;color:var(--muted);font-weight:400">' + esc(x.solicitante) + '</small></span></button>';
-          }).join('');
-      }).join('');
-      cont.querySelectorAll('[data-g]').forEach(function (b) {
-        b.addEventListener('click', function () {
-          const g = r.grupos[Number(b.dataset.g)], todas = g.partes.every(function (x) { return elegidas[x.id]; });
-          g.partes.forEach(function (x) { elegidas[x.id] = !todas; });
-          revisar();
-        });
-      });
-      cont.querySelectorAll('[data-p]').forEach(function (b) {
-        b.addEventListener('click', function () { elegidas[b.dataset.p] = !elegidas[b.dataset.p]; revisar(); });
-      });
-      revisar();
-    }
-  });
-  if (!ids || !ids.length) return;
-  bandeja.agregar('mandarTanda', [ids], 'mandar a cotizar la Tanda verde (' + ids.length + (ids.length === 1 ? ' parte)' : ' partes)'));
-  if (TB.abierta) pintarTarjeta();
-}
-
 /** Muestra los bloques de la ventana que son de un pedido o de una tarea. */
 function bloquesDeTarea(tarea) {
   ['tj-razon-b', 'tj-prod-b'].forEach(function (id) { $(id).hidden = tarea; });
   ['tj-check-b', 'tj-rec-b'].forEach(function (id) { $(id).hidden = !tarea; });
   $('tj-borrar-tarea').hidden = !tarea;
   if (!tarea) $('tj-editar').textContent = '✏️ Editar pedido';
-  if (tarea) ['tj-cancelar', 'tj-cancelar-parte', 'tj-volver', 'tj-reabrir'].forEach(function (id) { $(id).hidden = true; });
+  if (tarea) ['tj-cancelar', 'tj-reabrir', 'tj-enlaces'].forEach(function (id) { $(id).hidden = true; });
 }
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */

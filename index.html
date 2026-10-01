@@ -130,11 +130,12 @@
             <button type="button" id="tb-todos" aria-pressed="false">Todos</button>
           </div>
           <label class="filtro" id="tb-sitio-l" hidden><span>Granja</span><select id="tb-sitio"></select></label>
-          <button type="button" class="chip-filtro" id="tb-aprobar" aria-pressed="false" hidden>⏳ Para aprobar</button>
           <label class="filtro" id="tb-resp-l" hidden><span>Responsable</span><select id="tb-resp"></select></label>
           <button type="button" class="refrescar" id="tb-refrescar" aria-label="Actualizar el tablero"><span class="ic">↻</span> <span id="tb-hace"></span></button>
         </div>
       </div>
+      <!-- Procesando (Fase 3): pedidos cuyos productos ya están todos en tarjetas de trabajo. Plegada, arriba de la Tanda verde -->
+      <div class="procesando" id="tb-procesando" hidden></div>
       <div class="tablero" id="tablero" aria-label="Tablero de pedidos"></div>
     </section>
 
@@ -288,7 +289,6 @@
   <div class="modal" id="tarjeta-modal" hidden>
     <div class="panel" role="dialog" aria-modal="true" aria-labelledby="tj-titulo">
       <div class="panel-h">
-        <button type="button" class="btn-chico" id="tj-volver" hidden>‹ Volver al pedido</button>
         <button type="button" class="col-chip" id="tj-columna"></button>
         <button type="button" class="btn-chico" id="tj-editar" hidden>✏️ Editar pedido</button>
         <button type="button" class="icono" id="tj-cerrar" aria-label="Cerrar">×</button>
@@ -298,6 +298,8 @@
           <h2 class="tit" id="tj-titulo"></h2>
           <div class="datos" id="tj-datos"></div>
           <div class="etiquetas" id="tj-etiquetas"></div>
+          <!-- Fase 3: de qué pedido viene una tarjeta de trabajo, o las tarjetas que salieron de un pedido -->
+          <div class="enlaces" id="tj-enlaces" hidden></div>
           <button type="button" class="btn2 tj-reabrir" id="tj-reabrir" hidden>↩️ Reabrir el pedido</button>
           <div class="bloque" id="tj-desc-b" hidden>
             <div class="act-h"><h3>Descripción</h3><button type="button" class="btn-chico" id="tj-desc-editar" hidden>✏️ Editar</button></div>
@@ -324,7 +326,6 @@
             <div class="adjuntos" id="tj-adjuntos"></div>
           </div>
           <button type="button" class="peligro" id="tj-cancelar" hidden>Cancelar pedido</button>
-          <button type="button" class="peligro" id="tj-cancelar-parte" hidden>Cancelar esta parte</button>
           <button type="button" class="peligro" id="tj-borrar-tarea" hidden>Borrar tarea</button>
         </div>
         <div class="lado">

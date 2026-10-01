@@ -292,7 +292,7 @@ html,body{touch-action:pan-x pan-y}
 .adj .esp{position:absolute;left:3px;bottom:3px;background:rgba(0,0,0,.65);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px}
 .adj.espera img{opacity:.7}
 
-/* Mini tarjetas adentro de la tarjeta (Paso 4-bis) */
+/* Productos agrupados por rubro adentro del pedido (Fase 3; antes, las mini tarjetas del Paso 4-bis) */
 .parte{border:1.5px solid var(--line);border-radius:12px;padding:10px 10px 4px;margin-bottom:12px;background:var(--soft)}
 .parte.cancelada{opacity:.55}
 .parte-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
@@ -302,10 +302,21 @@ html,body{touch-action:pan-x pan-y}
 .col-chip.chico{font-size:13px;padding:3px 8px;min-height:30px}
 .parte .producto{background:var(--bg)}
 .panel.chico select{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;min-height:48px}
-/* Tanda verde: "Mandar a cotizar" en la cabecera de la columna */
-.tanda-b{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:8px}
-.tanda-b small{color:var(--muted);font-size:12px}
-.tanda-aviso{font-size:12px;font-weight:700;color:var(--warn)}
+/* Procesando (Fase 3): plegada, arriba del tablero */
+.procesando{flex:none;border-bottom:1.5px solid var(--line);background:var(--bg);padding:6px 12px}
+.procesando .proc-h{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;color:var(--fg);font:inherit;font-weight:700;font-size:15px;padding:6px 0;cursor:pointer;min-height:40px;text-align:left}
+.procesando .proc-h .n{color:var(--muted);font-weight:600}
+.procesando .proc-l{max-height:34vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-bottom:6px}
+.procesando .proc-i{display:block;width:100%;text-align:left;border:1.5px solid var(--line);border-radius:10px;background:var(--soft);color:var(--fg);font:inherit;padding:8px 10px;cursor:pointer}
+.procesando .proc-i b{font-size:14px}
+.procesando .proc-i small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+/* Enlaces de ida y vuelta entre un pedido y sus tarjetas de trabajo */
+.enlaces{display:flex;flex-direction:column;gap:6px;margin:4px 0 12px}
+.enlaces small{color:var(--muted);font-size:13px}
+.enlaces .ir{display:flex;align-items:center;gap:8px;text-align:left;border:1.5px solid var(--line);border-radius:10px;background:var(--soft);color:var(--fg);font:inherit;font-size:14px;padding:8px 10px;min-height:44px;cursor:pointer}
+.enlaces .ir span{flex:1}
+.producto .en-tarjeta{border:0;background:none;color:var(--accent);font:inherit;font-size:13px;padding:2px 0;cursor:pointer;text-align:left}
+.tarjeta .trabajo{flex:none;font-size:13px}
 .sub-choice{margin-left:18px;width:calc(100% - 18px)}
 .choice .marca{font-size:18px;line-height:1}
 
