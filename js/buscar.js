@@ -88,7 +88,7 @@ function buscarEnTablero(f) {
   if (f.estado === 'terminados') return [];
   const palabras = sinTildes(f.q).split(/[^a-z0-9ñ]+/).filter(String);
   return vista().filter(function (t) {
-    if (f.mios && t.solicitante !== APP.yo.nombre) return false;
+    if (f.mios && !esMio(t)) return false;
     if (f.sitio && t.sitio !== f.sitio) return false;
     const texto = sinTildes([t.ref, t.titulo, t.sitio, t.solicitante].join(' '));
     return palabras.every(function (w) { return texto.indexOf(w) !== -1; });

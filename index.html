@@ -34,7 +34,7 @@
 -->
 <!-- El color de App_Config: el último que mandó el servidor, guardado en el dispositivo.
      La primera vez, el rosa de siempre (paletaDe_ de #d6336c). -->
-<style id="estiloColor">:root{--accent:#d6336c;--accent-soft:#fae7ed;--accent-fg:#ffffff;--band:#d6336c;--tablero:#c93066;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;--tablero:#5e2237;}}:root[data-theme="dark"]{--accent:#dc5282;--accent-soft:#3b1d27;--accent-fg:#0f1412;--band:#7f2745;--tablero:#5e2237;}</style>
+<style id="estiloColor">:root{--accent:#2f6fde;--accent-soft:#e6eefb;--accent-fg:#ffffff;--band:#2f6fde;--tablero:#2c68d1;--fondo-a:#1a3d7a;--fondo-b:#0a1831;--fondo-c:#214e9b;--fondo-d:#0e2143;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#4e85e3;--accent-soft:#19293e;--accent-fg:#0f1412;--band:#234884;--tablero:#1e3962;--fondo-a:#1a3d7a;--fondo-b:#0a1831;--fondo-c:#214e9b;--fondo-d:#0e2143;}}:root[data-theme="dark"]{--accent:#4e85e3;--accent-soft:#19293e;--accent-fg:#0f1412;--band:#234884;--tablero:#1e3962;--fondo-a:#1a3d7a;--fondo-b:#0a1831;--fondo-c:#214e9b;--fondo-d:#0e2143;}</style>
 <script>try { var c = localStorage.getItem('compras_css_mio'); if (c === null) c = localStorage.getItem('compras_css'); if (c !== null) document.getElementById('estiloColor').textContent = c;
   var e = localStorage.getItem('compras_estilo'); if (e) document.documentElement.dataset.estilo = e; } catch (e) {}</script>
 </head>
@@ -184,7 +184,7 @@
         <button type="button" class="ad-op" data-ir="personas"><span class="ic" aria-hidden="true">👥</span><b>Personas y dispositivos</b><small>Altas, bajas, roles y dónde tiene abierta la app cada uno</small></button>
         <button type="button" class="ad-op" data-ir="proveedores"><span class="ic" aria-hidden="true">🏪</span><b>Proveedores</b><small>Teléfonos, rubros, activar o desactivar</small></button>
         <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Granjas y aviso de la Tanda verde</small></button>
-        <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Pegar una lista de productos, o un pedido libre con PDF</small></button>
+        <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Un pedido con título, descripción y PDF, para compartir con quien elijas</small></button>
       </div>
     </section>
 
@@ -227,33 +227,18 @@
     </section>
 
     <section id="s-masivo" hidden>
-      <div class="seg ma-modo" role="group" aria-label="Cómo cargar el pedido">
-        <button type="button" data-modo="lista" aria-pressed="true">📋 Lista de productos</button>
-        <button type="button" data-modo="libre" aria-pressed="false">📝 Libre, con PDF</button>
-      </div>
-      <p class="nota" id="ma-ayuda-modo"></p>
+      <p class="nota">Un pedido con título, lo que haga falta en la descripción (pegado como venga) y los adjuntos, por ejemplo el PDF con la lista.</p>
       <div class="caja">
+        <div class="campo"><label for="ma-titulo">Título</label><input type="text" id="ma-titulo" maxlength="200" autocomplete="off" placeholder="Ej: Materiales obra silos PAB"></div>
         <div class="campo"><label for="ma-sitio">Granja</label><select id="ma-sitio"></select></div>
         <div class="campo"><label>Urgencia</label><div class="urgencias-el" id="ma-urg"></div></div>
-        <div class="campo" id="ma-titulo-c" hidden><label for="ma-titulo">Título</label><input type="text" id="ma-titulo" maxlength="200" autocomplete="off" placeholder="Ej: Materiales obra silos PAB"></div>
         <div class="campo"><label for="ma-razon">Razón <small>(opcional)</small></label><input type="text" id="ma-razon" maxlength="2000" autocomplete="off" placeholder="Ej: obra nueva, reposición del mes…"></div>
-      </div>
-      <!-- Modo lista -->
-      <div class="caja" id="ma-lista-c">
-        <label for="ma-texto">Pegá la lista: un producto por línea</label>
-        <textarea id="ma-texto" rows="8" placeholder="20 bulones 3/4&#10;5 guantes de nitrilo talle M&#10;cable 2,5 mm x 50"></textarea>
-        <p class="nota">Cada línea: <b>cantidad</b>, <b>producto</b> y, si hace falta, cómo es (medida, talle, marca). La cantidad puede ir al principio ("20 bulones 3/4") o al final ("bulones 3/4 x 20"). Sirve pegar desde Excel, WhatsApp o un mail. Si una línea no tiene cantidad, va 1 y lo podés cambiar.</p>
-        <button type="button" class="btn" id="ma-ver">Ver cómo queda</button>
-        <div id="ma-previa" hidden>
-          <h3 id="ma-previa-t"></h3>
-          <div id="ma-filas" class="ma-filas"></div>
-        </div>
-      </div>
-      <!-- Modo libre -->
-      <div class="caja" id="ma-libre-c" hidden>
-        <label for="ma-desc">Descripción</label>
-        <textarea id="ma-desc" rows="10" maxlength="20000" placeholder="Pegá acá los productos como los tengas, o lo que haga falta explicar."></textarea>
-        <div class="act-h" style="margin-top:12px"><h3>Adjuntos</h3><button type="button" class="btn-chico" id="ma-adj-b">📎 Adjuntar PDF o fotos</button></div>
+        <div class="campo"><label for="ma-desc">Descripción</label>
+          <textarea id="ma-desc" rows="10" maxlength="20000" placeholder="Pegá acá los productos como los tengas, o lo que haga falta explicar."></textarea></div>
+        <div class="campo"><label>Compartir con</label>
+          <p class="nota">Los encargados que elijas lo ven en su tablero, y pueden comentar y adjuntar. Si no elegís a nadie, lo ven solo los admins.</p>
+          <div class="pr-rubros" id="ma-compartir"></div></div>
+        <div class="act-h"><h3>Adjuntos</h3><button type="button" class="btn-chico" id="ma-adj-b">📎 Adjuntar PDF o fotos</button></div>
         <input type="file" id="ma-adj" accept="image/*,application/pdf" multiple style="display:none">
         <ul class="ma-archivos" id="ma-archivos"></ul>
       </div>

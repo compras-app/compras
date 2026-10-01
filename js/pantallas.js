@@ -55,15 +55,13 @@ const ESTILOS = [
 function pintarAspecto() {
   const estilo = document.documentElement.dataset.estilo || (APP.yo && APP.yo.estilo) || 'profundidad';
   const colores = (APP.config && APP.config.colores) || [];
-  const mio = APP.yo ? APP.yo.color || '' : '';
+  const mio = (APP.yo && APP.yo.color) || 'Azul';     // si no eligió, Azul (Feli)
   $('c-aspecto').hidden = !colores.length;          // una versión vieja del servidor todavía no los manda
   $('c-estilos').innerHTML = ESTILOS.map(function (e) {
     return '<button type="button" class="asp-estilo" data-estilo="' + e.id + '" aria-pressed="' + (e.id === estilo) + '">' +
       '<span class="asp-mini" data-mini="' + e.id + '"><i></i><i></i><i></i></span><b>' + esc(e.nombre) + '</b><small>' + esc(e.nota) + '</small></button>';
   }).join('');
-  $('c-colores').innerHTML = '<button type="button" class="asp-color asp-app" data-color="" aria-pressed="' + !mio + '" title="El de la app">' +
-      '<span>El de la app</span></button>' +
-    colores.map(function (c) {
+  $('c-colores').innerHTML = colores.map(function (c) {
       return '<button type="button" class="asp-color" data-color="' + esc(c.nombre) + '" aria-pressed="' + (c.nombre === mio) + '" title="' + esc(c.nombre) + '">' +
         '<i style="background:' + esc(c.hex) + '"></i><span>' + esc(c.nombre) + '</span></button>';
     }).join('');
@@ -76,7 +74,7 @@ function pintarAspecto() {
 }
 function cambiarAspecto(a) {
   const yo = APP.yo;
-  const color = a.color !== undefined ? a.color : (yo.color || '');
+  const color = a.color || yo.color || 'Azul';
   const estilo = a.estilo || document.documentElement.dataset.estilo || yo.estilo || 'profundidad';
   const c = (APP.config.colores || []).filter(function (x) { return x.nombre === color; })[0];
   aplicarAspecto(c ? c.css : null, estilo);

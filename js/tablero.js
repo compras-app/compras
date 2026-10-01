@@ -89,6 +89,7 @@ function aplicarOp(lista, fn, args) {
       const c = args[1] || {}, t = Object.assign({}, lista[i]);
       if (c.titulo !== undefined) t.titulo = c.titulo;
       if (c.urgencia !== undefined) t.urgencia = c.urgencia;
+      if (c.compartido !== undefined) t.compartido = c.compartido;
       lista[i] = t;
     }
   }
@@ -147,13 +148,15 @@ function pintarFiltros() {
 }
 function seVe(t) {
   const f = TB.filtros;
-  if (f.mios && t.solicitante !== APP.yo.nombre) return false;
+  if (f.mios && !esMio(t)) return false;
   if (f.sitio && t.sitio !== f.sitio) return false;
   if (f.resp === '-' && t.responsable) return false;
   if (f.resp && f.resp !== '-' && t.responsable !== f.resp) return false;
   if (f.aprobar && !t.paraAprobar) return false;
   return true;
 }
+/** "Mis pedidos": los que pidió, y los masivos que le compartieron (Paso 6). */
+function esMio(t) { return t.solicitante === APP.yo.nombre || (t.compartido || []).indexOf(APP.yo.nombre) !== -1; }
 $('tb-mios').addEventListener('click', function () { TB.filtros.mios = true; pintarFiltros(); pintarTablero(); });
 $('tb-todos').addEventListener('click', function () { TB.filtros.mios = false; pintarFiltros(); pintarTablero(); });
 $('tb-aprobar').addEventListener('click', function () { TB.filtros.aprobar = !TB.filtros.aprobar; pintarFiltros(); pintarTablero(); });
@@ -722,6 +725,11 @@ function pintarTarjeta() {
   dato('Urgencia', esc((t && t.urgencia) || (p && p.urgencia) || ''));
   dato('Pidió', esc((t && t.solicitante) || (p && p.solicitante) || ''));
   if (p) dato('Cargado', esc(fechaLinda(p.fecha)));
+  // Masivo (Paso 6): con qué encargados se compartió
+  if ((t && t.masivo) || (p && p.origen === 'masivo')) {
+    const comp = (p ? pedidoConCambios(ref, p).compartido : t.compartido) || [];
+    dato('Compartido con', esc(comp.length ? comp.join(', ') : 'Solo los admins'));
+  }
   const respHtml = responsable ? '<span class="resp">' + esc(inicial(responsable)) + '</span> ' + esc(responsable) : 'Sin responsable';
   dato('Responsable', admin && enTb ? '<button type="button" class="boton-dato" id="tj-resp">' + respHtml + ' ⌄</button>' : respHtml);
   if (columna === colPorRecibir() || entrega) {
@@ -1148,7 +1156,8 @@ function comentarioMandado(m, r) {
     if (TB.abierta === ref) poner(TB.detalle);
     if (!document.hidden) {
       const lista = function (l) { return l.join(', ').replace(/, ([^,]*)$/, ' y $1'); };
-      if (r.sinAviso && r.sinAviso.length) aviso('No le pudo llegar el WhatsApp a ' + lista(r.sinAviso) + '. El comentario quedó guardado igual.', 'bad');
+      if (r.noVen && r.noVen.length) aviso(lista(r.noVen) + (r.noVen.length === 1 ? ' no ve' : ' no ven') + ' este pedido masivo: no le mandé el WhatsApp. Si querés, compartiselo desde ✏️ Editar pedido.', 'bad');
+      else if (r.sinAviso && r.sinAviso.length) aviso('No le pudo llegar el WhatsApp a ' + lista(r.sinAviso) + '. El comentario quedó guardado igual.', 'bad');
       else if (r.avisados && r.avisados.length) aviso('📲 Le llegó un WhatsApp a ' + lista(r.avisados) + '.');
     }
   }
@@ -1216,7 +1225,7 @@ function pedidoConCambios(ref, p) {
   bandeja.lista().forEach(function (m) {
     if (m.fn !== 'editarPedido' || m.args[0] !== ref) return;
     const c = m.args[1] || {};
-    ['titulo', 'urgencia', 'razon', 'descripcion'].forEach(function (k) { if (c[k] !== undefined) v[k] = c[k]; });
+    ['titulo', 'urgencia', 'razon', 'descripcion', 'compartido'].forEach(function (k) { if (c[k] !== undefined) v[k] = c[k]; });
   });
   return v;
 }
@@ -1384,7 +1393,7 @@ function productoMandado(m, r) {
 function datosDelPedidoMandados(ref, c) {
   const poner = function (d) {
     if (!d || !d.pedido) return;
-    ['titulo', 'urgencia', 'razon', 'descripcion'].forEach(function (k) { if (c[k] !== undefined) d.pedido[k] = c[k]; });
+    ['titulo', 'urgencia', 'razon', 'descripcion', 'compartido'].forEach(function (k) { if (c[k] !== undefined) d.pedido[k] = c[k]; });
   };
   const todos = detallesGuardados();
   if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
@@ -1668,7 +1677,12 @@ $('tj-editar').addEventListener('click', async function () {
   cuerpo.innerHTML = '<div class="campo"><label for="eq-titulo">Título</label><input type="text" id="eq-titulo" maxlength="200" autocomplete="off">' +
     '<p class="nota">Cambia solo el título: los productos quedan como están. Si después se cambia un producto, el título se vuelve a armar con los productos.</p></div>' +
     '<div class="campo"><label>Urgencia</label><div class="urgencias-el" id="eq-urg"></div></div>' +
-    '<div class="campo"><label for="eq-razon">Razón del pedido</label><textarea id="eq-razon" maxlength="2000"></textarea></div>';
+    '<div class="campo"><label for="eq-razon">Razón del pedido</label><textarea id="eq-razon" maxlength="2000"></textarea></div>' +
+    (p.origen === 'masivo' ? '<div class="campo"><label>Compartir con</label><p class="nota">Los encargados que elijas lo ven. Sin nadie: solo los admins.</p>' +
+      '<div class="pr-rubros" id="eq-compartir"></div></div>' : '');
+  const antesComp = (p.compartido || []).slice().sort().join('|');
+  const elegidos = {};
+  (p.compartido || []).forEach(function (n) { elegidos[n] = true; });
   const c = await dialogo({
     titulo: 'Editar pedido', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
@@ -1676,6 +1690,10 @@ $('tj-editar').addEventListener('click', async function () {
       if (ti !== p.titulo) c.titulo = ti;
       if (urgencia !== p.urgencia) c.urgencia = urgencia;
       if (ra !== (p.razon || '')) c.razon = ra;
+      if (p.origen === 'masivo') {
+        const comp = elegidosLista(elegidos).sort();
+        if (comp.join('|') !== antesComp) c.compartido = comp;
+      }
       return c;
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
@@ -1693,6 +1711,7 @@ $('tj-editar').addEventListener('click', async function () {
       $('eq-titulo').addEventListener('input', revisar);
       $('eq-razon').addEventListener('input', revisar);
       pintarUrg();
+      if ($('eq-compartir')) pintarChipsEncargados($('eq-compartir'), elegidos);
       revisar();
     }
   });

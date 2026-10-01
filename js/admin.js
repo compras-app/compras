@@ -10,8 +10,8 @@
      rubro: avisa, no frena).
    - Ajustes: granjas (renombrar cambia también los pedidos viejos) y
      cada cuántos días avisa la Tanda verde.
-   - Pedido masivo: pegar una lista (vista previa contra el padrón) o
-     un pedido "libre" con título, descripción y PDF.
+   - Pedido masivo: título, descripción y PDF, compartido con los
+     encargados que se elijan (Feli sacó la lista pegada).
    Todo esto necesita señal: se manda directo, no por la bandeja.
    ============================================================ */
 
@@ -19,7 +19,7 @@ const AD = {
   personas: null, yo: '', sesion: '',
   provs: null,                 // {proveedores, rubros, maximo}
   ajustes: null,
-  masivo: { modo: 'lista', id: '', urgencia: '', lineas: null, archivos: [] }
+  masivo: { id: '', urgencia: '', archivos: [], compartir: null }
 };
 
 pantalla('admin', { titulo: 'Administración' });
@@ -36,7 +36,7 @@ document.querySelectorAll('#s-admin [data-ir]').forEach(function (b) {
 function textoDeError(r) {
   return r.sinConexion ? '📶 Poca señal: esto se hace con señal. Probá de nuevo en un rato.' : (r.error || 'No se pudo. Probá de nuevo en un rato.');
 }
-function estado(id, texto) { const el = $(id); if (el) el.textContent = texto || ''; }
+function notaAd(id, texto) { const el = $(id); if (el) el.textContent = texto || ''; }     // (no es estado() de base.js: esas notas no se esconden)
 
 /** Un campo de texto del diálogo, con su etiqueta y una nota opcional. */
 function campoDlg(id, etiqueta, valor, extra) {
@@ -54,11 +54,11 @@ const NOTA_TELEFONO = 'Con código de país, sin 0 ni 15. Ejemplo: <b>5493525415
    PERSONAS Y DISPOSITIVOS
    ============================================================ */
 async function mostrarPersonas() {
-  if (!AD.personas) estado('pe-estado', 'Cargando…');
+  if (!AD.personas) notaAd('pe-estado', 'Cargando…');
   pintarPersonas();
   const r = await api('getPersonas');
-  if (r.ok) { AD.personas = r.personas; AD.yo = r.yo; AD.sesion = r.sesion; estado('pe-estado', ''); }
-  else estado('pe-estado', textoDeError(r));
+  if (r.ok) { AD.personas = r.personas; AD.yo = r.yo; AD.sesion = r.sesion; notaAd('pe-estado', ''); }
+  else notaAd('pe-estado', textoDeError(r));
   pintarPersonas();
 }
 
@@ -174,11 +174,11 @@ async function activarPersona(p, activo) {
    PROVEEDORES
    ============================================================ */
 async function mostrarProveedores() {
-  if (!AD.provs) estado('pv-estado', 'Cargando…');
+  if (!AD.provs) notaAd('pv-estado', 'Cargando…');
   else pintarProveedores();
   const r = await api('getProveedoresAdmin');
-  if (r.ok) { AD.provs = r; estado('pv-estado', ''); }
-  else if (!AD.provs) { estado('pv-estado', textoDeError(r)); return; }
+  if (r.ok) { AD.provs = r; notaAd('pv-estado', ''); }
+  else if (!AD.provs) { notaAd('pv-estado', textoDeError(r)); return; }
   armarRubrosFiltro();
   pintarProveedores();
 }
@@ -207,7 +207,7 @@ function pintarProveedores() {
     const r = AD.provs.rubros.filter(function (x) { return x.nombre === rubro; })[0];
     if (r && r.proveedores > AD.provs.maximo) nota = '⚠️ ' + rubro + ' tiene ' + r.proveedores + ' proveedores activos: lo acordado es hasta ' + AD.provs.maximo + '. ' + nota;
   }
-  estado('pv-estado', nota);
+  notaAd('pv-estado', nota);
   $('pv-lista').innerHTML = l.map(function (p) {
     return '<button type="button" class="ad-item ad-fila' + (p.activo ? '' : ' baja') + '" data-id="' + esc(p.id) + '">' +
       '<span class="ad-nom"><b>' + esc(p.nombre) + '</b>' +
@@ -291,11 +291,11 @@ async function editarProveedor(p, previo) {
    AJUSTES: granjas y Tanda verde
    ============================================================ */
 async function mostrarAjustes() {
-  if (!AD.ajustes) estado('aj-estado', 'Cargando…');
+  if (!AD.ajustes) notaAd('aj-estado', 'Cargando…');
   pintarAjustes();
   const r = await api('getAjustes');
-  if (r.ok) { AD.ajustes = r; estado('aj-estado', ''); }
-  else estado('aj-estado', textoDeError(r));
+  if (r.ok) { AD.ajustes = r; notaAd('aj-estado', ''); }
+  else notaAd('aj-estado', textoDeError(r));
   pintarAjustes();
 }
 
@@ -380,18 +380,36 @@ $('aj-dias-ok').addEventListener('click', async function () {
 });
 
 /* ============================================================
-   PEDIDO MASIVO
-   - Lista: se pega, "Ver cómo queda" la separa contra el padrón
-     (analizarMasivo) y se corrige antes de crear.
-   - Libre (Feli): título, descripción pegada como venga y el PDF.
+   PEDIDO MASIVO (Feli: solo el "libre")
+   Título, granja, urgencia, descripción pegada como venga, con quién
+   se comparte (encargados; nadie = solo los admins) y los adjuntos.
    El número del pedido ("M…") lo arma la app al empezar, así un
    reintento no lo duplica; cambia recién cuando se crea.
    ============================================================ */
 function nuevoIdMasivo() { return 'M' + Date.now().toString(36).toUpperCase() + nuevoId().slice(-4); }
 
+/** Los encargados activos (los admins ya ven todo). */
+function encargados() {
+  const admins = APP.config.admins || [];
+  return (APP.config.usuarios || []).filter(function (n) { return admins.indexOf(n) === -1; });
+}
+
+/** Chips para elegir encargados. elegidos: {nombre: true}, se cambia en el lugar. */
+function pintarChipsEncargados(cont, elegidos) {
+  const l = encargados();
+  cont.innerHTML = l.length ? l.map(function (n) {
+    return '<button type="button" class="chip-sel" data-n="' + esc(n) + '" aria-pressed="' + !!elegidos[n] + '">' + esc(n) + '</button>';
+  }).join('') : '<p class="nota">Todavía no hay encargados cargados.</p>';
+  cont.querySelectorAll('[data-n]').forEach(function (b) {
+    b.addEventListener('click', function () { elegidos[b.dataset.n] = !elegidos[b.dataset.n]; b.setAttribute('aria-pressed', String(!!elegidos[b.dataset.n])); });
+  });
+}
+function elegidosLista(elegidos) { return Object.keys(elegidos).filter(function (n) { return elegidos[n]; }); }
+
 function mostrarMasivo() {
   const m = AD.masivo;
   if (!m.id) m.id = nuevoIdMasivo();
+  if (!m.compartir) m.compartir = {};
   if (!m.sitiosArmados) {
     m.sitiosArmados = true;
     const actual = $('ma-sitio').value;
@@ -400,19 +418,12 @@ function mostrarMasivo() {
   }
   const urg = APP.config.urgencias || [];
   if (!m.urgencia) m.urgencia = urg[urg.length - 1] || '';
+  pintarChipsEncargados($('ma-compartir'), m.compartir);
   pintarMasivo();
-  datosProductos();                                  // para las sugerencias de los que no están en el padrón
 }
 
 function pintarMasivo() {
   const m = AD.masivo;
-  document.querySelectorAll('#s-masivo [data-modo]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.modo === m.modo)); });
-  $('ma-ayuda-modo').textContent = m.modo === 'lista'
-    ? 'Pegás los productos y la app los separa y los busca en el padrón. Queda un pedido con sus productos, dividido por rubro.'
-    : 'Para cuando la lista viene en un PDF o es difícil de separar: un título, una descripción con lo que haga falta y el PDF adjunto.';
-  $('ma-lista-c').hidden = m.modo !== 'lista';
-  $('ma-libre-c').hidden = m.modo !== 'libre';
-  $('ma-titulo-c').hidden = m.modo !== 'libre';
   $('ma-urg').innerHTML = (APP.config.urgencias || []).map(function (u) {
     return '<button type="button" data-u="' + esc(u) + '" aria-pressed="' + (u === m.urgencia) + '">' + esc(u) + '</button>';
   }).join('');
@@ -423,99 +434,12 @@ function pintarMasivo() {
 
 function revisarMasivo() {
   const m = AD.masivo;
-  let listo = !!$('ma-sitio').value && !!m.urgencia && !m.creando;
-  if (m.modo === 'lista') {
-    const vivas = (m.lineas || []).filter(function (l) { return !l.fuera; });
-    listo = listo && vivas.length > 0 && vivas.every(function (l) { return l.texto.trim() && l.cantidad > 0; });
-    $('ma-crear').textContent = vivas.length ? 'Crear pedido masivo (' + vivas.length + (vivas.length === 1 ? ' producto)' : ' productos)') : 'Crear pedido masivo';
-  } else {
-    listo = listo && $('ma-titulo').value.trim().length >= 3;
-    $('ma-crear').textContent = 'Crear pedido masivo' + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
-  }
-  $('ma-crear').disabled = !listo;
+  $('ma-crear').disabled = !$('ma-sitio').value || !m.urgencia || m.creando || $('ma-titulo').value.trim().length < 3;
+  $('ma-crear').textContent = 'Crear pedido masivo' + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
 }
-
-document.querySelectorAll('#s-masivo [data-modo]').forEach(function (b) {
-  b.addEventListener('click', function () { AD.masivo.modo = b.dataset.modo; pintarMasivo(); });
-});
 ['ma-sitio', 'ma-titulo'].forEach(function (id) { $(id).addEventListener('input', revisarMasivo); $(id).addEventListener('change', revisarMasivo); });
-$('ma-texto').addEventListener('input', function () {
-  if (AD.masivo.lineas) { $('ma-previa-t').textContent = 'Cambiaste la lista: tocá "Ver cómo queda" otra vez.'; }
-});
 
-$('ma-ver').addEventListener('click', async function () {
-  const texto = $('ma-texto').value;
-  if (!texto.trim()) return aviso('Pegá la lista primero: un producto por línea.', 'bad');
-  $('ma-ver').disabled = true;
-  estado('ma-estado', 'Separando la lista…');
-  const r = await api('analizarMasivo', texto);
-  $('ma-ver').disabled = false;
-  if (!r.ok) return estado('ma-estado', textoDeError(r));
-  estado('ma-estado', '');
-  AD.masivo.lineas = r.lineas.map(function (l) {
-    return { linea: l.linea, texto: l.familia || l.texto, familia: l.familia, canal: l.canal, especificacion: l.especificacion,
-             cantidad: l.cantidad === null ? 1 : l.cantidad, sinCantidad: l.cantidad === null, enPadron: l.enPadron, fuera: false };
-  });
-  pintarPrevia();
-});
-
-/** La vista previa: cada línea con su cantidad, producto (✅ en el padrón / ⚠️ no) y especificación; todo se puede corregir. */
-function pintarPrevia() {
-  const ls = AD.masivo.lineas || [];
-  const vivas = ls.filter(function (l) { return !l.fuera; });
-  const fuera = vivas.filter(function (l) { return !l.enPadron; }).length;
-  $('ma-previa').hidden = !ls.length;
-  $('ma-previa-t').textContent = vivas.length + (vivas.length === 1 ? ' producto' : ' productos') +
-    (fuera ? ' · ⚠️ ' + fuera + ' no ' + (fuera === 1 ? 'está' : 'están') + ' en el padrón: elegí el nombre de la lista o dejalo como está' : ' · ✅ todos en el padrón');
-  $('ma-filas').innerHTML = ls.map(function (l, i) {
-    if (l.fuera) return '<div class="ma-fila quitada"><span>' + esc(l.linea) + '</span><button type="button" class="btn-chico" data-volver="' + i + '">Volver a poner</button></div>';
-    return '<div class="ma-fila' + (l.enPadron ? '' : ' fuera') + '" data-i="' + i + '">' +
-      '<small class="ma-orig">' + esc(l.linea) + '</small>' +
-      '<div class="ma-campos">' +
-        '<label class="ma-cant"><span>Cant.</span><input type="number" min="0" step="any" inputmode="decimal" data-cant="' + i + '" value="' + esc(l.cantidad) + '"></label>' +
-        '<label class="ma-prod"><span>' + (l.enPadron ? '✅ ' + esc(l.canal) : '⚠️ Fuera del padrón') + '</span>' +
-          '<input type="text" data-prod="' + i + '" value="' + esc(l.texto) + '" autocomplete="off"><div class="sugerencias" data-sug="' + i + '" hidden></div></label>' +
-        '<label class="ma-esp"><span>Cómo es</span><input type="text" data-esp="' + i + '" value="' + esc(l.especificacion) + '" autocomplete="off" placeholder="medida, talle…"></label>' +
-        '<button type="button" class="icono" data-quitar="' + i + '" aria-label="Quitar esta línea">×</button>' +
-      '</div>' + (l.sinCantidad ? '<small class="nota">No tenía cantidad: puse 1.</small>' : '') + '</div>';
-  }).join('');
-  const cont = $('ma-filas');
-  cont.querySelectorAll('[data-cant]').forEach(function (x) {
-    x.addEventListener('input', function () { const l = ls[x.dataset.cant]; l.cantidad = Number(String(x.value).replace(',', '.')); l.sinCantidad = false; revisarMasivo(); });
-  });
-  cont.querySelectorAll('[data-esp]').forEach(function (x) {
-    x.addEventListener('input', function () { ls[x.dataset.esp].especificacion = x.value; });
-  });
-  cont.querySelectorAll('[data-prod]').forEach(function (x) {
-    const l = ls[x.dataset.prod];
-    x.addEventListener('input', function () {
-      // Escribir a mano lo saca del padrón, salvo que coincida exacto con un nombre
-      l.texto = x.value;
-      const fam = familiaExacta(x.value);
-      l.familia = fam ? fam[0] : ''; l.canal = fam ? fam[1] : ''; l.enPadron = !!fam;
-      revisarMasivo();
-    });
-    x.addEventListener('blur', function () { setTimeout(pintarPrevia, 150); });
-    conSugerencias(x, cont.querySelector('[data-sug="' + x.dataset.prod + '"]'), function (q) {
-      const d = TB.datosProd;
-      if (!d || !q || q.length < 2) return [];
-      return d.familias.filter(function (f) { return coincide(f[0], q); }).slice(0, 8).map(function (f) { return { texto: f[0], sub: f[1], valor: f }; });
-    }, function (f) {
-      l.texto = f[0]; l.familia = f[0]; l.canal = f[1]; l.enPadron = true;
-      pintarPrevia();
-    });
-  });
-  cont.querySelectorAll('[data-quitar]').forEach(function (b) { b.addEventListener('click', function () { ls[b.dataset.quitar].fuera = true; pintarPrevia(); }); });
-  cont.querySelectorAll('[data-volver]').forEach(function (b) { b.addEventListener('click', function () { ls[b.dataset.volver].fuera = false; pintarPrevia(); }); });
-  revisarMasivo();
-}
-function familiaExacta(texto) {
-  const d = TB.datosProd, q = sinTildes(String(texto || '').trim());
-  if (!d || !q) return null;
-  return d.familias.filter(function (f) { return sinTildes(f[0]) === q; })[0] || null;
-}
-
-/* Adjuntos del pedido libre: quedan acá hasta crear el pedido; después van por la cola de adjuntos de siempre */
+/* Adjuntos: quedan acá hasta crear el pedido; después van por la cola de adjuntos de siempre */
 $('ma-adj-b').addEventListener('click', function () { $('ma-adj').click(); });
 $('ma-adj').addEventListener('change', function () {
   const files = Array.prototype.slice.call(this.files || []);
@@ -542,32 +466,24 @@ function pintarArchivos() {
 
 $('ma-crear').addEventListener('click', async function () {
   const m = AD.masivo;
-  const d = { id: m.id, modo: m.modo, sitio: $('ma-sitio').value, urgencia: m.urgencia, razon: $('ma-razon').value.trim() };
-  if (m.modo === 'lista') {
-    d.lineas = m.lineas.filter(function (l) { return !l.fuera; }).map(function (l) {
-      return { texto: l.texto.trim(), familia: l.enPadron ? l.familia : '', especificacion: String(l.especificacion || '').trim(), cantidad: l.cantidad };
-    });
-  } else {
-    d.titulo = $('ma-titulo').value.trim();
-    d.descripcion = $('ma-desc').value.trim();
-  }
+  const d = { id: m.id, sitio: $('ma-sitio').value, urgencia: m.urgencia, razon: $('ma-razon').value.trim(),
+              titulo: $('ma-titulo').value.trim(), descripcion: $('ma-desc').value.trim(), compartido: elegidosLista(m.compartir) };
   m.creando = true;
   revisarMasivo();
-  estado('ma-estado', 'Creando el pedido…');
+  notaAd('ma-estado', 'Creando el pedido…');
   const r = await api('crearMasivo', d);
   m.creando = false;
-  if (!r.ok) { estado('ma-estado', textoDeError(r)); return revisarMasivo(); }
+  if (!r.ok) { notaAd('ma-estado', textoDeError(r)); return revisarMasivo(); }
   const ref = r.ref || m.id;
   const archivos = m.archivos.slice();
   // Todo de nuevo para el próximo (con otro número)
-  AD.masivo = { modo: m.modo, id: nuevoIdMasivo(), urgencia: m.urgencia, lineas: null, archivos: [], sitiosArmados: true };
-  ['ma-texto', 'ma-titulo', 'ma-desc', 'ma-razon'].forEach(function (id) { $(id).value = ''; });
-  $('ma-previa').hidden = true;
-  $('ma-filas').innerHTML = '';
-  estado('ma-estado', '');
+  AD.masivo = { id: nuevoIdMasivo(), urgencia: m.urgencia, archivos: [], compartir: {}, sitiosArmados: true };
+  ['ma-titulo', 'ma-desc', 'ma-razon'].forEach(function (id) { $(id).value = ''; });
+  notaAd('ma-estado', '');
+  pintarChipsEncargados($('ma-compartir'), AD.masivo.compartir);
   pintarMasivo();
   cargarTablero();
   await abrirTarjeta(ref);
   if (archivos.length) adjuntar(archivos, ref);       // se suben solos, como cualquier adjunto
-  aviso('Listo: se creó el pedido masivo' + (archivos.length ? '. Los adjuntos se están subiendo.' : '.'));
+  aviso('Listo: se creó el pedido masivo' + (d.compartido.length ? ', compartido con ' + d.compartido.join(', ') : '') + (archivos.length ? '. Los adjuntos se están subiendo.' : '.'));
 });
