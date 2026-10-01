@@ -13,7 +13,13 @@ const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
   : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
 const FORMULARIO = new URL('../pedido/', document.currentScript.src).href;   // "Nuevo pedido"
-const VERSION_APP = '7efe717248';            // subir-pagina.sh pone acá la misma huella que en sw.js
+// Apartados de la app (Fase extra): Compras (el tablero) y Transferencias (el Programa de Compras)
+const APARTADOS = {
+  compras: { nombre: 'Compras', url: new URL('../', document.currentScript.src).href },
+  transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
+};
+const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
+const VERSION_APP = 'bbaeb5e6f6';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -27,6 +33,27 @@ const K = {
 const APP = { token: null, yo: null, config: null, actualizado: null, enLinea: true };
 
 const $ = function (id) { return document.getElementById(id); };
+
+/** Los apartados que ve cada uno (inicioApp). Un servidor viejo no los manda: solo Compras, como siempre. */
+function misApartados(yo) {
+  return yo && Array.isArray(yo.apartados) ? yo.apartados : ['compras'];
+}
+
+/** La barrita "Compras | Transferencias": solo si ve más de uno. actual = el apartado de esta página. */
+function pintarApartados(cont, yo, actual) {
+  if (!cont) return;
+  const ap = misApartados(yo);
+  cont.hidden = ap.length < 2;
+  cont.innerHTML = '';
+  ap.forEach(function (id) {
+    const a = document.createElement('a');
+    a.textContent = APARTADOS[id].nombre;
+    a.href = APARTADOS[id].url;
+    if (id === actual) a.setAttribute('aria-current', 'page');
+    a.addEventListener('click', function () { guardado.guardar(K_APARTADO, id); });
+    cont.appendChild(a);
+  });
+}
 
 /* ---------- Guardado en el dispositivo (con try: puede fallar en modo privado) ---------- */
 const guardado = {

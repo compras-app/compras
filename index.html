@@ -92,6 +92,7 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
     </button>
     <h1 id="b-titulo">Compras</h1>
+    <nav class="apartados" id="b-apartados" aria-label="Apartados" hidden></nav>
     <button id="b-cuenta" type="button" aria-label="Tu cuenta">
       <span class="yo" id="b-nombre"></span><span class="inicial" id="b-inicial" aria-hidden="true"></span>
     </button>
@@ -250,6 +251,11 @@
       <h2 class="titulo" id="c-nombre"></h2>
       <p><span class="tag" id="c-rol"></span></p>
       <p class="lead">Tu sesión queda guardada en este dispositivo: no vas a tener que pedir el código de nuevo.</p>
+      <div class="caja" id="c-apartados" hidden>
+        <h2>Apartados</h2>
+        <p class="nota" id="c-apartados-txt"></p>
+        <div class="pila" id="c-apartados-lista"></div>
+      </div>
       <div class="caja">
         <h2>Este dispositivo</h2>
         <dl>
@@ -272,6 +278,7 @@
       <div class="pila">
         <p class="estado" id="e-cuenta" hidden></p>
         <button class="btn2" id="b-prueba" type="button" hidden></button>
+        <button class="btn2" id="b-prueba2" type="button" hidden></button>
         <button class="btn2" id="b-salir" type="button">Cerrar sesión en este dispositivo</button>
       </div>
     </section>

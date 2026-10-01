@@ -8,31 +8,75 @@
 // 'tablero' la registra js/tablero.js; 'buscar', js/buscar.js; 'admin' y sus pantallas, js/admin.js
 pantalla('cuenta',  { titulo: 'Tu cuenta', tab: '', alMostrar: pantallaCuenta });
 
-/** Después del login (o al abrir con lo guardado): arma la barra y abre el tablero. */
+/**
+ * Después del login (o al abrir con lo guardado): arma la barra y abre el tablero.
+ * Apartados (Fase extra): quien no ve Compras va directo a Transferencias (o, si
+ * no ve ninguno, a Tu cuenta). Quien ve los dos vuelve al último que abrió. Un
+ * link a una tarjeta (#Ref) o a Tu cuenta (#cuenta) se queda acá.
+ */
 function mostrarApp() {
+  const ap = misApartados(APP.yo);
+  const transf = ap.indexOf('transferencias') !== -1;
+  if (transf && !location.hash && (ap.indexOf('compras') === -1 || guardado.leer(K_APARTADO) === 'transferencias')) {
+    return location.replace(APARTADOS.transferencias.url);
+  }
   $('login').hidden = true;
   $('app').hidden = false;
   // En la misma ventana: en el iPhone, otra ventana guardaría el pedido en otro lado
   $('t-nuevo').href = FORMULARIO + '?desde=app';
   pintarBarra();
   pintarSinRed();
-  ir('tablero');
+  if (sinCompras()) ir('cuenta');
+  else if (location.hash === '#cuenta') { ir('tablero'); abrir('cuenta'); }
+  else ir('tablero');
   mostrarNoAplicados();          // los que quedaron de antes (aunque se haya cerrado la app)
 }
 
+/** ¿No ve el apartado Compras? Entonces solo tiene Tu cuenta acá. */
+function sinCompras() { return misApartados(APP.yo).indexOf('compras') === -1; }
+
+const NOMBRE_ROL = { admin: 'Administrador', encargado: 'Encargado de granja', empleado: 'Empleado' };
+
 /** La barra según quién sos (se vuelve a pintar si inicioApp trae algo nuevo). */
 function pintarBarra() {
-  $('b-nombre').textContent = APP.yo.nombre + (APP.yo.prueba ? ' · 🧪 encargado' : '');
+  $('b-nombre').textContent = APP.yo.nombre + (APP.yo.prueba ? ' · 🧪 ' + (APP.yo.rol === 'encargado' ? 'encargado' : 'empleado') : '');
   $('b-inicial').textContent = APP.yo.nombre.charAt(0).toUpperCase();
+  pintarApartados($('b-apartados'), APP.yo, 'compras');
+  if (sinCompras()) $('b-apartados').hidden = true;
+  document.querySelector('nav.tabs').hidden = sinCompras();
   $('t-admin').hidden = !APP.yo.admin;
   $('t-tareas').hidden = !APP.yo.admin;             // el tablero de tareas es solo de los admins
 }
 
 function pantallaCuenta() {
   $('c-nombre').textContent = APP.yo.nombre;
-  $('c-rol').textContent = APP.yo.prueba ? 'Encargado (prueba en este dispositivo)' : APP.yo.admin ? 'Administrador' : 'Usuario';
-  $('b-prueba').hidden = !APP.yo.adminReal;
-  $('b-prueba').textContent = APP.yo.prueba ? 'Volver a ser administrador en este dispositivo' : '🧪 Probar como encargado en este dispositivo';
+  $('c-rol').textContent = (NOMBRE_ROL[APP.yo.rol] || 'Empleado') + (APP.yo.prueba ? ' (prueba en este dispositivo)' : '');
+  // Apartados: a quien no ve Compras, desde acá se va a lo suyo
+  const ap = misApartados(APP.yo);
+  $('c-apartados').hidden = !sinCompras();
+  $('c-apartados-txt').textContent = ap.length ? 'Lo tuyo está en:' : 'Por ahora no tenés ningún apartado de la app. Si te falta algo, avisale a un administrador.';
+  $('c-apartados-lista').innerHTML = '';
+  ap.filter(function (id) { return id !== 'compras'; }).forEach(function (id) {
+    const a = document.createElement('a');
+    a.className = 'btn';
+    a.href = APARTADOS[id].url;
+    a.textContent = 'Ir a ' + APARTADOS[id].nombre;
+    a.addEventListener('click', function () { guardado.guardar(K_APARTADO, id); });
+    $('c-apartados-lista').appendChild(a);
+  });
+  // Probar como encargado o empleado (Feli, provisorio)
+  $('b-prueba').hidden = $('b-prueba2').hidden = !APP.yo.adminReal;
+  if (APP.yo.prueba) {
+    $('b-prueba').textContent = 'Volver a ser administrador en este dispositivo';
+    $('b-prueba').dataset.como = '';
+    $('b-prueba2').textContent = APP.yo.rol === 'encargado' ? '🧪 Probar como empleado' : '🧪 Probar como encargado de granja';
+    $('b-prueba2').dataset.como = APP.yo.rol === 'encargado' ? 'empleado' : 'encargado';
+  } else {
+    $('b-prueba').textContent = '🧪 Probar como encargado de granja en este dispositivo';
+    $('b-prueba').dataset.como = 'encargado';
+    $('b-prueba2').textContent = '🧪 Probar como empleado en este dispositivo';
+    $('b-prueba2').dataset.como = 'empleado';
+  }
   $('c-disp').textContent = dispositivo();
   $('c-host').textContent = location.host + (instalada() ? ' (app instalada)' : '');
   $('c-version').textContent = VERSION_APP;
@@ -91,19 +135,21 @@ document.querySelectorAll('.tabs .tab[data-tab]').forEach(function (t) {
 $('b-cuenta').addEventListener('click', function () { abrir('cuenta'); });
 $('b-volver').addEventListener('click', volver);
 $('b-salir').addEventListener('click', salir);
-// Solo para probar (Feli): este dispositivo como encargado. Se recarga para armar todo de nuevo.
-$('b-prueba').addEventListener('click', async function () {
+// Solo para probar (Feli): este dispositivo como encargado o empleado. Se recarga para armar todo de nuevo.
+async function probarComo() {
   this.disabled = true;
   estado('e-cuenta', 'Cambiando…', 'run');
-  const r = await api('probarComoEncargado', !APP.yo.prueba);
+  const r = await api('probarComoEncargado', this.dataset.como || '');
   this.disabled = false;
   if (!r.ok) return estado('e-cuenta', r.sinConexion ? 'Hace falta señal para cambiarlo.' : r.error, 'bad');
   const inicio = guardado.leerJSON(K.inicio, {}) || {};
-  inicio.yo = r.yo;
+  inicio.yo = Object.assign(inicio.yo || {}, r.yo);
   guardado.guardarJSON(K.inicio, inicio);
   location.hash = '';
   location.reload();
-});
+}
+$('b-prueba').addEventListener('click', probarComo);
+$('b-prueba2').addEventListener('click', probarComo);
 
 // Pedidos del formulario que quedaron guardados en este teléfono: la app también los manda
 PedidosGuardados.alCambiar(function () {

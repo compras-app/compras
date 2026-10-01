@@ -53,11 +53,13 @@ const NOTA_TELEFONO = 'Con código de país, sin 0 ni 15. Ejemplo: <b>5493525415
 /* ============================================================
    PERSONAS Y DISPOSITIVOS
    ============================================================ */
+const ROL_CORTO = { admin: 'Admin', encargado: 'Encargado', empleado: 'Empleado' };
+
 async function mostrarPersonas() {
   if (!AD.personas) notaAd('pe-estado', 'Cargando…');
   pintarPersonas();
   const r = await api('getPersonas');
-  if (r.ok) { AD.personas = r.personas; AD.yo = r.yo; AD.sesion = r.sesion; notaAd('pe-estado', ''); }
+  if (r.ok) { AD.personas = r.personas; AD.yo = r.yo; AD.sesion = r.sesion; AD.granjasTransf = r.granjas || []; notaAd('pe-estado', ''); }
   else notaAd('pe-estado', textoDeError(r));
   pintarPersonas();
 }
@@ -74,13 +76,14 @@ function pintarPersonas() {
       '<summary><span class="inicial" aria-hidden="true">' + esc(inicial(p.nombre)) + '</span>' +
         '<span class="ad-nom"><b>' + esc(p.nombre) + (yo ? ' (vos)' : '') + '</b>' +
         '<small>' + (p.activo ? (n ? n + (n === 1 ? ' dispositivo' : ' dispositivos') : 'Sin dispositivos') : 'Dada de baja') + '</small></span>' +
-        '<span class="tag' + (p.rol === 'admin' ? ' admin' : '') + '">' + (p.rol === 'admin' ? 'Admin' : 'Encargado') + '</span></summary>' +
+        '<span class="tag' + (p.rol === 'admin' ? ' admin' : '') + '">' + (ROL_CORTO[p.rol] || 'Empleado') + '</span></summary>' +
       '<div class="ad-cuerpo">' +
         '<dl class="ad-datos"><dt>Teléfono</dt><dd>' + esc(p.telefono || '—') + '</dd>' +
+        (p.rol === 'encargado' ? '<dt>Granjas</dt><dd>' + esc((p.granjas || []).join(', ') || 'Ninguna todavía') + '</dd>' : '') +
         '<dt>Avisos por WhatsApp</dt><dd>' + (p.avisos ? 'Sí (menciones, recordatorios)' : 'No') + '</dd></dl>' +
         (p.activo ? '<h3>Dispositivos</h3>' + (n ? '<ul class="ad-disp">' + p.dispositivos.map(function (d) {
             const este = d.id === AD.sesion;
-            return '<li><span><b>' + esc(d.dispositivo || 'Dispositivo') + (este ? ' · este' : '') + (d.prueba ? ' · 🧪 encargado' : '') + '</b>' +
+            return '<li><span><b>' + esc(d.dispositivo || 'Dispositivo') + (este ? ' · este' : '') + (d.prueba ? ' · 🧪 prueba' : '') + '</b>' +
               '<small>Último uso: ' + esc(d.ultimoUso ? hace(d.ultimoUso) : '—') + ' · entró ' + esc(d.creada ? new Date(d.creada).toLocaleDateString('es-AR') : '') + '</small></span>' +
               '<button type="button" class="btn-chico" data-cerrar="' + esc(d.id) + '">Cerrar sesión</button></li>';
           }).join('') + '</ul>' : '<p class="nota">No tiene la app abierta en ningún dispositivo.</p>') : '') +
@@ -105,25 +108,36 @@ $('pe-nuevo').addEventListener('click', function () { editarPersona(null); });
 /** Alta (p = null) o cambio. previo: lo que se había escrito, si el servidor no lo aceptó (se vuelve a abrir con eso). */
 async function editarPersona(p, previo) {
   const yo = !!p && p.id === AD.yo;
-  const v = previo || { nombre: p ? p.nombre : '', telefono: p ? p.telefono : '', rol: p ? p.rol : 'usuario', avisos: p ? p.avisos : true };
+  const v = previo || { nombre: p ? p.nombre : '', telefono: p ? p.telefono : '', rol: p ? p.rol : 'empleado', avisos: p ? p.avisos : true,
+                        granjas: p ? (p.granjas || []) : [] };
   let rol = v.rol;
+  // Las granjas para elegir (de la lista de envíos de Transferencias), más las que ya tenga y ya no estén
+  const granjas = (AD.granjasTransf || []).concat((v.granjas || []).filter(function (g) { return (AD.granjasTransf || []).indexOf(g) === -1; }));
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = campoDlg('pp-nombre', 'Nombre', v.nombre, { max: 60, placeholder: 'Como aparece en la app' }) +
     campoDlg('pp-tel', 'Teléfono (WhatsApp)', v.telefono, { tipo: 'tel', max: 20, inputmode: 'tel', placeholder: '5493525415029', nota: NOTA_TELEFONO + ' Ahí le llega el código para entrar.' }) +
     '<div class="campo"><label>Rol</label><div class="seg" id="pp-rol">' +
-      '<button type="button" data-rol="usuario">Encargado</button><button type="button" data-rol="admin">Admin</button></div>' +
-      (yo ? '<p class="nota">Tu propio rol lo cambia otro admin.</p>' : '<p class="nota">Admin: ve y maneja todo. Encargado: carga pedidos y ve los suyos.</p>') + '</div>' +
+      '<button type="button" data-rol="empleado">Empleado</button><button type="button" data-rol="encargado">Encargado</button><button type="button" data-rol="admin">Admin</button></div>' +
+      (yo ? '<p class="nota">Tu propio rol lo cambia otro admin.</p>'
+          : '<p class="nota">Admin: ve y maneja todo. Encargado: un encargado de granja; arma los pedidos de transferencia de sus granjas. ' +
+            'Empleado: el resto. En Compras, encargados y empleados cargan pedidos y ven los suyos.</p>') + '</div>' +
+    '<div class="campo" id="pp-granjas-c"><label>Granjas</label><div class="pila" id="pp-granjas">' +
+      granjas.map(function (g) {
+        return '<label class="check"><input type="checkbox" value="' + esc(g) + '"' + ((v.granjas || []).indexOf(g) !== -1 ? ' checked' : '') + '> ' + esc(g) + '</label>';
+      }).join('') + '</div><p class="nota">Las granjas para las que arma pedidos en Transferencias.</p></div>' +
     '<label class="check"><input type="checkbox" id="pp-avisos"> Recibe avisos por WhatsApp (menciones y recordatorios)</label>';
   const datos = await dialogo({
     titulo: p ? 'Editar a ' + p.nombre : 'Agregar persona', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
-      return { id: p ? p.id : '', nombre: $('pp-nombre').value.trim(), telefono: $('pp-tel').value.trim(), rol: rol, avisos: $('pp-avisos').checked };
+      return { id: p ? p.id : '', nombre: $('pp-nombre').value.trim(), telefono: $('pp-tel').value.trim(), rol: rol, avisos: $('pp-avisos').checked,
+               granjas: [].map.call($('pp-granjas').querySelectorAll('input:checked'), function (x) { return x.value; }) };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       $('pp-avisos').checked = v.avisos !== false;
       const pintarRol = function () {
         $('pp-rol').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.rol === rol)); b.disabled = yo; });
+        $('pp-granjas-c').hidden = rol !== 'encargado';
       };
       $('pp-rol').querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { rol = b.dataset.rol; pintarRol(); }); });
       pintarRol();

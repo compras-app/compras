@@ -1,0 +1,4308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Transferencias</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Compras">
+<link rel="apple-touch-icon" href="../icono-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../icono-192.png">
+<link rel="manifest" href="../manifest.webmanifest">
+<!--
+  APARTADO TRANSFERENCIAS de la app (Fase extra): el Programa de Compras,
+  con su misma pantalla (colores, botones, pestañas), dentro de la app.
+  compras-app.github.io/compras/transferencias/
+    - Entra con la sesión de la app (../js/base.js): sin sesión, va a entrar.
+    - Admins: Conteo de stock, Armar pedido, Transferir y Egresos.
+      Encargados de granja: solo Armar pedido, de sus granjas (anda en el celular).
+    - Sin carpeta compartida: el catálogo, los pedidos de las granjas y las
+      listas (envíos, granjas, cuentas, excluidos, número de egreso) van a la
+      planilla por Apps Script. El conteo real y los borradores quedan en el
+      dispositivo. Mandar un pedido va por la bandeja de salida: sin señal,
+      sale solo cuando vuelve.
+    - Albor lo maneja el Programa de Compras instalado en la computadora (Paso T2).
+-->
+<style>
+  :root{
+    --bg:#f6f6f4;
+    --panel:#ffffff;
+    --ink:#1c1c1a;
+    --ink-soft:#6b6b66;
+    --ink-faint:#a8a8a2;
+    --line:#dcdcd6;
+    --line-strong:#b9b9b1;
+    --accent:#7a1f2b;
+    --accent-soft:#f3e9ea;
+    --zebra:#f5f5f1;
+    --head:#efefeb;
+    --catbg:#e7e7e1;
+    --write:#fffdf4;
+    --btn-ink:#ffffff;
+    --topbar-h:50px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141416;
+      --panel:#1d1d20;
+      --ink:#eceae5;
+      --ink-soft:#a3a099;
+      --ink-faint:#6e6b65;
+      --line:#33333a;
+      --line-strong:#4d4d56;
+      --accent:#d08a93;
+      --accent-soft:#33232a;
+      --zebra:#232328;
+      --write:#26231c;
+      --head:#26262c;
+      --catbg:#2d2d34;
+      --btn-ink:#1a1013;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141416;
+    --panel:#1d1d20;
+    --ink:#eceae5;
+    --ink-soft:#a3a099;
+    --ink-faint:#6e6b65;
+    --line:#33333a;
+    --line-strong:#4d4d56;
+    --accent:#d08a93;
+    --accent-soft:#33232a;
+    --zebra:#232328;
+    --write:#26231c;
+    --head:#26262c;
+    --catbg:#2d2d34;
+    --btn-ink:#1a1013;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- Encabezado y pestañas ---------- */
+  .topbar{
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+    padding:0 20px;
+    display:flex;
+    align-items:flex-end;
+    gap:24px;
+    position:sticky;top:env(safe-area-inset-top, 0px);z-index:20;
+  }
+  .brand{
+    font-weight:650;letter-spacing:-.01em;font-size:15px;
+    padding:14px 0 13px;white-space:nowrap;
+  }
+  .brand span{color:var(--accent)}
+  .tabs{display:flex;gap:2px}
+  .tab{
+    appearance:none;border:0;background:none;font:inherit;cursor:pointer;
+    padding:14px 14px 11px;color:var(--ink-soft);
+    border-bottom:3px solid transparent;
+  }
+  .tab:hover{color:var(--ink)}
+  .tab[aria-selected="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--accent)}
+  .tab[disabled]{color:var(--ink-faint);cursor:default}
+  .tab[disabled]:hover{color:var(--ink-faint)}
+
+  main{max-width:1180px;margin:0 auto;padding:24px 20px 80px}
+
+  /* ---------- Zona de carga ---------- */
+  .drop{
+    border:2px dashed var(--line-strong);
+    border-radius:10px;
+    background:var(--panel);
+    padding:46px 24px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .12s,background .12s;
+  }
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop h2{margin:0 0 6px;font-size:17px;font-weight:600}
+  .drop p{margin:0;color:var(--ink-soft);font-size:13px}
+  .drop .hint{margin-top:14px;font-size:12px;color:var(--ink-faint)}
+
+  .filebar{
+    display:none;align-items:center;gap:10px;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:9px 12px;font-size:13px;color:var(--ink-soft);margin-bottom:14px;
+  }
+  .filebar.on{display:flex}
+  .filebar b{color:var(--ink);font-weight:600}
+  .filebar .sep{flex:1}
+  .linkbtn{
+    appearance:none;border:0;background:none;font:inherit;color:var(--accent);
+    cursor:pointer;text-decoration:underline;padding:0;
+  }
+
+  .error{
+    display:none;background:#fdf1f1;border:1px solid #e9c3c3;color:#8a2020;
+    /* Colores propios a propósito: la alerta se lee igual en claro y en oscuro. */
+    border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;
+  }
+  .error.on{display:block}
+
+  /* ---------- Barra de herramientas ---------- */
+  .toolbar{
+    display:none;flex-wrap:wrap;align-items:center;gap:10px 16px;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:12px 14px;margin-bottom:16px;
+  }
+  .toolbar.on{display:flex}
+  .field{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-soft)}
+  .field input[type=text],.field input[type=date]{
+    font:inherit;padding:6px 9px;border:1px solid var(--line-strong);
+    border-radius:6px;background:var(--panel);color:var(--ink);
+  }
+  .field input[type=text]{width:190px}
+  .field input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  .check{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;user-select:none}
+  .check input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
+  .field input[type=date]{color-scheme:light dark}
+  .toolbar .sep{flex:1}
+  .btn{
+    appearance:none;font:inherit;font-weight:600;cursor:pointer;
+    background:var(--accent);color:var(--btn-ink);border:1px solid var(--accent);
+    padding:7px 16px;border-radius:6px;
+  }
+  .btn:hover{filter:brightness(1.12)}
+  .botones{display:flex;gap:10px}
+  .contado{font-size:12.5px;color:var(--ink-soft)}
+  .contado b{color:var(--ink);font-weight:650}
+
+  /* ---------- Panel de la lista de excluidos ---------- */
+  .excl{
+    display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:14px;margin-bottom:16px;
+  }
+  .excl.on{display:block}
+  .excl h3{margin:0 0 4px;font-size:14px;font-weight:650}
+  .excl p{margin:0 0 10px;font-size:12.5px;color:var(--ink-soft);max-width:62ch}
+  .excl textarea{
+    width:100%;height:190px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    padding:10px;border:1px solid var(--line-strong);border-radius:6px;
+    background:var(--panel);color:var(--ink);resize:vertical;
+  }
+  .excl textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  .excl .acciones{display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
+  .excl .aviso,.fila .aviso{font-size:12.5px;color:var(--ink-soft)}
+
+  .meta{
+    display:none;font-size:12.5px;color:var(--ink-soft);margin:0 2px 10px;
+  }
+  .meta.on{display:block}
+
+  /* ---------- Encabezado de la hoja impresa ---------- */
+  .sheethead{display:none}
+
+  /* ---------- Tabla ---------- */
+  /* Sin overflow:hidden a propósito: convertiría al recuadro en el contenedor
+     de scroll del encabezado sticky y el encabezado dejaría de fijarse. */
+  .tablewrap{display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+  .tablewrap.on{display:block}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  thead th{
+    background:var(--head);
+    border-bottom:1.5px solid var(--line-strong);
+    padding:9px 10px;text-align:right;font-weight:650;font-size:12px;
+    letter-spacing:.01em;white-space:nowrap;
+    position:sticky;top:calc(env(safe-area-inset-top, 0px) + var(--topbar-h));z-index:5;
+  }
+  thead th + th, tbody td + td{border-left:1px solid var(--line)}
+  thead th:first-child{border-top-left-radius:7px}
+  thead th:last-child{border-top-right-radius:7px}
+  thead th.name{text-align:left;width:auto}
+  thead th.total{border-left:1.5px solid var(--line-strong)}
+  thead th.count{border-left:1.5px solid var(--line-strong);background:var(--write);width:120px}
+  tbody td{
+    border-bottom:1px solid var(--line);
+    padding:6px 10px;text-align:right;white-space:nowrap;
+    font-variant-numeric:tabular-nums;
+  }
+  tbody td.name{text-align:left;white-space:normal;line-height:1.3}
+  tbody td.zero{color:var(--ink-faint)}
+  tbody td.total{font-weight:650;border-left:1.5px solid var(--line-strong)}
+  th.granja,td.granja{color:var(--ink-soft)}
+  th.granja.primera,td.granja.primera{border-left:1.5px solid var(--line-strong)}
+  tbody td.count{border-left:1.5px solid var(--line-strong);background:var(--write);padding:0}
+  /* El casillero de conteo es un campo de verdad: se escribe en pantalla y se imprime. */
+  td.count input.ci{
+    width:100%;border:0;background:transparent;color:var(--ink);
+    font:inherit;font-weight:650;font-variant-numeric:tabular-nums;
+    padding:6px 10px;text-align:right;
+  }
+  td.count input.ci:focus{outline:2px solid var(--accent);outline-offset:-2px;border-radius:3px}
+  td.count input.ci::placeholder{color:var(--ink-faint)}
+  thead th.dif{border-left:1px solid var(--line);width:78px}
+  tbody td.dif{font-weight:650}
+  td.dif .menos{color:#b3261e}
+  td.dif .mas{color:#1e6b45}
+  td.dif .ok{color:var(--ink-faint);font-weight:500}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) td.dif .menos{color:#f2857c}
+    :root:not([data-theme="light"]) td.dif .mas{color:#6fc99a}
+  }
+  :root[data-theme="dark"] td.dif .menos{color:#f2857c}
+  :root[data-theme="dark"] td.dif .mas{color:#6fc99a}
+  tbody tr.alt{background:var(--zebra)}
+  tbody tr.row:hover{background:var(--accent-soft)}
+  tr.cat td{
+    background:var(--catbg);font-weight:650;font-size:12px;letter-spacing:.04em;
+    text-transform:uppercase;padding:7px 10px;text-align:left;
+    border-top:1.5px solid var(--line-strong);border-bottom:1px solid var(--line-strong);
+  }
+  tr.cat td small{font-weight:500;color:var(--ink-soft);letter-spacing:0;text-transform:none;margin-left:8px}
+  tfoot td{
+    background:var(--head);border-top:1.5px solid var(--line-strong);
+    padding:9px 10px;text-align:right;font-weight:650;white-space:nowrap;
+    font-variant-numeric:tabular-nums;
+  }
+  tfoot td.name{text-align:left}
+  tfoot td.count{background:var(--write);border-left:1.5px solid var(--line-strong)}
+  tfoot td.total{border-left:1.5px solid var(--line-strong)}
+
+  @media (max-width:700px){
+    main{padding:16px 16px 60px}
+    .topbar{padding:0 16px;gap:12px}
+    .brand{display:none}
+    #tablehost{overflow-x:auto}
+    thead th{position:static}
+    .field input[type=text]{width:140px}
+  }
+
+  .empty{padding:36px;text-align:center;color:var(--ink-soft);font-size:13px}
+
+  .soon{
+    display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:56px 24px;text-align:center;color:var(--ink-soft);
+  }
+  .soon.on{display:block}
+
+  /* ---------- Pestañas como paneles ---------- */
+  .panel{display:none}
+  .panel.on{display:block}
+
+  /* ---------- Transferir ---------- */
+  .paso{
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:14px 16px;margin-bottom:14px;
+  }
+  .paso > h3{
+    margin:0 0 10px;font-size:13px;font-weight:650;letter-spacing:.03em;
+    text-transform:uppercase;color:var(--ink-soft);
+  }
+  .paso > h3 .n{
+    display:inline-block;width:19px;height:19px;line-height:19px;text-align:center;
+    background:var(--accent);color:var(--btn-ink);border-radius:50%;
+    font-size:11px;margin-right:8px;letter-spacing:0;
+  }
+  .paso .fila{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+  .paso .nota{margin:9px 0 0;font-size:12.5px;color:var(--ink-soft);max-width:78ch}
+  .paso .nota b{color:var(--ink);font-weight:600}
+  .paso.pendiente{opacity:.5;pointer-events:none}
+
+  .estado{font-size:13px;display:flex;align-items:center;gap:7px}
+  .estado .punto{width:8px;height:8px;border-radius:50%;background:var(--ink-faint);flex:none}
+  .estado.ok .punto{background:#1e6b45}
+  .estado.falta .punto{background:#b3261e}
+  .estado.aviso .punto{background:#b07900}
+
+  .select{
+    font:inherit;padding:6px 9px;border:1px solid var(--line-strong);
+    border-radius:6px;background:var(--panel);color:var(--ink);
+  }
+  .select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+
+  .pegar{
+    width:100%;height:120px;margin-top:10px;
+    font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    padding:10px;border:1px solid var(--line-strong);border-radius:6px;
+    background:var(--panel);color:var(--ink);resize:vertical;
+  }
+  .pegar:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+
+  .cols{display:none;flex-wrap:wrap;gap:10px 18px;margin-top:12px;
+        padding-top:12px;border-top:1px solid var(--line)}
+  .cols.on{display:flex}
+
+  .descartes{
+    display:none;margin-top:12px;padding:11px 13px;border-radius:7px;
+    background:var(--accent-soft);border:1px solid var(--line);
+    font-size:12.5px;color:var(--ink-soft);
+  }
+  .descartes.on{display:block}
+  .descartes b{color:var(--ink)}
+  .descartes ul{margin:7px 0 0;padding-left:19px}
+  .descartes li{margin:2px 0}
+  .descartes .fila{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
+
+  .resumen{
+    display:flex;flex-wrap:wrap;gap:22px;margin:0 2px 14px;font-size:13px;
+  }
+  .resumen div{display:flex;align-items:baseline;gap:7px}
+  .resumen b{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums}
+  .resumen .va b{color:#1e6b45}
+  .resumen .falta b{color:#b3261e}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .resumen .va b{color:#6fc99a}
+    :root:not([data-theme="light"]) .resumen .falta b{color:#f2857c}
+  }
+  :root[data-theme="dark"] .resumen .va b{color:#6fc99a}
+  :root[data-theme="dark"] .resumen .falta b{color:#f2857c}
+
+  /* Tabla del pedido: hereda casi todo de la tabla de conteo. */
+  thead th.va{border-left:1.5px solid var(--line-strong);background:var(--write)}
+  tbody td.va{border-left:1.5px solid var(--line-strong);background:var(--write);font-weight:650}
+  tbody td.falta{font-weight:650;color:#b3261e}
+  tbody tr.sinnada td.name{color:var(--ink-soft)}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) tbody td.falta{color:#f2857c}
+  }
+  :root[data-theme="dark"] tbody td.falta{color:#f2857c}
+
+  .marca{
+    display:inline-block;font-size:11px;line-height:1.5;padding:0 6px;border-radius:9px;
+    background:var(--catbg);color:var(--ink-soft);margin-left:6px;white-space:nowrap;
+  }
+  .marca.aviso{background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+  /* Casillero para tildar al armar las cajas: solo tiene sentido en papel. */
+  th.tick,td.tick{display:none}
+  .firmas{display:none}
+
+  .sincuenta{
+    padding:14px 16px;border-top:1.5px solid var(--line-strong);
+    font-size:12.5px;color:var(--ink-soft);
+  }
+  .sincuenta b{color:var(--ink)}
+  .sincuenta ul{margin:8px 0 0;padding-left:20px}
+  .sincuenta li{margin:2px 0}
+  #gaviso{max-width:70ch;line-height:1.4}
+
+  /* ---------- Pedidos que llegan de las granjas ---------- */
+  .badge{
+    display:none;margin-left:7px;min-width:18px;padding:0 5px;border-radius:9px;
+    background:var(--accent);color:var(--btn-ink);font-size:11px;font-weight:700;
+    line-height:18px;text-align:center;vertical-align:1px;
+  }
+  .badge.on{display:inline-block}
+
+  .bajar{display:none;text-align:center;margin-bottom:16px}
+  .bajar.on{display:block}
+  .bajar .nota{margin:9px auto 0;max-width:62ch;font-size:12.5px;color:var(--ink-soft)}
+  .btn.grande{font-size:15px;padding:11px 26px}
+  #rebajar{display:none}
+  #rebajar.on{display:inline}
+
+  .progreso{
+    display:none;margin:14px auto 0;max-width:62ch;text-align:left;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:10px 13px;font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    color:var(--ink-soft);max-height:200px;overflow-y:auto;
+  }
+  .progreso.on{display:block}
+  .progreso div:last-child{color:var(--ink);font-weight:600}
+
+  .checks{flex-wrap:wrap;gap:6px 16px;margin-bottom:6px}
+  .checks .quien{font-size:12.5px;color:var(--ink-soft);margin-right:2px}
+  .checks label.apagada{color:var(--ink-faint)}
+  .recibidos{display:none;margin-bottom:12px}
+  .recibidos.on{display:block}
+  .recibidos .cabeza{font-size:12.5px;color:var(--ink-soft);margin-bottom:8px}
+  .recibidos .lista{border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .recibidos .uno{
+    display:flex;align-items:center;gap:12px;padding:9px 12px;cursor:pointer;
+    border-bottom:1px solid var(--line);font-size:13px;
+  }
+  .recibidos .uno:last-child{border-bottom:0}
+  .recibidos .uno:hover{background:var(--accent-soft)}
+  .recibidos .uno.elegido{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+  .recibidos .nuevo{
+    width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;
+  }
+  .recibidos .visto{width:8px;height:8px;flex:none}
+  .recibidos .quien{font-weight:650;min-width:0}
+  .recibidos .granja{color:var(--ink-soft)}
+  .recibidos .cuando{color:var(--ink-faint);font-size:12px;white-space:nowrap}
+  .recibidos .cuanto{margin-left:auto;color:var(--ink-soft);white-space:nowrap}
+  .recibidos .obs{
+    padding:8px 12px 10px 32px;font-size:12.5px;color:var(--ink-soft);
+    background:var(--zebra);border-bottom:1px solid var(--line);
+  }
+  .recibidos .obs b{color:var(--ink)}
+  .recibidos .vacio{padding:14px;color:var(--ink-soft);font-size:13px;text-align:center}
+  .recibidos .tirar{
+    border:0;background:none;color:var(--ink-faint);cursor:pointer;
+    font-size:17px;line-height:1;padding:0 2px;
+  }
+  .recibidos .tirar:hover{color:#b3261e}
+
+  /* ---------- Recuadro de carga en Albor ----------
+     Fijo abajo a la derecha: se ve desde cualquier pestaña mientras carga. */
+  .albor{
+    display:none;position:fixed;right:16px;bottom:16px;z-index:50;
+    width:min(460px, calc(100vw - 32px));max-height:min(78vh, 640px);
+    flex-direction:column;background:var(--panel);color:var(--ink);
+    border:1px solid var(--line-strong);border-radius:10px;
+    box-shadow:0 10px 32px rgba(0,0,0,.22);
+  }
+  .albor.on{display:flex}
+  .albor .cab{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .albor .cab b{flex:1;font-size:14px}
+  .albor .log{
+    flex:1;overflow:auto;padding:10px 14px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;
+    color:var(--ink-soft);white-space:pre-wrap;min-height:80px;
+  }
+  .albor .pausa{display:none;padding:12px 14px;border-top:1px solid var(--line);background:var(--accent-soft)}
+  .albor .pausa.on{display:block}
+  .albor .pausa .txt{white-space:pre-wrap;font-size:13px;margin-bottom:10px}
+  .albor .fin{display:none;padding:12px 14px;border-top:1px solid var(--line);font-size:13px}
+  .albor .fin.on{display:block}
+  .albor .fin ul{margin:6px 0 10px 18px;padding:0}
+
+  /* ---------- Armar pedido, del lado de la granja ---------- */
+  .sugerencias{display:none;margin-top:10px;border:1px solid var(--line);border-radius:7px}
+  .sugerencias.on{display:block}
+  .sugerencias .op{
+    display:flex;align-items:center;gap:12px;padding:8px 12px;cursor:pointer;
+    border-bottom:1px solid var(--line);font-size:13px;
+  }
+  .sugerencias .op:last-child{border-bottom:0}
+  .sugerencias .op:hover,.sugerencias .op.marcada{background:var(--accent-soft)}
+  .sugerencias .cod{color:var(--ink-faint);font-size:12px;font-variant-numeric:tabular-nums}
+  .sugerencias .tipo{margin-left:auto;color:var(--ink-faint);font-size:11.5px}
+  .sugerencias .nada{padding:12px;color:var(--ink-soft);font-size:13px}
+
+  td.cant input.ci{width:100%}
+  .quitar{
+    appearance:none;border:0;background:none;color:var(--ink-faint);
+    cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;
+  }
+  .quitar:hover{color:#b3261e}
+
+  /* ---------- Impresión ---------- */
+  @media print{
+    @page{size:A4 portrait;margin:11mm 9mm 12mm}
+    body{background:#fff;font-size:10pt}
+    .topbar,.toolbar,.drop,.filebar,.meta,.error,.excl{display:none !important}
+    main{max-width:none;margin:0;padding:0}
+    .tablewrap{border:0;border-radius:0}
+    .sheethead{
+      display:block;margin-bottom:8px;
+      border-bottom:1.5px solid #000;padding-bottom:6px;
+    }
+    .sheethead h1{margin:0;font-size:13pt;font-weight:700}
+    .sheethead .line{
+      display:flex;gap:26px;margin-top:4px;font-size:9pt;color:#333;
+    }
+    table{font-size:8.6pt;border:1px solid #000}
+    thead th + th, tbody td + td{border-left:.5px solid #c9c9c9}
+    thead{display:table-header-group}
+    tfoot{display:table-footer-group}
+    thead th{
+      position:static;background:#e8e8e8 !important;padding:5px 6px;font-size:8pt;
+      border-bottom:1.2px solid #000;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    thead th.count{background:#fff !important;width:26mm}
+    tbody td{padding:3.4px 6px;border-bottom:.5px solid #c9c9c9}
+    tbody tr.alt{background:transparent}
+    tbody td.count{background:#fff !important;border-left:1.2px solid #000;padding:0}
+    td.count input.ci{
+      padding:3.4px 6px;color:#000;font-weight:700;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    td.dif .menos{color:#000;font-weight:700}
+    td.dif .mas{color:#000;font-weight:700}
+    td.dif .ok{color:#777}
+    tbody td.total{border-left:1.2px solid #000}
+    tbody td.zero{color:#999}
+    tr{break-inside:avoid;page-break-inside:avoid}
+    tr.cat{break-after:avoid;page-break-after:avoid}
+    tr.cat td{
+      background:#dcdcdc !important;padding:4px 6px;font-size:8.2pt;
+      border-top:1px solid #000;border-bottom:1px solid #000;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    tfoot td{background:#e8e8e8 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    tfoot td.count{background:#fff !important}
+  }
+  /* ---------- Impresión de la planilla de armado ---------- */
+  @media print{
+    .paso,.resumen,.cols,.pegar{display:none !important}
+    /* En papel no se imprimen los renglones que no se transfieren:
+       la hoja sirve para ir a buscar cajas, no para leer faltantes. */
+    tbody tr.sinnada{display:none}
+    thead th.va,tbody td.va{background:#fff !important;border-left:1.2px solid #000}
+    tbody td.falta{color:#000}
+    th.tick,td.tick{
+      display:table-cell;width:12mm;border-left:1.2px solid #000;
+      background:#fff !important;
+    }
+    .marca{background:transparent !important;color:#444;border:.5px solid #999}
+    .marca.aviso{color:#000;font-weight:700}
+    .marca.info{display:none}
+    .sincuenta{border-top:1px solid #000;padding:8px 0;color:#000;break-inside:avoid}
+    .albor{display:none !important}
+    .firmas{
+      display:flex;gap:40px;margin-top:14mm;font-size:9pt;color:#000;
+      break-inside:avoid;page-break-inside:avoid;
+    }
+  }
+
+  /* ---------- Sumado para la app (Fase extra) ---------- */
+  .topbar .sep{flex:1}
+  .aparts{display:flex;gap:2px;align-self:center;background:var(--head);border-radius:8px;padding:3px}
+  .aparts[hidden]{display:none}
+  .aparts a{color:var(--ink-soft);text-decoration:none;font-size:13px;font-weight:600;padding:6px 10px;border-radius:6px;white-space:nowrap}
+  .aparts a:hover{color:var(--ink)}
+  .aparts a[aria-current="page"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .yo{align-self:center;color:var(--ink-soft);text-decoration:none;font-size:13px;white-space:nowrap;padding:6px 0}
+  .yo:hover{color:var(--accent)}
+  .sinred{background:var(--accent-soft);color:var(--ink);font-size:13px;padding:8px 20px;text-align:center}
+  .sinred[hidden]{display:none}
+  input[readonly]{background:var(--head);color:var(--ink-soft)}
+  .enviados{margin-top:6px;font-size:13px;color:var(--ink-soft)}
+  .tab[hidden],.paso .fila[hidden]{display:none}
+  /* Celular: la pantalla del programa, apilada (lo que más se usa ahí es Armar pedido) */
+  @media (max-width:700px){
+    .topbar{flex-wrap:wrap;gap:0 14px;padding:0 12px;align-items:center}
+    .brand{padding:10px 0 4px}
+    .topbar .sep{display:none}
+    .aparts{order:3}
+    .yo{order:2;margin-left:auto}
+    .tabs{order:4;width:100%;overflow-x:auto}
+    .tab{padding:10px 10px 9px;white-space:nowrap}
+    main{padding:14px 12px 80px}
+    .paso{padding:12px}
+    .fila{flex-wrap:wrap;gap:8px 12px}
+    .fila .field{flex:1 1 100%}
+    .fila .field input,.fila .field select{flex:1;min-width:0;width:100%;font-size:16px}
+    #abuscar,#arapidatxt,#aobs{font-size:16px}
+    .toolbar{position:sticky;bottom:0;z-index:15}
+    .toolbar .botones{width:100%;display:flex;gap:8px}
+    .toolbar .botones .btn{flex:1;padding:12px 10px}
+    .sugerencias .op{flex-wrap:wrap}
+    #atablehost td.cant input{width:70px;font-size:16px}
+    .sheethead .line{flex-wrap:wrap;gap:4px 14px}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Programa de <span>Compras</span></div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-panel="panel-conteo" data-admin>Conteo de stock</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="panel-armar">Armar pedido</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="panel-pedido" data-admin>Transferir<span class="badge" id="badgepedidos"></span></button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="panel-egresos" data-admin>Egresos</button>
+  </div>
+  <span class="sep"></span>
+  <nav class="aparts" id="apartados" aria-label="Apartados" hidden></nav>
+  <a class="yo" id="yo" href="../#cuenta" title="Tu cuenta"></a>
+</div>
+<div class="sinred" id="sinred" role="status" aria-live="polite" hidden></div>
+
+<main>
+  <section id="panel-conteo" class="panel on">
+    <div class="error" id="error"></div>
+
+    <div class="bajar" id="bajar">
+      <button class="btn grande" id="bajarbtn">Bajar existencias de Albor</button>
+      <label class="field">Existencias hasta <input type="date" id="bajarhasta"></label>
+      <p class="nota">Entra a Albor y trae las tres oficinas y las granjas en un solo reporte, hasta la
+         fecha de al lado. Viene puesta <b>un mes adelante</b>, así entran los movimientos cargados con
+         fecha futura; la podés cambiar. Ese mismo reporte usan las cuatro pestañas.
+         La primera vez te va a pedir que inicies sesión; después la recuerda.</p>
+      <div class="progreso" id="progreso"></div>
+    </div>
+
+    <div class="drop" id="drop">
+      <h2>Subí el CSV de Existencia de Insumos</h2>
+      <p>Arrastrá el archivo acá, o hacé clic para elegirlo.</p>
+      <div class="hint">Nada se sube a internet: el archivo se procesa en esta computadora.</div>
+      <input type="file" id="file" accept=".csv,text/csv" hidden>
+    </div>
+
+    <div class="filebar" id="filebar">
+      <b id="filename"></b>
+      <span id="filestats"></span>
+      <span class="sep"></span>
+      <button class="linkbtn" id="rebajar">Volver a bajar de Albor</button>
+      <button class="linkbtn" id="rechange">Cambiar archivo</button>
+    </div>
+
+    <div class="toolbar" id="toolbar">
+      <label class="field">Buscar
+        <input type="text" id="q" placeholder="nombre del insumo…" autocomplete="off">
+      </label>
+      <label class="check"><input type="checkbox" id="hidezero"> Ocultar insumos en 0</label>
+      <label class="check"><input type="checkbox" id="bycat" checked> Agrupar por categoría</label>
+      <label class="check"><input type="checkbox" id="usarexcl" checked> Ocultar excluidos <span id="exclcount"></span></label>
+      <label class="check"><input type="checkbox" id="mostrardif"> Mostrar diferencia</label>
+      <label class="check" id="vergranjaslbl"><input type="checkbox" id="vergranjas"> Ver granjas</label>
+      <button class="linkbtn" id="vermas">editar lista</button>
+      <span class="sep"></span>
+      <label class="field">Fecha <input type="date" id="fecha"></label>
+      <label class="field">Responsable <input type="text" id="resp" placeholder="nombre" autocomplete="off"></label>
+      <span class="contado" id="contado"></span>
+      <span class="botones">
+        <button class="btn" id="excel">Exportar a Excel</button>
+        <button class="btn" id="print">Imprimir / PDF</button>
+      </span>
+    </div>
+
+    <div class="excl" id="excl">
+      <h3>Productos excluidos del conteo</h3>
+      <p>Una regla por línea: un <b>código de insumo</b> para sacar un producto suelto, o
+         <b><code>cat: NOMBRE</code></b> para sacar una categoría entera. Lo que va después de
+         un <code>#</code> es solo una nota. Un código que no exista en el CSV se ignora.</p>
+      <textarea id="excltxt" spellcheck="false"></textarea>
+      <div class="acciones">
+        <button class="btn" id="exclguardar">Guardar lista</button>
+        <button class="linkbtn" id="exclreset">Restaurar la lista original</button>
+        <span class="aviso" id="exclaviso"></span>
+      </div>
+    </div>
+
+    <div class="meta" id="meta"></div>
+
+    <div class="tablewrap" id="tablewrap">
+      <div class="sheethead">
+        <h1>Planilla de conteo de stock</h1>
+        <div class="line">
+          <span>Fecha: <b id="p-fecha">__________</b></span>
+          <span>Responsable: <b id="p-resp">______________________</b></span>
+          <span id="p-hasta"></span>
+          <span id="p-filtro"></span>
+        </div>
+      </div>
+      <div id="tablehost"></div>
+    </div>
+  </section>
+
+  <section id="panel-pedido" class="panel">
+    <div class="error" id="perror"></div>
+
+    <div class="paso">
+      <h3><span class="n">1</span>Existencias del sistema</h3>
+      <div class="fila">
+        <span class="estado" id="pexist"><span class="punto"></span><span id="pexisttxt"></span></span>
+      </div>
+      <p class="nota">Se usa el mismo <b>ExistenciaDeInsumos.csv</b> que cargás en Conteo de stock:
+         ese archivo ya trae los tres puntos de oficina juntos. Si es de hace unos días,
+         bajalo de nuevo antes de preparar el pedido.</p>
+    </div>
+
+    <div class="paso" id="paso2">
+      <h3><span class="n">2</span>Pedido de la granja</h3>
+      <div class="recibidos" id="precibidos"></div>
+      <div class="fila">
+        <button class="btn" id="pfilebtn">Elegir archivo</button>
+        <input type="file" id="pfile" accept=".xlsx,.csv,.txt" hidden>
+        <span class="estado" id="ppedido"><span class="punto"></span><span id="ppedidotxt">Ningún pedido cargado</span></span>
+        <span class="sep" style="flex:1"></span>
+        <button class="linkbtn" id="ppegarver">o pegar desde Excel</button>
+      </div>
+      <p class="nota">Acepta el <b>.xlsx</b> tal cual te lo mandan, o un CSV. También podés copiar
+         las columnas en Excel y pegarlas acá abajo.</p>
+      <textarea class="pegar" id="ppegar" style="display:none" spellcheck="false"
+                placeholder="Pegá acá las filas copiadas de Excel (incluí la fila de títulos)."></textarea>
+      <div class="cols" id="pcols">
+        <label class="field">Código <select class="select" id="ccod"></select></label>
+        <label class="field">Cantidad <select class="select" id="ccant"></select></label>
+        <label class="field">Nombre <select class="select" id="cnom"></select></label>
+        <label class="field">Cuenta <select class="select" id="ccta"></select></label>
+      </div>
+      <div class="descartes" id="pdescartes"></div>
+    </div>
+
+    <div class="paso" id="paso3">
+      <h3><span class="n">3</span>Destino</h3>
+      <div class="fila">
+        <label class="field">Envío
+          <select class="select" id="pdestino"></select>
+        </label>
+        <label class="field">Fecha <input type="date" id="pfecha"></label>
+        <span class="estado" id="pmodo"><span class="punto"></span><span id="pmodotxt"></span></span>
+        <span class="sep" style="flex:1"></span>
+        <button class="linkbtn" id="desver">editar destinos</button>
+      </div>
+      <p class="nota" id="pmodonota"></p>
+      <div class="excl" id="des">
+        <h3>Envíos posibles</h3>
+        <p>Una línea por comprobante, con los datos separados por punto y coma:<br>
+           <code>nombre ; empresa ; id origen ; nombre origen ; id destino ; nombre destino</code><br>
+           Dos líneas con el <b>mismo nombre</b> salen como control doble. Un <b><code>?</code></b>
+           quiere decir que ese dato lo elegís a mano en Albor. El <b>nombre del origen</b> tiene
+           que estar escrito igual que en el CSV de existencias.</p>
+        <textarea id="destxt" spellcheck="false"></textarea>
+        <div class="acciones">
+          <button class="btn" id="desguardar">Guardar</button>
+          <button class="linkbtn" id="desreset">Restaurar la lista original</button>
+          <span class="aviso" id="desaviso"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="resumen" id="presumen"></div>
+
+    <div class="toolbar" id="ptoolbar">
+      <label class="check"><input type="checkbox" id="psolova"> Ver solo lo que se transfiere</label>
+      <span class="sep"></span>
+      <span class="botones">
+        <button class="btn" id="pcarga">Archivo para Albor</button>
+        <button class="btn" id="ppend">Pendientes a Excel</button>
+        <button class="btn" id="pprint">Planilla de armado</button>
+      </span>
+    </div>
+
+    <div class="tablewrap" id="ptablewrap">
+      <div class="sheethead">
+        <h1>Pedido a transferir</h1>
+        <div class="line">
+          <span>Origen: <b id="pp-origen"></b></span>
+          <span>Destino: <b id="pp-destino"></b></span>
+          <span>Fecha: <b id="pp-fecha"></b></span>
+          <span>Envío: <b id="pp-envio"></b></span>
+        </div>
+      </div>
+      <div id="ptablehost"></div>
+      <div class="firmas">
+        <span>Preparó: _______________________</span>
+        <span>Recibió: _______________________</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="panel-armar" class="panel">
+    <div class="error" id="aerror"></div>
+
+    <div class="recibidos" id="aborradores"></div>
+
+    <div class="paso">
+      <h3><span class="n">1</span>Quién pide</h3>
+      <div class="fila">
+        <label class="field">Granja <select class="select" id="agranja"></select></label>
+        <label class="field">Tu nombre
+          <input type="text" id="aquien" placeholder="nombre y apellido" autocomplete="off" readonly>
+        </label>
+        <label class="field">Fecha <input type="date" id="afecha"></label>
+        <span class="sep" style="flex:1"></span>
+        <span class="estado" id="acatalogo"><span class="punto"></span><span id="acatalogotxt"></span></span>
+      </div>
+      <div class="fila" id="acatalogofila" hidden>
+        <button class="linkbtn" id="acatalogopublicar">publicar catálogo</button>
+        <span class="sep" style="flex:1"></span>
+        <span class="aviso" id="acarpetaaviso"></span>
+      </div>
+      <p class="nota">El pedido se puede armar de a poco: <b>Guardar borrador</b> lo deja a medio
+         hacer en este dispositivo y podés seguir otro día — los borradores aparecen arriba para retomarlos.
+         Cuando esté completo, <b>Enviar pedido</b> lo manda a compras. Si hay poca señal, queda guardado
+         y se manda solo cuando vuelva.</p>
+      <div class="enviados" id="aenviados"></div>
+    </div>
+
+    <div class="paso" id="apaso2">
+      <h3><span class="n">2</span>Insumos</h3>
+      <div class="fila">
+        <label class="field" style="flex:1">Buscar
+          <input type="text" id="abuscar" placeholder="nombre o código, y la cantidad al final: draxxin 6"
+                 autocomplete="off" style="width:100%">
+        </label>
+      </div>
+      <div class="sugerencias" id="asugerencias"></div>
+      <p class="nota">Elegí de la lista con <b>Enter</b> o un clic, y seguí escribiendo el próximo.
+         Si ponés la cantidad al final (<code>draxxin 6</code>) entra ya con la cantidad.
+         Para muchos de una vez: <button class="linkbtn" id="arapidaver">carga rápida</button></p>
+      <div id="arapida" style="display:none">
+        <textarea class="pegar" id="arapidatxt" style="height:110px" spellcheck="false"
+                  placeholder="Separados por coma o uno por renglón, con la cantidad al final:&#10;VET0015 6, caliercortin 10, nitrilo: 12"></textarea>
+        <div class="fila">
+          <button class="btn" id="arapidabtn">Agregar todo</button>
+          <span class="aviso" id="arapidaaviso"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="paso">
+      <h3><span class="n">3</span>Observaciones</h3>
+      <textarea class="pegar" id="aobs" style="height:80px"
+                placeholder="Lo que quieras que tenga en cuenta el que compra. Opcional."></textarea>
+    </div>
+
+    <div class="toolbar on" id="atoolbar">
+      <span class="contado" id="aaviso"></span>
+      <span class="sep"></span>
+      <span class="botones">
+        <button class="btn" id="aborrador">Guardar borrador</button>
+        <button class="btn" id="aenviar">Enviar pedido</button>
+      </span>
+    </div>
+
+    <div class="tablewrap on" id="atablewrap">
+      <div class="sheethead">
+        <h1>Pedido de insumos</h1>
+        <div class="line">
+          <span>Granja: <b id="ap-granja"></b></span>
+          <span>Pide: <b id="ap-quien"></b></span>
+          <span>Fecha: <b id="ap-fecha"></b></span>
+        </div>
+      </div>
+      <div id="atablehost"></div>
+    </div>
+  </section>
+
+  <section id="panel-egresos" class="panel">
+    <div class="error" id="gerror"></div>
+
+    <div class="paso">
+      <h3><span class="n">1</span>Existencias de las granjas</h3>
+      <div class="fila">
+        <span class="estado" id="gexist"><span class="punto"></span><span id="gexisttxt"></span></span>
+      </div>
+      <p class="nota">Las granjas vienen en el reporte que se baja en <b>Conteo de stock</b>, con la
+         fecha "hasta" que elegiste ahí (por defecto un mes adelante: incluye los movimientos con fecha
+         futura). Las oficinas no se egresan nunca.</p>
+    </div>
+
+    <div class="paso" id="gpaso2">
+      <h3><span class="n">2</span>Comprobantes</h3>
+      <div class="fila">
+        <label class="field">Fecha <input type="date" id="gfecha"></label>
+        <label class="field">Próximo comprobante
+          <input type="text" id="gnumero" autocomplete="off" style="width:110px">
+        </label>
+        <span class="sep" style="flex:1"></span>
+        <button class="linkbtn" id="ggranjasver">editar granjas</button>
+        <button class="linkbtn" id="gcuentasver">editar cuentas</button>
+      </div>
+      <div class="fila checks" id="gchecks"></div>
+      <p class="nota">Sale <b>un comprobante por granja y por cuenta contable</b>, solo de las granjas
+         tildadas. La numeración va
+         corriendo desde el número de acá y el programa te muestra abajo cuál le tocó a cada uno,
+         para que puedas corregirlo si se desfasó con Albor.</p>
+
+      <div class="excl" id="ggranjas">
+        <h3>Granjas</h3>
+        <p>Una línea por granja: <code>nombre del punto ; empresa ; id del punto ; centro de costo</code><br>
+           El <b>nombre del punto</b> tiene que estar escrito igual que en el CSV de existencias.
+           Los números los sacás con <code>python egresos.py --listar</code>.</p>
+        <textarea id="ggranjastxt" spellcheck="false"></textarea>
+        <div class="acciones">
+          <button class="btn" id="ggranjasguardar">Guardar</button>
+          <button class="linkbtn" id="ggranjasreset">Restaurar la lista original</button>
+          <span class="aviso" id="ggranjasaviso"></span>
+        </div>
+      </div>
+
+      <div class="excl" id="gcuentas">
+        <h3>Tipos de insumo y su cuenta contable</h3>
+        <p>Una línea por tipo: <code>TIPO DE INSUMO ; cuenta</code>.
+           <b>El tipo que no esté en esta lista no se egresa</b> — así quedan afuera el alimento y
+           las premezclas.<br>
+           Para un producto que no siga la regla de su tipo:
+           <code>cod: VAC0033738 ; 510201003</code></p>
+        <textarea id="gcuentastxt" spellcheck="false"></textarea>
+        <div class="acciones">
+          <button class="btn" id="gcuentasguardar">Guardar</button>
+          <button class="linkbtn" id="gcuentasreset">Restaurar la lista original</button>
+          <span class="aviso" id="gcuentasaviso"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="resumen" id="gresumen"></div>
+
+    <div class="toolbar" id="gtoolbar">
+      <span class="contado" id="gaviso"></span>
+      <span class="sep"></span>
+      <span class="botones">
+        <button class="btn" id="gcarga">Archivo para Albor</button>
+        <button class="btn" id="gprint">Imprimir / PDF</button>
+      </span>
+    </div>
+
+    <div class="tablewrap" id="gtablewrap">
+      <div class="sheethead">
+        <h1>Egresos de fin de mes</h1>
+        <div class="line">
+          <span>Fecha: <b id="gp-fecha"></b></span>
+          <span>Comprobantes: <b id="gp-cant"></b></span>
+        </div>
+      </div>
+      <div id="gtablehost"></div>
+    </div>
+  </section>
+</main>
+
+<div class="albor" id="albor" role="dialog" aria-label="Carga en Albor">
+  <div class="cab">
+    <b id="albortitulo">Cargando en Albor</b>
+    <button class="linkbtn" id="alborcancelar">cancelar la carga</button>
+    <button class="linkbtn" id="alborcerrar">cerrar</button>
+  </div>
+  <div class="log" id="alborlog"></div>
+  <div class="pausa" id="alborpausa">
+    <div class="txt" id="alborpausatxt"></div>
+    <button class="btn" id="alborseguir">Seguir</button>
+  </div>
+  <div class="fin" id="alborfin"></div>
+</div>
+
+<script src="../js/base.js"></script>
+<script>
+/* Sin sesión de la app: a entrar (la app trae de vuelta acá después del código). */
+(function(){
+  var token = guardado.leer(K.token), inicio = guardado.leerJSON(K.inicio, null);
+  if(!token || !inicio || !inicio.yo){
+    guardado.guardar(K_APARTADO, 'transferencias');
+    location.replace(APARTADOS.compras.url);
+    window.SIN_SESION = true;
+  }
+})();
+</script>
+<script>
+(function(){
+  'use strict';
+  if(window.SIN_SESION) return;
+
+  /* ============ Dónde se guardan las listas ============
+     Antes: config.json (dentro del programa) o localStorage (en el navegador).
+     Ahora (Fase extra): las listas que tienen que ser las mismas para todos los
+     admins (envíos, granjas, cuentas, excluidos y el próximo número de egreso)
+     van a la planilla (App_Config) y quedan copiadas en el dispositivo para
+     abrir sin señal. Lo que es de cada uno (el conteo real, quién soy, qué
+     pedidos ya vi) sigue en este dispositivo. El resto del código no se entera
+     de cuál de las dos es. */
+
+  var LISTAS_PLANILLA = {
+    'programa-compras:destinos': 'envios',
+    'programa-compras:granjas': 'granjas',
+    'programa-compras:cuentas': 'cuentas',
+    'programa-compras:excluidos': 'excluidos',
+    'programa-compras:nroegreso': 'nroegreso'
+  };
+  var K_TR = 'compras_tr_datos';     // listas, catálogo y granjas de la última vez (para abrir sin señal)
+  var TR = guardado.leerJSON(K_TR, null) || { listas: {}, catalogo: { insumos: [] }, granjas: [] };
+  APP.token = guardado.leer(K.token);
+  APP.yo = (guardado.leerJSON(K.inicio, {}) || {}).yo;
+  var ES_ADMIN = !!(APP.yo && APP.yo.admin);
+
+  function leerGuardado(clave){
+    if(LISTAS_PLANILLA[clave]){
+      var v = (TR.listas || {})[LISTAS_PLANILLA[clave]];
+      return v ? v : null;          // vacía en la planilla: la lista de siempre
+    }
+    try{ return localStorage.getItem(clave); }catch(e){ return null; }
+  }
+
+  /* Las de la planilla necesitan señal y las cambia un admin: si no se pudo,
+     se avisa (y en el dispositivo queda igual, para esta vez). */
+  function escribirGuardado(clave, valor){
+    var lista = LISTAS_PLANILLA[clave];
+    if(lista){
+      TR.listas = TR.listas || {};
+      TR.listas[lista] = valor;
+      guardado.guardarJSON(K_TR, TR);
+      api('guardarListaTransf', lista, valor).then(function(r){
+        if(!r.ok) alert('No se pudo guardar la lista en la planilla: ' + (r.error || '') +
+                        '\n\nQuedó cambiada solo en esta computadora. Probá de nuevo cuando haya señal.');
+      });
+      return;
+    }
+    try{ localStorage.setItem(clave, valor); }catch(e){ /* sin storage: vale para esta sesión */ }
+  }
+
+  /* ============ Estado ============ */
+  var DATA = null;   // {puntos:[], insumos:[{cat,cod,nombre,unidad,por:{punto:num}, total:num}]}
+
+  /* Productos que no se cuentan. Se comparan por código de insumo, no por nombre:
+     el mismo producto aparece escrito distinto en los dos listados del sistema.
+     El texto después del # es solo una nota para poder leer la lista. */
+  /* La lista de siempre viene de la planilla (datosTransferencias → originales):
+     así la página pública no lleva datos de la empresa. */
+  var EXCLUIDOS_ORIGINAL = '';
+
+  var CLAVE_EXCLUIDOS = 'programa-compras:excluidos';
+  var EXCLUIDOS = {cods:{}, cats:{}};
+  var EXCLUIDOS_TEXTO = '';  // lo que se ve en el panel
+
+  // Los códigos del sistema a veces traen un espacio de más ("DESC 00018").
+  function clave(s){ return String(s).toUpperCase().replace(/\s+/g,''); }
+
+  /* Cada línea es una de tres cosas:
+       cat: ABT PREMIX          -> toda la categoría
+       VET0003  # BIOMACROTIL   -> un producto por código
+       # nota                   -> comentario, se ignora                */
+  function leerExcluidos(texto){
+    var cods = {}, cats = {};
+    texto.split('\n').forEach(function(linea){
+      var limpio = linea.split('#')[0].trim();
+      if(!limpio) return;
+      var m = /^cat\s*:\s*(.+)$/i.exec(limpio);
+      if(m) cats[m[1].trim().toUpperCase()] = true;
+      else  cods[clave(limpio)] = true;
+    });
+    return {cods:cods, cats:cats};
+  }
+
+  function cuantosExcluidos(){
+    return Object.keys(EXCLUIDOS.cods).length + Object.keys(EXCLUIDOS.cats).length;
+  }
+
+  function guardarExcluidos(texto){
+    EXCLUIDOS_TEXTO = texto;
+    EXCLUIDOS = leerExcluidos(texto);
+    escribirGuardado(CLAVE_EXCLUIDOS, texto);
+  }
+
+  /* ============ Conteo cargado a mano ============ */
+
+  var CLAVE_CONTEO = 'programa-compras:conteo';
+  var CONTEO = {};   // {codigo: "texto tal cual lo escribió el usuario"}
+
+  function guardarConteo(){
+    escribirGuardado(CLAVE_CONTEO, JSON.stringify(CONTEO));
+  }
+
+  function cargarConteo(){
+    try{
+      var g = leerGuardado(CLAVE_CONTEO);
+      CONTEO = g ? JSON.parse(g) : {};
+    }catch(e){ CONTEO = {}; }
+  }
+
+  function cuantosContados(){
+    var n = 0;
+    for(var k in CONTEO){ if(CONTEO[k] !== '') n++; }
+    return n;
+  }
+
+  // Acepta "12", "12,5" y "12.5". Devuelve null si no es un número.
+  function numEscrito(texto){
+    texto = String(texto == null ? '' : texto).trim();
+    if(!texto) return null;
+    var v = parseFloat(texto.replace(/\./g,'').replace(',','.'));
+    return isNaN(v) ? null : v;
+  }
+
+  function textoDif(valor, total){
+    var v = numEscrito(valor);
+    if(v === null) return '';
+    var d = v - total;
+    if(d === 0) return '<span class="ok">=</span>';
+    return '<span class="' + (d < 0 ? 'menos' : 'mas') + '">' +
+           (d > 0 ? '+' : '\u2212') + fmt(Math.abs(d)) + '</span>';
+  }
+
+  function cargarExcluidos(){
+    var guardado = null;
+    guardado = leerGuardado(CLAVE_EXCLUIDOS);
+    EXCLUIDOS_TEXTO = guardado === null ? EXCLUIDOS_ORIGINAL : guardado;
+    EXCLUIDOS = leerExcluidos(EXCLUIDOS_TEXTO);
+  }
+
+  /* ============ Utilidades ============ */
+
+  // CSV RFC4180: comillas, comas dentro de comillas, saltos de línea embebidos.
+  function parseCSV(text){
+    if(text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    var rows = [], row = [], field = '', q = false, i = 0, n = text.length;
+    while(i < n){
+      var c = text[i];
+      if(q){
+        if(c === '"'){
+          if(text[i+1] === '"'){ field += '"'; i += 2; continue; }
+          q = false; i++; continue;
+        }
+        field += c; i++; continue;
+      }
+      if(c === '"'){ q = true; i++; continue; }
+      if(c === ','){ row.push(field); field = ''; i++; continue; }
+      if(c === '\r'){ i++; continue; }
+      if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+      field += c; i++;
+    }
+    if(field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  // "1.234,500" -> 1234.5
+  function numAR(s){
+    if(s == null) return 0;
+    s = String(s).trim();
+    if(!s) return 0;
+    var v = parseFloat(s.replace(/\./g,'').replace(',','.'));
+    return isNaN(v) ? 0 : v;
+  }
+
+  // Muestra sin decimales cuando son enteros; con hasta 3 cuando no.
+  function fmt(v){
+    if(Math.abs(v - Math.round(v)) < 1e-9){
+      return Math.round(v).toLocaleString('es-AR');
+    }
+    return v.toLocaleString('es-AR',{minimumFractionDigits:0, maximumFractionDigits:3});
+  }
+
+  function cmp(a,b){ return String(a).localeCompare(String(b),'es',{sensitivity:'base'}); }
+
+  function norm(s){
+    return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  }
+
+  function decode(buffer){
+    try{
+      return new TextDecoder('utf-8',{fatal:true}).decode(buffer);
+    }catch(e){
+      return new TextDecoder('windows-1252').decode(buffer);
+    }
+  }
+
+  /* ============ Transformación ============ */
+
+  // La sección que nos sirve es la de 27 campos: detalle por punto de stock.
+  var COL = { cat:0, punto:13, cod:14, nombre:15, unidad:16, existencia:17 };
+
+  function construir(texto){
+    var filas = parseCSV(texto).filter(function(r){
+      return r.length === 27 && r[COL.cat] !== 'Descripcion_Tipo_Insumo';
+    });
+    if(!filas.length) return null;
+
+    var puntos = {}, mapa = {}, orden = [];
+    filas.forEach(function(r){
+      var punto  = (r[COL.punto]  || '').trim();
+      var nombre = (r[COL.nombre] || '').trim();
+      var cat    = (r[COL.cat]    || '').trim() || 'SIN CATEGORÍA';
+      if(!nombre || !punto) return;
+      puntos[punto] = true;
+
+      var key = cat + '\u0000' + nombre;   // separador que no puede venir en los datos
+      var it = mapa[key];
+      if(!it){
+        it = mapa[key] = {
+          cat: cat,
+          nombre: nombre,
+          cod: (r[COL.cod] || '').trim(),
+          unidad: (r[COL.unidad] || '').trim(),
+          por: {},
+          total: 0
+        };
+        orden.push(it);
+      }
+      var v = numAR(r[COL.existencia]);
+      it.por[punto] = (it.por[punto] || 0) + v;
+    });
+
+    orden.sort(function(a,b){ return cmp(a.cat,b.cat) || cmp(a.nombre,b.nombre); });
+
+    var d = { insumos: orden, todos: Object.keys(puntos), filasLeidas: filas.length };
+    separarPuntos(d);
+    return d;
+  }
+
+  /* Un solo reporte trae oficinas y granjas. Cada pestaña mira lo suyo:
+     Conteo de stock las oficinas (las granjas, si se pide), Transferir
+     la oficina de origen de cada envío, y Egresos las granjas. El Total de
+     cada insumo es SOLO de las oficinas: es lo que se cuenta. */
+  function esOficina(punto){
+    var k = puntoClave(punto), hay = false, es = false;
+    DESTINOS.forEach(function(d){
+      d.bloques.forEach(function(b){ hay = true; if(puntoClave(b.origenNombre) === k) es = true; });
+    });
+    return hay ? es : /^OFICINA/i.test(String(punto).trim());
+  }
+
+  function separarPuntos(d){
+    d.oficinas = d.todos.filter(esOficina).sort(cmp);
+    d.granjas = d.todos.filter(function(p){ return !esOficina(p); }).sort(cmp);
+    d.puntos = d.oficinas.concat(d.granjas);
+    d.insumos.forEach(function(it){
+      it.total = d.oficinas.reduce(function(s, p){ return s + (it.por[p] || 0); }, 0);
+      it.enOficina = d.oficinas.some(function(p){ return p in it.por; });
+    });
+  }
+
+  // Las columnas que se ven en Conteo de stock.
+  function puntosConteo(){
+    if(!DATA) return [];
+    return $('vergranjas').checked ? DATA.oficinas.concat(DATA.granjas) : DATA.oficinas;
+  }
+
+  /* ============ Exportar a Excel ============ */
+
+  /* CSV con ; como separador y coma decimal: así Excel en español lo abre
+     ya separado en columnas, sin pasar por el asistente de importación. */
+  function exportarExcel(){
+    var items = visibles();
+    var puntos = DATA.oficinas;
+    var granjas = $('vergranjas').checked ? DATA.granjas : [];
+    var sep = ';';
+
+    function celda(v){
+      v = String(v == null ? '' : v);
+      return /[";\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+    }
+    function nro(v){ return String(v).replace('.', ','); }
+
+    var out = [];
+    out.push(['Planilla de conteo de stock'].map(celda).join(sep));
+    out.push(['Fecha', $('fecha').value ? $('fecha').value.split('-').reverse().join('/') : ''].map(celda).join(sep));
+    out.push(['Responsable', $('resp').value.trim()].map(celda).join(sep));
+    out.push('');
+
+    var cab = ['Categoría', 'Insumo'].concat(puntos)
+      .concat([granjas.length ? 'Total oficinas' : 'Total', 'Conteo real', 'Diferencia']).concat(granjas);
+    out.push(cab.map(celda).join(sep));
+
+    items.forEach(function(it){
+      var fila = [it.cat, it.nombre];
+      puntos.forEach(function(p){ fila.push(p in it.por ? nro(it.por[p]) : ''); });
+      fila.push(nro(it.total));
+      var escrito = CONTEO[clave(it.cod)] || '';
+      var v = numEscrito(escrito);
+      fila.push(v === null ? '' : nro(v));
+      fila.push(v === null ? '' : nro(v - it.total));
+      granjas.forEach(function(p){ fila.push(p in it.por ? nro(it.por[p]) : ''); });
+      out.push(fila.map(celda).join(sep));
+    });
+
+    var texto = '\uFEFF' + out.join('\r\n');   // BOM: Excel respeta los acentos
+    var fecha = ($('fecha').value || 'sin-fecha');
+    descargar('Conteo de stock ' + fecha + '.csv', texto, 'text/csv;charset=utf-8');
+  }
+
+  /* Dos caminos según dónde esté corriendo el programa:
+     - archivo local: la descarga normal del navegador;
+     - link web: la plataforma pide confirmación y guarda ella el archivo. */
+  function aBase64(datos){
+    var b = (datos instanceof ArrayBuffer) ? new Uint8Array(datos) : datos, s = '';
+    for(var i = 0; i < b.length; i += 0x8000){
+      s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    }
+    return btoa(s);
+  }
+
+  async function descargar(nombre, datos, tipo){
+    try{
+      var plataforma = (window.claude && window.claude.use) ? await window.claude.use('downloads') : null;
+      if(plataforma){
+        try{
+          await plataforma.save({ filename: nombre, data: datos });
+        }catch(err){
+          if(err && err.code !== 'declined'){
+            mostrarError('No se pudo guardar el archivo desde el link web. ' +
+                         'Probá desde el programa descargado.');
+          }
+        }
+        return;
+      }
+    }catch(e){ /* sin plataforma: se sigue por el camino del navegador */ }
+
+    try{
+      var url = URL.createObjectURL(new Blob([datos], {type: tipo}));
+      var a = document.createElement('a');
+      a.href = url; a.download = nombre;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    }catch(e){
+      mostrarError('No se pudo descargar el archivo.');
+    }
+  }
+
+  /* ============ Render ============ */
+
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esExcluido(it){
+    if(EXCLUIDOS.cats[it.cat.toUpperCase()] === true) return true;
+    return EXCLUIDOS.cods[clave(it.cod)] === true;
+  }
+
+  // Cuántos de la lista de excluidos existen realmente en el CSV cargado.
+  function excluidosPresentes(){
+    if(!DATA) return 0;
+    return DATA.insumos.filter(esExcluido).length;
+  }
+
+  function visibles(){
+    var q  = norm($('q').value.trim());
+    var oz = $('hidezero').checked;
+    var ex = $('usarexcl').checked;
+    var granjas = $('vergranjas').checked ? DATA.granjas : [];
+    return DATA.insumos.filter(function(it){
+      if(ex && esExcluido(it)) return false;
+      // Sin las granjas a la vista, lo que solo existe en una granja no va.
+      if(!granjas.length && !it.enOficina) return false;
+      if(oz && it.total === 0 && granjas.every(function(p){ return !it.por[p]; })) return false;
+      if(q && norm(it.nombre).indexOf(q) === -1 && norm(it.cat).indexOf(q) === -1) return false;
+      return true;
+    });
+  }
+
+  function render(){
+    if(!DATA) return;
+    var items = visibles();
+    var puntos = DATA.oficinas;
+    var granjas = $('vergranjas').checked ? DATA.granjas : [];
+    var agrupar = $('bycat').checked;
+    var verdif = $('mostrardif').checked;
+    // nombre + oficinas + total + conteo [+ dif] + granjas
+    var ncols = 1 + puntos.length + 2 + (verdif ? 1 : 0) + granjas.length;
+
+    if(!items.length){
+      $('tablehost').innerHTML = '<div class="empty">Ningún insumo coincide con los filtros.</div>';
+      actualizarMeta(0);
+      return;
+    }
+
+    var h = [];
+    h.push('<table><thead><tr>');
+    h.push('<th class="name">Insumo</th>');
+    puntos.forEach(function(p){ h.push('<th>' + esc(p) + '</th>'); });
+    h.push('<th class="total">' + (granjas.length ? 'Total oficinas' : 'Total') + '</th>');
+    h.push('<th class="count">Conteo real</th>');
+    if(verdif) h.push('<th class="dif">Dif.</th>');
+    granjas.forEach(function(p, n){ h.push('<th class="granja' + (n ? '' : ' primera') + '">' + esc(p) + '</th>'); });
+    h.push('</tr></thead><tbody>');
+
+    var catActual = null;
+    var conteoPorCat = {};
+    var i = 0; // contador de cebra; se reinicia en cada categoría
+    if(agrupar){
+      items.forEach(function(it){ conteoPorCat[it.cat] = (conteoPorCat[it.cat]||0) + 1; });
+    }
+
+    items.forEach(function(it){
+      if(agrupar && it.cat !== catActual){
+        catActual = it.cat;
+        i = 0;
+        h.push('<tr class="cat"><td colspan="' + ncols + '">' + esc(catActual) +
+               '<small>' + conteoPorCat[catActual] + ' insumo' + (conteoPorCat[catActual]===1?'':'s') + '</small></td></tr>');
+      }
+      h.push('<tr class="row' + (i++ % 2 ? ' alt' : '') + '">');
+      h.push('<td class="name">' + esc(it.nombre) + '</td>');
+      puntos.forEach(function(p){
+        if(!(p in it.por)){ h.push('<td></td>'); return; }
+        var v = it.por[p];
+        h.push('<td' + (v === 0 ? ' class="zero"' : '') + '>' + fmt(v) + '</td>');
+      });
+      h.push('<td class="total">' + fmt(it.total) + '</td>');
+      var val = CONTEO[clave(it.cod)] || '';
+      h.push('<td class="count"><input class="ci" type="text" inputmode="decimal" ' +
+             'autocomplete="off" id="ci-' + esc(clave(it.cod)) + '" ' +
+             'data-cod="' + esc(clave(it.cod)) + '" data-total="' + it.total + '" ' +
+             'aria-label="Conteo real de ' + esc(it.nombre) + '" value="' + esc(val) + '"></td>');
+      if(verdif) h.push('<td class="dif" data-dif="' + esc(clave(it.cod)) + '">' + textoDif(val, it.total) + '</td>');
+      granjas.forEach(function(p, n){
+        var v = it.por[p], cls = 'granja' + (n ? '' : ' primera') + (v === 0 ? ' zero' : '');
+        h.push('<td class="' + cls + '">' + (p in it.por ? fmt(v) : '') + '</td>');
+      });
+      h.push('</tr>');
+    });
+
+    h.push('</tbody><tfoot><tr>');
+    h.push('<td class="name">' + items.length + ' insumo' + (items.length===1?'':'s') + '</td>');
+    puntos.forEach(function(){ h.push('<td></td>'); });
+    h.push('<td class="total"></td><td class="count"></td>');
+    if(verdif) h.push('<td class="dif"></td>');
+    granjas.forEach(function(p, n){ h.push('<td class="granja' + (n ? '' : ' primera') + '"></td>'); });
+    h.push('</tr></tfoot></table>');
+
+    $('tablehost').innerHTML = h.join('');
+    actualizarMeta(items.length);
+  }
+
+  function actualizarMeta(n){
+    var total = DATA.insumos.length;
+    var pts = DATA.oficinas.length + ' oficinas' +
+              (DATA.granjas.length ? ' · ' + DATA.granjas.length + ' granjas' +
+                                     ($('vergranjas').checked ? '' : ' (ocultas)') : '');
+    var txt = (n === total ? total : n + ' de ' + total) + ' insumos · ' + pts;
+    $('meta').textContent = txt;
+
+    var notas = [];
+    if($('usarexcl').checked && excluidosPresentes()) notas.push('Sin los productos excluidos');
+    if($('hidezero').checked) notas.push('Solo insumos con stock');
+    $('p-filtro').textContent = notas.join(' · ');
+
+    var pres = excluidosPresentes();
+    $('exclcount').textContent = pres ? '(' + pres + ')' : '';
+    actualizarContador();
+  }
+
+  function actualizarContador(){
+    var n = cuantosContados();
+    $('contado').innerHTML = n
+      ? 'Conteo: <b>' + n + '</b> cargados · <button class="linkbtn" id="borrarconteo">borrar</button>'
+      : '';
+  }
+
+  function esc(s){
+    return String(s).replace(/[&<>"]/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+    });
+  }
+
+  /* ============ Carga ============ */
+
+  function mostrarError(msg){
+    var e = $('error');
+    e.textContent = msg;
+    e.classList.add('on');
+  }
+  function limpiarError(){ $('error').classList.remove('on'); }
+
+  /* Hasta qué fecha es el reporte cargado. Se ve en la barra del archivo y
+     en la hoja impresa: con fecha futura, el conteo muestra lo que va a haber
+     a esa fecha, no lo de hoy. */
+  function mostrarFechaReporte(){
+    if(!DATA) return;
+    $('filestats').textContent = '· ' + DATA.filasLeidas + ' filas de detalle leídas' +
+      (DATA.hasta ? ' · existencias hasta el ' + DATA.hasta : '');
+    if(DATA.hasta) $('p-hasta').textContent = 'Existencias al: ' + DATA.hasta;
+    render();
+    estadoExistencias();
+    pintarEgresos();
+  }
+
+  function cargarTexto(texto, nombreArchivo, fechaArchivo){
+    limpiarError();
+    var d = construir(texto);
+    if(!d){
+      mostrarError('Este archivo no parece el reporte de Existencia de Insumos. ' +
+                   'Exportalo del sistema como CSV y volvé a intentar.');
+      return false;
+    }
+    DATA = d;
+    GRANJAS_FUERA = {};              // reporte nuevo: vuelven todas las granjas tildadas
+    $('p-hasta').textContent = '';
+    DATA.archivoNombre = nombreArchivo || '';
+    DATA.archivoFecha = fechaArchivo || null;
+    $('filename').textContent = nombreArchivo || 'Datos cargados';
+    $('filestats').textContent = '· ' + d.filasLeidas + ' filas de detalle leídas';
+    $('filebar').classList.add('on');
+    $('vergranjaslbl').style.display = d.granjas.length ? '' : 'none';
+    $('drop').style.display = 'none';
+    $('toolbar').classList.add('on');
+    $('meta').classList.add('on');
+    $('tablewrap').classList.add('on');
+    render();
+    analizar();          // las existencias también alimentan "Transferir"
+    analizarEgresos();   // y "Egresos"
+    return true;
+  }
+
+  function cargarArchivo(file){
+    if(!file) return;
+    var fr = new FileReader();
+    fr.onload = function(){ cargarTexto(decode(fr.result), file.name, file.lastModified); };
+    fr.onerror = function(){ mostrarError('No se pudo leer el archivo.'); };
+    fr.readAsArrayBuffer(file);
+  }
+
+  /* ============ Eventos ============ */
+
+  var drop = $('drop');
+  drop.addEventListener('click', function(){ $('file').click(); });
+  $('rechange').addEventListener('click', function(){ $('file').click(); });
+  $('file').addEventListener('change', function(){
+    cargarArchivo(this.files[0]);
+    this.value = '';
+  });
+
+  ['dragenter','dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(e.dataTransfer && e.dataTransfer.files.length) cargarArchivo(e.dataTransfer.files[0]);
+  });
+  // Arrastrar sobre la ventana entera también funciona una vez cargado un archivo.
+  // Lo que se suelta se interpreta según la pestaña abierta.
+  window.addEventListener('dragover', function(e){ e.preventDefault(); });
+  window.addEventListener('drop', function(e){
+    e.preventDefault();
+    if(!e.dataTransfer || !e.dataTransfer.files.length) return;
+    var f = e.dataTransfer.files[0];
+    if(pedidoActivo()) cargarArchivoPedido(f); else cargarArchivo(f);
+  });
+
+  // Se escucha en el contenedor: la tabla se redibuja entera en cada filtro.
+  $('tablehost').addEventListener('input', function(e){
+    var inp = e.target;
+    if(!inp.classList || !inp.classList.contains('ci')) return;
+    var cod = inp.getAttribute('data-cod');
+    var texto = inp.value.trim();
+    if(texto) CONTEO[cod] = texto; else delete CONTEO[cod];
+    guardarConteo();
+    actualizarContador();
+    // Solo se repinta la celda de diferencia, para no perder el foco al tipear.
+    var celdaDif = $('tablehost').querySelector('td.dif[data-dif="' + cod + '"]');
+    if(celdaDif) celdaDif.innerHTML = textoDif(texto, parseFloat(inp.getAttribute('data-total')));
+  });
+
+  // Enter y flechas saltan al casillero de arriba o de abajo.
+  $('tablehost').addEventListener('keydown', function(e){
+    var inp = e.target;
+    if(!inp.classList || !inp.classList.contains('ci')) return;
+    var salto = (e.key === 'Enter' || e.key === 'ArrowDown') ? 1 : (e.key === 'ArrowUp' ? -1 : 0);
+    if(!salto) return;
+    e.preventDefault();
+    var todos = [].slice.call($('tablehost').querySelectorAll('input.ci'));
+    var siguiente = todos[todos.indexOf(inp) + salto];
+    if(siguiente){ siguiente.focus(); siguiente.select(); }
+  });
+
+  $('contado').addEventListener('click', function(e){
+    if(e.target.id !== 'borrarconteo') return;
+    if(!confirm('¿Borrar los ' + cuantosContados() + ' valores cargados? Esto no se puede deshacer.')) return;
+    CONTEO = {};
+    guardarConteo();
+    render();
+  });
+
+  $('mostrardif').addEventListener('change', render);
+  $('excel').addEventListener('click', exportarExcel);
+
+  $('q').addEventListener('input', render);
+  $('hidezero').addEventListener('change', render);
+
+  /* Con las granjas a la vista la tabla no entra en una hoja vertical: se
+     imprime apaisada y con letra más chica. */
+  $('vergranjas').addEventListener('change', function(){
+    var s = $('hojaapaisada');
+    if(this.checked && !s){
+      s = document.createElement('style');
+      s.id = 'hojaapaisada';
+      s.textContent = '@media print{@page{size:A4 landscape;margin:9mm 7mm 10mm}' +
+                      'table{font-size:7.5pt}th,td{padding-left:3px;padding-right:3px}}';
+      document.head.appendChild(s);
+    }else if(!this.checked && s){
+      s.parentNode.removeChild(s);
+    }
+    render();
+  });
+  $('bycat').addEventListener('change', render);
+  $('usarexcl').addEventListener('change', render);
+  $('print').addEventListener('click', function(){ window.print(); });
+
+
+  // --- panel de excluidos ---
+
+  function avisar(msg){
+    $('exclaviso').textContent = msg;
+    setTimeout(function(){ $('exclaviso').textContent = ''; }, 3000);
+  }
+
+  $('vermas').addEventListener('click', function(){
+    var abierto = $('excl').classList.toggle('on');
+    this.textContent = abierto ? 'cerrar lista' : 'editar lista';
+    if(abierto){ $('excltxt').scrollTop = 0; $('excltxt').focus(); }
+  });
+
+  $('exclguardar').addEventListener('click', function(){
+    guardarExcluidos($('excltxt').value);
+    render();
+    avisar(cuantosExcluidos() + ' reglas guardadas · ' + excluidosPresentes() + ' insumos fuera del conteo.');
+  });
+
+  $('exclreset').addEventListener('click', function(){
+    guardarExcluidos(EXCLUIDOS_ORIGINAL);
+    $('excltxt').value = EXCLUIDOS_TEXTO;
+    render();
+    avisar('Lista original restaurada.');
+  });
+
+  var hoy = new Date();
+  $('fecha').value = hoy.getFullYear() + '-' +
+    String(hoy.getMonth()+1).padStart(2,'0') + '-' +
+    String(hoy.getDate()).padStart(2,'0');
+
+  function syncCabecera(){
+    var f = $('fecha').value;
+    $('p-fecha').textContent = f
+      ? f.split('-').reverse().join('/')
+      : '__________';
+    $('p-resp').textContent = $('resp').value.trim() || '______________________';
+  }
+  $('fecha').addEventListener('input', syncCabecera);
+  $('resp').addEventListener('input', syncCabecera);
+  syncCabecera();
+
+  /* ==================================================================
+     PREPARAR PEDIDO
+     Cruza el pedido de una granja contra las existencias ya cargadas y
+     arma el archivo que después carga el script de Albor.
+     ================================================================== */
+
+  /* ---------- Los envíos posibles, editables desde el programa ----------
+     Cada línea es un comprobante. Dos líneas con el mismo nombre son un
+     control doble: sale la misma cantidad desde las dos oficinas.
+     Los números son los que usa Albor en sus <select>; un "?" significa
+     "no lo elijas solo, lo elijo a mano". Con --listar el script de carga
+     muestra los números que tiene Albor para poder completarlos. */
+  /* La lista de siempre viene de la planilla (datosTransferencias → originales):
+     así la página pública no lleva datos de la empresa. */
+  var DESTINOS_ORIGINAL = '';
+
+  var CLAVE_DESTINOS = 'programa-compras:destinos';
+  var DESTINOS = [];
+  var DESTINOS_TEXTO = '';
+
+  var DESTINOS_IGNORADAS = [];   // líneas que no se entendieron, para poder avisar
+
+  function leerDestinos(texto){
+    var porNombre = {}, orden = [];
+    DESTINOS_IGNORADAS = [];
+    String(texto).split('\n').forEach(function(linea){
+      var limpio = linea.split('#')[0].trim();
+      if(!limpio) return;
+      var c = limpio.split(';').map(function(s){ return s.trim(); });
+      if(c.length < 6){ DESTINOS_IGNORADAS.push(limpio); return; }
+
+      var nombre = c[0];
+      if(!nombre){ DESTINOS_IGNORADAS.push(limpio); return; }
+      var d = porNombre[nombre];
+      if(!d){
+        d = porNombre[nombre] = { clave:'d' + orden.length, nombre:nombre, bloques:[] };
+        orden.push(d);
+      }
+      d.bloques.push({
+        empresa: c[1] || '?',
+        origen: c[2] || '?',
+        origenNombre: c[3],
+        punto: puntoClave(c[3]),
+        destino: c[4] || '?',
+        destinoNombre: c[5]
+      });
+    });
+    orden.forEach(function(d){
+      d.modo = d.bloques.length > 1 ? 'doble' : 'simple';
+      d.aMano = d.bloques.some(function(b){
+        return b.empresa === '?' || b.origen === '?' || b.destino === '?';
+      });
+    });
+    return orden;
+  }
+
+  function guardarDestinos(texto){
+    DESTINOS_TEXTO = texto;
+    DESTINOS = leerDestinos(texto);
+    escribirGuardado(CLAVE_DESTINOS, texto);
+    // Qué es oficina sale de los orígenes de los envíos: si cambian, se
+    // vuelve a separar.
+    if(DATA){ separarPuntos(DATA); render(); }
+  }
+
+  function cargarDestinos(){
+    var guardado = null;
+    guardado = leerGuardado(CLAVE_DESTINOS);
+    DESTINOS_TEXTO = guardado == null ? DESTINOS_ORIGINAL : guardado;
+    DESTINOS = leerDestinos(DESTINOS_TEXTO);
+    if(!DESTINOS.length){   // lista rota o vacía: se vuelve a la original
+      DESTINOS_TEXTO = DESTINOS_ORIGINAL;
+      DESTINOS = leerDestinos(DESTINOS_TEXTO);
+    }
+  }
+
+  function llenarSelectDestinos(){
+    var sel = $('pdestino'), antes = sel.value;
+    sel.innerHTML = '';
+    DESTINOS.forEach(function(d){
+      var o = document.createElement('option');
+      o.value = d.clave;
+      o.textContent = d.nombre + (d.modo === 'doble' ? '  (2 comprobantes)' : '');
+      sel.appendChild(o);
+    });
+    if(antes && DESTINOS.some(function(d){ return d.clave === antes; })) sel.value = antes;
+  }
+  var PEDIDO = null;   // {filas:[[...]], cab:[...], mapa:{cod,cant,nom,cta}, nombre:''}
+  var ANALISIS = null; // {destino, items:[...], hay, faltan}
+
+  function puntoClave(s){ return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g,''); }
+
+  function errorP(msg){
+    var e = $('perror');
+    e.textContent = msg;
+    e.classList.add('on');
+  }
+  function limpiarErrorP(){ $('perror').classList.remove('on'); }
+
+  /* ---------- Leer el .xlsx sin librerías ----------
+     Un .xlsx es un ZIP. Se lee el directorio central, se descomprime lo que
+     hace falta y se parsea el XML. Si el navegador no sabe descomprimir,
+     el mensaje de error manda al CSV o a pegar desde Excel. */
+
+  function u16(b,i){ return b[i] | (b[i+1] << 8); }
+  function u32(b,i){ return (b[i] | (b[i+1] << 8) | (b[i+2] << 16) | (b[i+3] << 24)) >>> 0; }
+
+  function abrirZip(buffer){
+    var b = new Uint8Array(buffer), fin = -1;
+    for(var i = b.length - 22; i >= 0 && i >= b.length - 65557; i--){
+      if(u32(b,i) === 0x06054b50){ fin = i; break; }
+    }
+    if(fin < 0) throw new Error('El archivo no parece un Excel (.xlsx) válido.');
+
+    var cant = u16(b, fin + 10), pos = u32(b, fin + 16), entradas = {};
+    if(cant === 0xFFFF) throw new Error('El Excel usa un formato interno que el programa no sabe leer.');
+
+    for(var k = 0; k < cant; k++){
+      if(u32(b,pos) !== 0x02014b50) break;
+      var nlen = u16(b,pos+28), elen = u16(b,pos+30), clen = u16(b,pos+32);
+      var nombre = new TextDecoder('utf-8').decode(b.subarray(pos+46, pos+46+nlen));
+      entradas[nombre] = { metodo:u16(b,pos+10), comp:u32(b,pos+20), local:u32(b,pos+42) };
+      pos += 46 + nlen + elen + clen;
+    }
+    return { bytes:b, entradas:entradas };
+  }
+
+  async function leerDelZip(zip, nombre){
+    var e = zip.entradas[nombre];
+    if(!e) return null;
+    var b = zip.bytes, p = e.local;
+    if(u32(b,p) !== 0x04034b50) return null;
+    var inicio = p + 30 + u16(b,p+26) + u16(b,p+28);
+    var crudo = b.subarray(inicio, inicio + e.comp);
+    if(e.metodo === 0) return new TextDecoder('utf-8').decode(crudo);
+    if(typeof DecompressionStream === 'undefined'){
+      throw new Error('Este navegador no puede abrir archivos .xlsx. ' +
+                      'Guardá el pedido como CSV, o copiá las columnas y pegalas.');
+    }
+    var flujo = new Blob([crudo]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(flujo).text();
+  }
+
+  function xml(texto){ return new DOMParser().parseFromString(texto, 'application/xml'); }
+
+  // "BC7" -> 54 (índice de columna, base 0)
+  function colDeRef(ref){
+    var n = 0;
+    for(var i = 0; i < ref.length; i++){
+      var c = ref.charCodeAt(i);
+      if(c < 65 || c > 90) break;
+      n = n * 26 + (c - 64);
+    }
+    return n - 1;
+  }
+
+  async function leerXLSX(buffer){
+    var zip = abrirZip(buffer);
+
+    // La primera hoja del libro, no necesariamente "sheet1.xml".
+    var hoja = 'xl/worksheets/sheet1.xml';
+    try{
+      var wb = await leerDelZip(zip, 'xl/workbook.xml');
+      var rels = await leerDelZip(zip, 'xl/_rels/workbook.xml.rels');
+      if(wb && rels){
+        var s = xml(wb).getElementsByTagName('sheet')[0];
+        var rid = s && (s.getAttribute('r:id') || s.getAttribute('id'));
+        var lista = xml(rels).getElementsByTagName('Relationship');
+        for(var i = 0; i < lista.length; i++){
+          if(lista[i].getAttribute('Id') === rid){
+            var t = lista[i].getAttribute('Target').replace(/^\/?(xl\/)?/, '');
+            if(zip.entradas['xl/' + t]) hoja = 'xl/' + t;
+          }
+        }
+      }
+    }catch(e){ /* si el índice falla, se usa sheet1.xml */ }
+
+    var textoHoja = await leerDelZip(zip, hoja);
+    if(!textoHoja) throw new Error('No se encontró ninguna hoja dentro del Excel.');
+
+    var compartidas = [];
+    var ss = await leerDelZip(zip, 'xl/sharedStrings.xml');
+    if(ss){
+      var sis = xml(ss).getElementsByTagName('si');
+      for(var j = 0; j < sis.length; j++){
+        var ts = sis[j].getElementsByTagName('t'), txt = '';
+        for(var k = 0; k < ts.length; k++) txt += ts[k].textContent;
+        compartidas.push(txt);
+      }
+    }
+
+    var filas = [], rows = xml(textoHoja).getElementsByTagName('row');
+    for(var r = 0; r < rows.length; r++){
+      var celdas = rows[r].getElementsByTagName('c'), fila = [];
+      for(var c = 0; c < celdas.length; c++){
+        var cel = celdas[c], tipo = cel.getAttribute('t') || 'n';
+        var ref = cel.getAttribute('r') || '';
+        var idx = ref ? colDeRef(ref) : fila.length;
+        var v = cel.getElementsByTagName('v')[0];
+        var valor = '';
+        if(tipo === 's'){
+          valor = v ? (compartidas[parseInt(v.textContent,10)] || '') : '';
+        }else if(tipo === 'inlineStr'){
+          var is = cel.getElementsByTagName('t');
+          for(var m = 0; m < is.length; m++) valor += is[m].textContent;
+        }else if(v){
+          // Los números vienen siempre con punto decimal: se guardan como número
+          // para no confundirlos con el formato argentino más adelante.
+          valor = (tipo === 'str' || tipo === 'e') ? v.textContent : parseFloat(v.textContent);
+          if(typeof valor === 'number' && isNaN(valor)) valor = v.textContent;
+        }
+        while(fila.length < idx) fila.push('');
+        fila[idx] = valor;
+      }
+      /* Excel no escribe las filas vacías, así que hay que respetar el número
+         de fila que trae cada una: si no, un renglón en blanco en el medio
+         corre toda la numeración y después el aviso señala la fila equivocada. */
+      var nro = parseInt(rows[r].getAttribute('r'), 10);
+      if(nro > 0){
+        while(filas.length < nro - 1) filas.push([]);
+        filas[nro - 1] = fila;
+      }else{
+        filas.push(fila);
+      }
+    }
+    return filas;
+  }
+
+  /* ---------- Leer CSV o texto pegado ----------
+     El pedido puede venir guardado con , o ; y, si pasó por un Excel viejo,
+     con saltos de línea \r solos. Se normaliza todo antes de parsear. */
+  function leerTabla(texto){
+    texto = String(texto).replace(/\r\n?/g, '\n');
+    var cab = texto.split('\n')[0] || '';
+    var sep = ',';
+    if(cab.indexOf('\t') >= 0) sep = '\t';
+    else if((cab.split(';').length - 1) > (cab.split(',').length - 1)) sep = ';';
+
+    var rows = [], row = [], field = '', q = false, i = 0, n = texto.length;
+    if(texto.charCodeAt(0) === 0xFEFF){ i = 1; }
+    while(i < n){
+      var c = texto[i];
+      if(q){
+        if(c === '"'){
+          if(texto[i+1] === '"'){ field += '"'; i += 2; continue; }
+          q = false; i++; continue;
+        }
+        field += c; i++; continue;
+      }
+      if(c === '"'){ q = true; i++; continue; }
+      if(c === sep){ row.push(field); field = ''; i++; continue; }
+      if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+      field += c; i++;
+    }
+    if(field !== '' || row.length){ row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  /* ---------- Detectar qué columna es qué ---------- */
+
+  function buscarCol(cab, claves, usadas){
+    for(var p = 0; p < claves.length; p++){
+      for(var i = 0; i < cab.length; i++){
+        if(usadas[i]) continue;
+        if(norm(String(cab[i] == null ? '' : cab[i])).indexOf(claves[p]) >= 0){
+          usadas[i] = true;
+          return i;
+        }
+      }
+    }
+    return null;
+  }
+
+  function mapearColumnas(cab){
+    var usadas = {};
+    // "cant" antes que "unidad": en el pedido la columna de cantidad a veces
+    // se llama "unidad", pero si existen las dos, manda "cantidad".
+    return {
+      cod:  buscarCol(cab, ['codigo','cod'], usadas),
+      cant: buscarCol(cab, ['cantidad','cant','unidad'], usadas),
+      nom:  buscarCol(cab, ['nombre','descrip','desc','insumo','producto'], usadas),
+      cta:  buscarCol(cab, ['cuenta'], usadas)
+    };
+  }
+
+  function cargarPedidoFilas(filas, nombreArchivo){
+    limpiarErrorP();
+    // El Excel puede traer títulos arriba: se busca la cabecera en las primeras filas.
+    var cabIdx = -1, mapa = null;
+    for(var i = 0; i < Math.min(filas.length, 15); i++){
+      var m = mapearColumnas(filas[i]);
+      if(m.cod !== null && m.cant !== null){ cabIdx = i; mapa = m; break; }
+    }
+    if(cabIdx < 0){
+      errorP('No se encontraron las columnas del pedido. Tiene que haber una fila de ' +
+             'títulos con al menos "código" y "cantidad" (o "unidad").');
+      return false;
+    }
+
+    PEDIDO = {
+      cab: filas[cabIdx].map(function(c){ return String(c == null ? '' : c).trim(); }),
+      filas: filas.slice(cabIdx + 1),
+      filaCab: cabIdx,
+      mapa: mapa,
+      nombre: nombreArchivo || 'pedido'
+    };
+    dibujarSelectoresCol();
+    marcarPedidoCargado();
+    analizar();
+    return true;
+  }
+
+  function dibujarSelectoresCol(){
+    ['ccod','ccant','cnom','ccta'].forEach(function(id, n){
+      var campo = ['cod','cant','nom','cta'][n];
+      var sel = $(id);
+      var h = ['<option value="">— ninguna —</option>'];
+      PEDIDO.cab.forEach(function(c, i){
+        var etiqueta = c || ('Columna ' + (i + 1));
+        h.push('<option value="' + i + '"' + (PEDIDO.mapa[campo] === i ? ' selected' : '') +
+               '>' + esc(etiqueta) + '</option>');
+      });
+      sel.innerHTML = h.join('');
+    });
+    $('pcols').classList.add('on');
+  }
+
+  function marcarPedidoCargado(){
+    var n = itemsPedido().length;
+    var e = $('ppedido');
+    e.classList.remove('falta'); e.classList.add('ok');
+    $('ppedidotxt').innerHTML = '<b>' + esc(PEDIDO.nombre) + '</b> · ' + n + ' insumos';
+    mostrarDescartes();
+  }
+
+  function mostrarDescartes(){
+    var caja = $('pdescartes');
+    if(!PEDIDO_DESCARTES.length){
+      caja.classList.remove('on');
+      caja.innerHTML = '';
+      return;
+    }
+    var h = ['<b>Se saltearon ' + PEDIDO_DESCARTES.length + ' fila(s) del Excel.</b> ' +
+             'Para que un insumo entre tiene que tener código, nombre y cantidad mayor a cero.<ul>'];
+    PEDIDO_DESCARTES.forEach(function(d){
+      var quien = d.cod || d.nombre;
+      h.push('<li><span class="fila">Fila ' + d.fila + '</span>' +
+             (quien ? ' — ' + esc(quien) : '') + ' · ' + esc(d.motivo) + '</li>');
+    });
+    h.push('</ul>');
+    if(PEDIDO.mapa.nom === null){
+      h.push('<p style="margin:8px 0 0">El pedido no tiene columna de nombre, así que ' +
+             'ese control queda sin aplicar. Asignala arriba si el Excel la trae.</p>');
+    }
+    caja.innerHTML = h.join('');
+    caja.classList.add('on');
+  }
+
+  var PEDIDO_DESCARTES = [];
+
+  /* Los encargados a veces mandan el Excel con renglones a medio llenar. Para
+     que un insumo entre tiene que tener código, nombre y una cantidad mayor a
+     cero; lo que no cumpla se saltea y se avisa con el número de fila.
+     Suma los renglones repetidos: el mismo código dos veces es un solo insumo. */
+  function itemsPedido(){
+    PEDIDO_DESCARTES = [];
+    if(!PEDIDO) return [];
+    var m = PEDIDO.mapa, orden = [], mapa = {};
+
+    PEDIDO.filas.forEach(function(f, n){
+      function celda(col){
+        return (col === null || col === undefined) ? '' : String(f[col] == null ? '' : f[col]).trim();
+      }
+      var nroFila = PEDIDO.filaCab + n + 2;      // como lo numera Excel
+      var cod = celda(m.cod);
+      var nombre = celda(m.nom);
+      var crudoCant = celda(m.cant);
+      var bruto = m.cant === null ? '' : f[m.cant];
+      var cant = (typeof bruto === 'number') ? bruto : numAR(bruto);
+
+      // Fila del todo vacía: no es un error, es el final de la tabla.
+      if(!cod && !nombre && !crudoCant) return;
+
+      var falta = [];
+      if(!cod) falta.push('sin código');
+      if(m.nom !== null && !nombre) falta.push('sin nombre');
+      if(!crudoCant) falta.push('sin cantidad');
+      else if(!(cant > 0)){
+        falta.push(/[0-9]/.test(crudoCant) ? 'cantidad ' + crudoCant
+                                           : 'cantidad ilegible («' + crudoCant + '»)');
+      }
+      if(falta.length){
+        PEDIDO_DESCARTES.push({ fila: nroFila, cod: cod, nombre: nombre, motivo: falta.join(' y ') });
+        return;
+      }
+
+      var k = clave(cod), it = mapa[k];
+      if(!it){
+        it = mapa[k] = {
+          cod: cod,
+          k: k,
+          nombre: nombre,
+          cuenta: celda(m.cta),
+          pedido: 0,
+          repetido: false
+        };
+        orden.push(it);
+      }else{
+        it.repetido = true;
+      }
+      it.pedido += cant;
+    });
+    return orden;
+  }
+
+  /* ---------- El cruce contra existencias ---------- */
+
+  function indiceExistencias(){
+    var idx = {};
+    if(!DATA) return idx;
+    DATA.insumos.forEach(function(it){
+      var k = clave(it.cod);
+      if(!k) return;
+      var reg = idx[k] || (idx[k] = { nombre:it.nombre, cat:it.cat, por:{}, excluido:esExcluido(it) });
+      for(var p in it.por) reg.por[puntoClave(p)] = (reg.por[puntoClave(p)] || 0) + it.por[p];
+    });
+    return idx;
+  }
+
+  function destinoActual(){
+    var v = $('pdestino').value;
+    for(var i = 0; i < DESTINOS.length; i++) if(DESTINOS[i].clave === v) return DESTINOS[i];
+    return DESTINOS[0];
+  }
+
+  /* Reglas acordadas:
+     - simple: se transfiere lo que haya, aunque no alcance para todo el pedido.
+     - doble: las dos oficinas descuentan lo mismo, así que la cantidad siempre
+       es par. Un pedido impar se redondea para abajo, y si piden 1 se cargan 2. */
+  function aPar(n){
+    if(n !== Math.round(n)) return n;      // cantidades con decimales quedan como están
+    if(n <= 1) return 2;
+    return n % 2 ? n - 1 : n;
+  }
+
+  function analizar(){
+    if(!DATA || !PEDIDO){ ANALISIS = null; pintarPedido(); return; }
+    var dest = destinoActual();
+    var idx = indiceExistencias();
+    var faltaPunto = dest.bloques.filter(function(b){
+      return !DATA.puntos.some(function(p){ return puntoClave(p) === b.punto; });
+    });
+
+    var items = itemsPedido().map(function(it){
+      var reg = idx[it.k];
+      var notas = [];
+      if(it.repetido) notas.push('repetido en el pedido');
+      if(!reg) notas.push('no está en existencias');
+      else if(reg.excluido) notas.push('excluido del conteo');
+
+      var stocks = dest.bloques.map(function(b){ return reg ? (reg.por[b.punto] || 0) : 0; });
+      var porBloque, total, objetivo = it.pedido;
+
+      if(dest.modo === 'doble'){
+        objetivo = aPar(it.pedido);
+        if(objetivo !== it.pedido){
+          notas.push(objetivo > it.pedido ? 'pedían 1, se cargan 2' : 'ajustado a par: ' + fmt(it.pedido) + ' → ' + fmt(objetivo));
+        }
+        var tope = Math.min(objetivo / 2, stocks[0], stocks[1]);
+        var cada = Math.max(0, Math.floor(tope));
+        porBloque = [cada, cada];
+        total = cada * 2;
+      }else{
+        var manda = Math.max(0, Math.min(it.pedido, stocks[0]));
+        porBloque = [manda];
+        total = manda;
+      }
+
+      var pendiente = Math.max(0, objetivo - total);
+      if(pendiente > 0 && total > 0) notas.push('stock parcial');
+
+      return {
+        cod: it.cod, k: it.k, cuenta: it.cuenta,
+        nombre: it.nombre || (reg ? reg.nombre : it.cod),
+        pedido: it.pedido, objetivo: objetivo,
+        stocks: stocks, porBloque: porBloque, total: total,
+        pendiente: pendiente, notas: notas
+      };
+    });
+
+    items.sort(function(a,b){ return cmp(a.nombre, b.nombre); });
+
+    ANALISIS = {
+      dest: dest,
+      items: items,
+      faltaPunto: faltaPunto,
+      hay: items.filter(function(i){ return i.total > 0; }).length,
+      faltan: items.filter(function(i){ return i.pendiente > 0; }).length
+    };
+    pintarPedido();
+  }
+
+  /* ---------- Pantalla ---------- */
+
+  function estadoExistencias(){
+    var e = $('pexist');
+    e.classList.remove('ok','falta');
+    if(!DATA){
+      e.classList.add('falta');
+      $('pexisttxt').innerHTML = 'Falta cargar el CSV en la pestaña <b>Conteo de stock</b>.';
+      return;
+    }
+    e.classList.add('ok');
+    var cuando = DATA.archivoFecha ? new Date(DATA.archivoFecha) : null;
+    var sello = cuando
+      ? ' · del ' + String(cuando.getDate()).padStart(2,'0') + '/' +
+        String(cuando.getMonth()+1).padStart(2,'0') + ' a las ' +
+        String(cuando.getHours()).padStart(2,'0') + ':' + String(cuando.getMinutes()).padStart(2,'0')
+      : '';
+    $('pexisttxt').innerHTML = '<b>' + esc(DATA.archivoNombre || 'CSV cargado') + '</b>' + sello +
+      (DATA.hasta ? ' · existencias hasta el <b>' + esc(DATA.hasta) + '</b>' : '') +
+      ' · ' + DATA.insumos.length + ' insumos · ' + DATA.puntos.length + ' puntos de stock';
+  }
+
+  function pintarPedido(){
+    estadoExistencias();
+    var dest = destinoActual();
+    var doble = dest.modo === 'doble';
+
+    $('pmodo').classList.remove('ok','falta','aviso');
+    $('pmodo').classList.add(dest.aMano ? 'aviso' : 'ok');
+    $('pmodotxt').textContent = doble ? 'Control doble' : 'Transferencia simple';
+
+    var camino = dest.bloques.map(function(b){
+      return esc(b.origenNombre) + ' → ' + esc(b.destinoNombre);
+    }).join(', y ');
+    var nota = doble
+      ? 'Salen <b>dos comprobantes</b> con la misma cantidad cada uno: ' + camino +
+        '. Las cantidades se ajustan a número par para que los dos orígenes queden parejos.'
+      : 'Sale <b>un comprobante</b>: ' + camino + '.';
+    if(dest.aMano){
+      nota += '<br><b>Ojo:</b> a este envío le faltan los números internos de Albor, ' +
+              'así que la empresa, el origen y el destino los vas a tener que elegir a mano ' +
+              'cuando el script haga la pausa. Para completarlos, corré ' +
+              '<code>python transferencia.py --listar</code>.';
+    }
+    $('pmodonota').innerHTML = nota;
+
+    $('pp-envio').textContent = dest.nombre;
+    $('pp-destino').textContent = dest.bloques.map(function(b){ return b.destinoNombre; }).join(' + ');
+    $('pp-origen').textContent = dest.bloques.map(function(b){ return b.origenNombre; }).join(' + ');
+    var f = $('pfecha').value;
+    $('pp-fecha').textContent = f ? f.split('-').reverse().join('/') : '';
+
+    if(!ANALISIS || !ANALISIS.items.length){
+      $('presumen').innerHTML = '';
+      $('ptoolbar').classList.remove('on');
+      $('ptablewrap').classList.remove('on');
+      return;
+    }
+
+    if(ANALISIS.faltaPunto.length){
+      errorP('El CSV de existencias no trae ' +
+             ANALISIS.faltaPunto.map(function(b){ return b.origenNombre; }).join(' ni ') +
+             '. Volvé a exportarlo del sistema sin filtrar los puntos de stock.');
+    }
+
+    var items = ANALISIS.items;
+    var totalPedido = items.reduce(function(s,i){ return s + i.pedido; }, 0);
+    var totalVa     = items.reduce(function(s,i){ return s + i.total; }, 0);
+    var totalFalta  = items.reduce(function(s,i){ return s + i.pendiente; }, 0);
+
+    $('presumen').innerHTML =
+      '<div><span>Insumos pedidos</span><b>' + items.length + '</b></div>' +
+      '<div class="va"><span>Se transfieren</span><b>' + ANALISIS.hay + '</b></div>' +
+      '<div class="falta"><span>Quedan pendientes</span><b>' + ANALISIS.faltan + '</b></div>' +
+      '<div><span>Unidades</span><b>' + fmt(totalVa) + ' de ' + fmt(totalPedido) + '</b></div>' +
+      (totalFalta > 0 ? '<div class="falta"><span>A comprar</span><b>' + fmt(totalFalta) + '</b></div>' : '');
+
+    var soloVa = $('psolova').checked;
+    var verse = soloVa ? items.filter(function(i){ return i.total > 0; }) : items;
+
+    var h = [];
+    h.push('<table><thead><tr>');
+    h.push('<th class="name">Insumo</th><th>Pedido</th>');
+    dest.bloques.forEach(function(b){ h.push('<th>' + esc(b.origenNombre) + '</th>'); });
+    if(doble) h.push('<th class="va">Cada oficina</th><th class="total">Total</th>');
+    else      h.push('<th class="va">A transferir</th>');
+    h.push('<th>Falta</th><th class="tick">Armado</th><th class="tick">Recibido</th>');
+    h.push('</tr></thead><tbody>');
+
+    if(!verse.length){
+      h.push('<tr><td class="name" colspan="10">Ningún insumo del pedido tiene stock.</td></tr>');
+    }
+    verse.forEach(function(it, n){
+      var clases = 'row' + (n % 2 ? ' alt' : '') + (it.total > 0 ? '' : ' sinnada');
+      h.push('<tr class="' + clases + '">');
+      h.push('<td class="name">' + esc(it.nombre) +
+             it.notas.map(function(t){
+               // "excluido" y "repetido" son datos para decidir en pantalla;
+               // en la planilla de armado solo estorban.
+               var clase = 'marca';
+               if(t.indexOf('no está') === 0) clase += ' aviso';
+               else if(t.indexOf('excluido') === 0 || t.indexOf('repetido') === 0) clase += ' info';
+               return '<span class="' + clase + '">' + esc(t) + '</span>';
+             }).join('') + '</td>');
+      h.push('<td>' + fmt(it.pedido) + '</td>');
+      it.stocks.forEach(function(s){
+        h.push('<td' + (s ? '' : ' class="zero"') + '>' + fmt(s) + '</td>');
+      });
+      if(doble){
+        h.push('<td class="va">' + fmt(it.porBloque[0]) + '</td>');
+        h.push('<td class="total">' + fmt(it.total) + '</td>');
+      }else{
+        h.push('<td class="va">' + fmt(it.total) + '</td>');
+      }
+      h.push('<td' + (it.pendiente ? ' class="falta"' : ' class="zero"') + '>' + fmt(it.pendiente) + '</td>');
+      h.push('<td class="tick"></td><td class="tick"></td>');
+      h.push('</tr>');
+    });
+    h.push('</tbody>');
+
+    /* El pie resume solo lo que se transfiere: en papel los renglones en
+       cero no se imprimen, así que si contara todo no cerraría con la hoja. */
+    var salen = verse.filter(function(i){ return i.total > 0; });
+    var vanTotal = salen.reduce(function(s,i){ return s + i.total; }, 0);
+    h.push('<tfoot><tr>');
+    h.push('<td class="name">' + salen.length + ' insumos a transferir</td>');
+    h.push('<td>' + fmt(salen.reduce(function(s,i){ return s + i.pedido; }, 0)) + '</td>');
+    dest.bloques.forEach(function(){ h.push('<td></td>'); });
+    if(doble){
+      h.push('<td class="va">' + fmt(vanTotal / 2) + '</td>');
+      h.push('<td class="total">' + fmt(vanTotal) + '</td>');
+    }else{
+      h.push('<td class="va">' + fmt(vanTotal) + '</td>');
+    }
+    h.push('<td>' + fmt(salen.reduce(function(s,i){ return s + i.pendiente; }, 0)) + '</td>');
+    h.push('<td class="tick"></td><td class="tick"></td>');
+    h.push('</tr></tfoot></table>');
+
+    $('ptablehost').innerHTML = h.join('');
+    $('ptoolbar').classList.add('on');
+    $('ptablewrap').classList.add('on');
+  }
+
+  /* ---------- Escribir un .xlsx de verdad ----------
+     Un .xlsx es un ZIP con XML adentro. Se arma a mano y se guardan las
+     entradas sin comprimir (método 0 del ZIP), que es lo único que Excel
+     necesita para abrirlo. Sale una planilla con anchos de columna,
+     títulos en negrita y números que son números, en vez de un CSV crudo. */
+
+  var CRC_TABLA = null;
+  function crc32(bytes){
+    if(!CRC_TABLA){
+      CRC_TABLA = new Uint32Array(256);
+      for(var n = 0; n < 256; n++){
+        var c = n;
+        for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        CRC_TABLA[n] = c >>> 0;
+      }
+    }
+    var r = 0xFFFFFFFF;
+    for(var i = 0; i < bytes.length; i++) r = CRC_TABLA[(r ^ bytes[i]) & 0xFF] ^ (r >>> 8);
+    return (r ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  function armarZip(archivos){
+    var utf8 = new TextEncoder();
+    var entradas = archivos.map(function(a){
+      var datos = utf8.encode(a.texto);
+      return { nombre: utf8.encode(a.nombre), datos: datos, crc: crc32(datos) };
+    });
+
+    var tamLocal = entradas.reduce(function(s,e){ return s + 30 + e.nombre.length + e.datos.length; }, 0);
+    var tamCentral = entradas.reduce(function(s,e){ return s + 46 + e.nombre.length; }, 0);
+    var buf = new Uint8Array(tamLocal + tamCentral + 22);
+    var v = new DataView(buf.buffer);
+    var p = 0, offsets = [];
+
+    entradas.forEach(function(e){
+      offsets.push(p);
+      v.setUint32(p, 0x04034b50, true);
+      v.setUint16(p + 4, 20, true);
+      v.setUint16(p + 6, 0x0800, true);   // nombres en UTF-8
+      v.setUint16(p + 8, 0, true);        // sin comprimir
+      v.setUint16(p + 10, 0, true);
+      v.setUint16(p + 12, 0x2821, true);  // fecha fija: no aporta nada
+      v.setUint32(p + 14, e.crc, true);
+      v.setUint32(p + 18, e.datos.length, true);
+      v.setUint32(p + 22, e.datos.length, true);
+      v.setUint16(p + 26, e.nombre.length, true);
+      v.setUint16(p + 28, 0, true);
+      p += 30;
+      buf.set(e.nombre, p); p += e.nombre.length;
+      buf.set(e.datos, p);  p += e.datos.length;
+    });
+
+    var inicioCentral = p;
+    entradas.forEach(function(e, i){
+      v.setUint32(p, 0x02014b50, true);
+      v.setUint16(p + 4, 20, true);
+      v.setUint16(p + 6, 20, true);
+      v.setUint16(p + 8, 0x0800, true);
+      v.setUint16(p + 10, 0, true);
+      v.setUint16(p + 12, 0, true);
+      v.setUint16(p + 14, 0x2821, true);
+      v.setUint32(p + 16, e.crc, true);
+      v.setUint32(p + 20, e.datos.length, true);
+      v.setUint32(p + 24, e.datos.length, true);
+      v.setUint16(p + 28, e.nombre.length, true);
+      v.setUint16(p + 30, 0, true);
+      v.setUint16(p + 32, 0, true);
+      v.setUint16(p + 34, 0, true);
+      v.setUint16(p + 36, 0, true);
+      v.setUint32(p + 38, 0, true);
+      v.setUint32(p + 42, offsets[i], true);
+      p += 46;
+      buf.set(e.nombre, p); p += e.nombre.length;
+    });
+
+    v.setUint32(p, 0x06054b50, true);
+    v.setUint16(p + 8, entradas.length, true);
+    v.setUint16(p + 10, entradas.length, true);
+    v.setUint32(p + 12, p - inicioCentral, true);
+    v.setUint32(p + 16, inicioCentral, true);
+    return buf;
+  }
+
+  function xesc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c];
+    }).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  }
+
+  function letraCol(n){          // 0 -> A, 26 -> AA
+    var s = '';
+    n += 1;
+    while(n > 0){ var r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = (n - r - 1) / 26; }
+    return s;
+  }
+
+  /* Estilos: 0 normal · 1 cabecera · 2 título · 3 negrita */
+  var XLSX_ESTILOS =
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<fonts count="3">' +
+      '<font><sz val="11"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="11"/><name val="Calibri"/></font>' +
+      '<font><b/><sz val="14"/><name val="Calibri"/></font>' +
+    '</fonts>' +
+    '<fills count="3">' +
+      '<fill><patternFill patternType="none"/></fill>' +
+      '<fill><patternFill patternType="gray125"/></fill>' +
+      '<fill><patternFill patternType="solid"><fgColor rgb="FFE7E7E1"/><bgColor indexed="64"/></patternFill></fill>' +
+    '</fills>' +
+    '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
+      '<border><left/><right/><top/><bottom style="thin"><color rgb="FF808080"/></bottom><diagonal/></border></borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="4">' +
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>' +
+      '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+    '</cellXfs>' +
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+    '</styleSheet>';
+
+  /* filas: cada celda es un texto, un número, o {v, s} para elegir el estilo. */
+  function armarXLSX(opciones){
+    var filas = opciones.filas, anchos = opciones.anchos || [];
+    var xmlFilas = filas.map(function(fila, f){
+      var celdas = fila.map(function(celda, c){
+        if(celda == null || celda === '') return '';
+        var estilo = 0, valor = celda;
+        if(typeof celda === 'object'){ estilo = celda.s || 0; valor = celda.v; }
+        var ref = letraCol(c) + (f + 1);
+        var s = estilo ? ' s="' + estilo + '"' : '';
+        if(typeof valor === 'number' && isFinite(valor)){
+          return '<c r="' + ref + '"' + s + '><v>' + valor + '</v></c>';
+        }
+        return '<c r="' + ref + '"' + s + ' t="inlineStr"><is><t>' + xesc(valor) + '</t></is></c>';
+      }).join('');
+      return '<row r="' + (f + 1) + '">' + celdas + '</row>';
+    }).join('');
+
+    var cols = anchos.length
+      ? '<cols>' + anchos.map(function(a, i){
+          return '<col min="' + (i+1) + '" max="' + (i+1) + '" width="' + a + '" customWidth="1"/>';
+        }).join('') + '</cols>'
+      : '';
+
+    var congelar = opciones.congelarHasta
+      ? '<pane ySplit="' + opciones.congelarHasta + '" topLeftCell="A' + (opciones.congelarHasta + 1) +
+        '" activePane="bottomLeft" state="frozen"/>'
+      : '';
+
+    var hoja = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetViews><sheetView tabSelected="1" workbookViewId="0">' + congelar + '</sheetView></sheetViews>' +
+      '<sheetFormatPr defaultRowHeight="15"/>' + cols +
+      '<sheetData>' + xmlFilas + '</sheetData></worksheet>';
+
+    var nombreHoja = xesc((opciones.hoja || 'Hoja1').slice(0, 31).replace(/[\\\/\?\*\[\]:]/g, ' '));
+
+    return armarZip([
+      { nombre: '[Content_Types].xml', texto:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+        '</Types>' },
+      { nombre: '_rels/.rels', texto:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+        '</Relationships>' },
+      { nombre: 'xl/workbook.xml', texto:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<sheets><sheet name="' + nombreHoja + '" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { nombre: 'xl/_rels/workbook.xml.rels', texto:
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+        '</Relationships>' },
+      { nombre: 'xl/styles.xml', texto: XLSX_ESTILOS },
+      { nombre: 'xl/worksheets/sheet1.xml', texto: hoja }
+    ]);
+  }
+
+  // Windows no acepta estos caracteres en un nombre de archivo.
+  function limpiarNombre(s){
+    return String(s).replace(/[<>:"\/\\|?*\x00-\x1F]/g, '-').replace(/\s+/g, ' ').trim();
+  }
+
+  /* ---------- Salidas ---------- */
+
+  function fechaAlbor(){
+    var f = $('pfecha').value;
+    return f ? f.split('-').reverse().join('/') : '';
+  }
+
+  function comaCSV(v){
+    v = String(v == null ? '' : v);
+    return /[",;\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+  }
+
+  /* El archivo que consume el script de Albor. Cada fila repite la cabecera de
+     su bloque: así un solo archivo alcanza para las dos cargas del control
+     doble y no hace falta acordarse de ningún parámetro al ejecutarlo. */
+  /* Un bloque por comprobante: en control doble, uno por oficina con las
+     mismas cantidades. Es lo que carga el programa en Albor, y lo mismo que
+     va al CSV cuando se usa suelto en el navegador. */
+  function bloquesTransferencia(){
+    var dest = ANALISIS.dest, fecha = fechaAlbor();
+    return dest.bloques.map(function(b, i){
+      return {
+        modo: dest.modo, empresa_id: b.empresa, origen_id: b.origen, origen_nombre: b.origenNombre,
+        destino_id: b.destino, destino_nombre: b.destinoNombre, fecha: fecha,
+        items: ANALISIS.items.filter(function(it){ return it.porBloque[i] > 0; }).map(function(it){
+          return { codigo: it.cod, nombre: it.nombre, unidad: it.porBloque[i], cuenta: it.cuenta };
+        })
+      };
+    }).filter(function(b){ return b.items.length; });
+  }
+
+  async function exportarCarga(){
+    if(!ANALISIS || !ANALISIS.hay){ errorP('No hay nada para transferir todavía.'); return; }
+    var dest = ANALISIS.dest;
+    var out = ['modo,empresa_id,origen_id,origen_nombre,destino_id,destino_nombre,fecha,codigo,nombre,unidad,cuenta'];
+
+    bloquesTransferencia().forEach(function(b){
+      b.items.forEach(function(it){
+        out.push([b.modo, b.empresa_id, b.origen_id, b.origen_nombre, b.destino_id, b.destino_nombre,
+                  b.fecha, it.codigo, it.nombre, it.unidad, it.cuenta].map(comaCSV).join(','));
+      });
+    });
+
+    await descargar(limpiarNombre('carga_albor ' + ($('pfecha').value || 'sin-fecha') + ' ' + dest.nombre) + '.csv',
+              '﻿' + out.join('\r\n') + '\r\n', 'text/csv;charset=utf-8');
+
+    // Junto con el archivo para Albor sale la planilla de papel: es la que se
+    // imprime para armar el pedido y la que queda de registro firmada.
+    await planillaTransferencia();
+  }
+
+  /* La planilla que se imprime, se cuenta y se firma. El archivo para Albor
+     se borra después de cargarlo; esto es lo que queda. */
+  async function planillaTransferencia(){
+    var l = libroTransferencia();
+    await descargar(l.nombre, l.datos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+
+  function libroTransferencia(){
+    var dest = ANALISIS.dest, doble = dest.modo === 'doble';
+    var salen = ANALISIS.items.filter(function(i){ return i.total > 0; });
+
+    var filas = [];
+    filas.push([{v:'Planilla de transferencia', s:2}]);
+    filas.push(['Fecha:',   {v:fechaAlbor(), s:3}]);
+    filas.push(['Destino:', {v:dest.bloques.map(function(b){ return b.destinoNombre; }).join(' + '), s:3}]);
+    filas.push(['Origen:',  {v:dest.bloques.map(function(b){ return b.origenNombre; }).join(' + '), s:3}]);
+    filas.push(['Envío:',   {v:dest.nombre, s:3}]);
+    filas.push([]);
+
+    var cab = ['Código', 'Insumo'];
+    if(doble) dest.bloques.forEach(function(b){ cab.push(b.origenNombre); });
+    cab.push('A transferir', 'Armado', 'Recibido');
+    filas.push(cab.map(function(c){ return {v:c, s:1}; }));
+
+    salen.forEach(function(it){
+      var f = [it.cod, it.nombre];
+      if(doble) it.porBloque.forEach(function(c){ f.push(c); });
+      f.push(it.total, '', '');
+      filas.push(f);
+    });
+
+    filas.push([]);
+    var huecos = doble ? dest.bloques.length : 0;
+    var totalFila = ['', {v:salen.length + ' insumos', s:3}];
+    for(var i = 0; i < huecos; i++) totalFila.push('');
+    totalFila.push({v: salen.reduce(function(s,i){ return s + i.total; }, 0), s:3}, '', '');
+    filas.push(totalFila);
+
+    filas.push([]);
+    filas.push([]);
+    filas.push([{v:'Armó el pedido', s:3}, '', '', {v:'Recibió y recontó', s:3}]);
+    filas.push(['Nombre:', '__________________________', '', 'Nombre:', '__________________________']);
+    filas.push([]);
+    filas.push(['Firma:', '__________________________', '', 'Firma:', '__________________________']);
+
+    var anchos = [14, 42];
+    if(doble) dest.bloques.forEach(function(){ anchos.push(14); });
+    anchos.push(13, 11, 11);
+
+    return {
+      nombre: limpiarNombre('Planilla transferencia ' + ($('pfecha').value || 'sin-fecha') + ' ' + dest.nombre) + '.xlsx',
+      datos: armarXLSX({ hoja:'Transferencia', filas:filas, anchos:anchos, congelarHasta:7 })
+    };
+  }
+
+  function exportarPendientes(){
+    if(!ANALISIS){ errorP('Todavía no hay un pedido cargado.'); return; }
+    var l = libroPendientes();
+    if(!l){ errorP('No hay pendientes: el pedido entra completo con el stock que hay.'); return; }
+    descargar(l.nombre, l.datos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+
+  /* null si no falta nada. */
+  function libroPendientes(){
+    var pend = ANALISIS.items.filter(function(i){ return i.pendiente > 0; });
+    if(!pend.length) return null;
+
+    var dest = ANALISIS.dest;
+    var filas = [];
+    filas.push([{v:'Pendientes de compra', s:2}]);
+    filas.push(['Env\u00edo:', {v:dest.nombre, s:3}]);
+    filas.push(['Fecha:', {v:fechaAlbor(), s:3}]);
+    filas.push([]);
+    filas.push(['C\u00f3digo','Insumo','Pedido','A transferir','Falta comprar','Cuenta']
+               .map(function(c){ return {v:c, s:1}; }));
+
+    pend.forEach(function(it){
+      filas.push([it.cod, it.nombre, it.pedido, it.total, it.pendiente, it.cuenta]);
+    });
+
+    filas.push([]);
+    filas.push(['', {v:'Total a comprar', s:3}, '', '',
+                {v: pend.reduce(function(s,i){ return s + i.pendiente; }, 0), s:3}, '']);
+
+    var libro = armarXLSX({
+      hoja: 'Pendientes',
+      filas: filas,
+      anchos: [14, 42, 10, 13, 14, 13],
+      congelarHasta: 5
+    });
+
+    return {
+      nombre: limpiarNombre('Pendientes ' + ($('pfecha').value || 'sin-fecha') + ' ' + dest.nombre) + '.xlsx',
+      datos: libro
+    };
+  }
+
+  /* ---------- Eventos de la pestaña ---------- */
+
+
+  function cargarArchivoPedido(file){
+    if(!file) return;
+    limpiarErrorP();
+    var fr = new FileReader();
+    if(/\.xlsx$/i.test(file.name)){
+      fr.onload = function(){
+        leerXLSX(fr.result)
+          .then(function(filas){ cargarPedidoFilas(filas, file.name); })
+          .catch(function(err){ errorP(err.message || 'No se pudo abrir el Excel.'); });
+      };
+      fr.readAsArrayBuffer(file);
+    }else{
+      fr.onload = function(){ cargarPedidoFilas(leerTabla(decode(fr.result)), file.name); };
+      fr.readAsArrayBuffer(file);
+    }
+    fr.onerror = function(){ errorP('No se pudo leer el archivo.'); };
+  }
+
+  $('pfilebtn').addEventListener('click', function(){ $('pfile').click(); });
+  $('pfile').addEventListener('change', function(){
+    cargarArchivoPedido(this.files[0]);
+    this.value = '';
+  });
+
+  $('ppegarver').addEventListener('click', function(){
+    var t = $('ppegar');
+    var abierto = t.style.display === 'none';
+    t.style.display = abierto ? 'block' : 'none';
+    this.textContent = abierto ? 'ocultar el cuadro de pegar' : 'o pegar desde Excel';
+    if(abierto) t.focus();
+  });
+  $('ppegar').addEventListener('input', function(){
+    var texto = this.value.trim();
+    if(texto.split('\n').length < 2) return;
+    cargarPedidoFilas(leerTabla(texto), 'pegado desde Excel');
+  });
+
+  $('pcols').addEventListener('change', function(e){
+    if(!PEDIDO || e.target.tagName !== 'SELECT') return;
+    var campo = {ccod:'cod', ccant:'cant', cnom:'nom', ccta:'cta'}[e.target.id];
+    var v = e.target.value;
+    PEDIDO.mapa[campo] = v === '' ? null : parseInt(v, 10);
+    marcarPedidoCargado();
+    analizar();
+  });
+
+  var avisoDestTimer = null;
+  function avisarDest(msg, esError){
+    var e = $('desaviso');
+    e.innerHTML = msg;
+    e.style.color = esError ? '#b3261e' : '';
+    clearTimeout(avisoDestTimer);
+    // Un error se queda en pantalla: hay algo que corregir antes de seguir.
+    if(!esError) avisoDestTimer = setTimeout(function(){ e.innerHTML = ''; }, 3500);
+  }
+
+  $('desver').addEventListener('click', function(){
+    var abierto = $('des').classList.toggle('on');
+    this.textContent = abierto ? 'cerrar' : 'editar destinos';
+    if(abierto){ $('destxt').scrollTop = 0; $('destxt').focus(); }
+  });
+
+  $('desguardar').addEventListener('click', function(){
+    var leidos = leerDestinos($('destxt').value);
+    var ignoradas = DESTINOS_IGNORADAS.slice();
+
+    if(!leidos.length){
+      avisarDest('No se guardó nada: ninguna línea tiene los seis datos separados por ";".' +
+        (ignoradas.length
+          ? '<br>Por ejemplo, esta no se entiende: <code>' + esc(ignoradas[0].slice(0,60)) + '</code>'
+          : '') +
+        '<br>Una línea válida se ve así:<br>' +
+        '<code>PRUEBA ; 2 ; 136 ; OficinaJM ; 130 ; PAB CEBIL</code><br>' +
+        'El archivo <code>numeros_de_albor.txt</code> es solo para consultar los números: ' +
+        'no se pega acá entero.', true);
+      return;
+    }
+
+    guardarDestinos($('destxt').value);
+    llenarSelectDestinos();
+    analizar();
+    avisarDest(DESTINOS.length + ' envíos guardados.' +
+      (ignoradas.length
+        ? ' <b>Se ignoraron ' + ignoradas.length + ' línea(s)</b> que no tenían los seis datos, ' +
+          'empezando por: <code>' + esc(ignoradas[0].slice(0,60)) + '</code>'
+        : ''), ignoradas.length > 0);
+  });
+
+  $('desreset').addEventListener('click', function(){
+    guardarDestinos(DESTINOS_ORIGINAL);
+    $('destxt').value = DESTINOS_TEXTO;
+    llenarSelectDestinos();
+    analizar();
+    avisarDest('Lista original restaurada.');
+  });
+
+  $('pdestino').addEventListener('change', analizar);
+  $('pfecha').addEventListener('input', pintarPedido);
+  $('psolova').addEventListener('change', pintarPedido);
+  $('pcarga').addEventListener('click', function(){ motor() ? cargarTransferenciaEnAlbor() : exportarCarga(); });
+  $('ppend').addEventListener('click', exportarPendientes);
+  $('pprint').addEventListener('click', function(){ window.print(); });
+
+
+  /* ==================================================================
+     EGRESOS DE FIN DE MES
+     Deja en cero el stock de las granjas. Un comprobante por granja y
+     por cuenta contable. Los puntos de oficina no se tocan nunca.
+     ================================================================== */
+
+  var UNIDAD_NEGOCIO = '982';     // GANADERIA PORCINA, si la granja no dice otra
+  var TIPO_COMPROBANTE = '180';   // Egreso de Mercadería
+
+  /* La lista de siempre viene de la planilla (datosTransferencias → originales):
+     así la página pública no lleva datos de la empresa. */
+  var GRANJAS_ORIGINAL = '';
+
+  /* La cuenta sale del TIPO de insumo, que ya viene en el reporte. Sobre
+     109 insumos con cuenta asignada a mano, 107 coincidían con la de su
+     tipo: los dos que no están abajo como excepción. Un tipo que no figure
+     acá no se egresa, y así el alimento queda afuera sin más trámite. */
+  /* La lista de siempre viene de la planilla (datosTransferencias → originales):
+     así la página pública no lleva datos de la empresa. */
+  var CUENTAS_ORIGINAL = '';
+
+  var CLAVE_GRANJAS  = 'programa-compras:granjas';
+  var CLAVE_CUENTAS  = 'programa-compras:cuentas';
+  var CLAVE_NROEGR   = 'programa-compras:nroegreso';
+
+  var GRANJAS = [], GRANJAS_TEXTO = '';
+  var CUENTAS = {tipos:{}, cods:{}}, CUENTAS_TEXTO = '';
+  var EGRESOS = null;
+
+
+  function errorG(msg){ var e = $('gerror'); e.textContent = msg; e.classList.add('on'); }
+  function limpiarErrorG(){ $('gerror').classList.remove('on'); }
+
+  function leerGranjas(texto){
+    var lista = [];
+    String(texto).split('\n').forEach(function(linea){
+      var limpio = linea.split('#')[0].trim();
+      if(!limpio) return;
+      var c = limpio.split(';').map(function(s){ return s.trim(); });
+      if(c.length < 4 || !c[0]) return;
+      lista.push({ nombre:c[0], punto:puntoClave(c[0]), empresa:c[1], id:c[2],
+                   centro:c[3], negocio:(c[4] || UNIDAD_NEGOCIO) });
+    });
+    return lista;
+  }
+
+  function leerCuentas(texto){
+    var tipos = {}, cods = {};
+    String(texto).split('\n').forEach(function(linea){
+      var limpio = linea.split('#')[0].trim();
+      if(!limpio) return;
+      var c = limpio.split(';').map(function(s){ return s.trim(); });
+      if(c.length < 2 || !c[0] || !c[1]) return;
+      var m = /^cod\s*:\s*(.+)$/i.exec(c[0]);
+      if(m) cods[clave(m[1])] = c[1];
+      else  tipos[c[0].toUpperCase()] = c[1];
+    });
+    return {tipos:tipos, cods:cods};
+  }
+
+  function guardarGranjas(texto){
+    GRANJAS_TEXTO = texto; GRANJAS = leerGranjas(texto);
+    escribirGuardado(CLAVE_GRANJAS, texto);
+  }
+  function guardarCuentas(texto){
+    CUENTAS_TEXTO = texto; CUENTAS = leerCuentas(texto);
+    escribirGuardado(CLAVE_CUENTAS, texto);
+  }
+  function cargarConfigEgresos(){
+    var g = null, c = null, n = null;
+    g = leerGuardado(CLAVE_GRANJAS);
+    c = leerGuardado(CLAVE_CUENTAS);
+    n = leerGuardado(CLAVE_NROEGR);
+    GRANJAS_TEXTO = g == null ? GRANJAS_ORIGINAL : g;
+    CUENTAS_TEXTO = c == null ? CUENTAS_ORIGINAL : c;
+    GRANJAS = leerGranjas(GRANJAS_TEXTO);
+    CUENTAS = leerCuentas(CUENTAS_TEXTO);
+    if(!GRANJAS.length){ GRANJAS_TEXTO = GRANJAS_ORIGINAL; GRANJAS = leerGranjas(GRANJAS_TEXTO); }
+    $('gnumero').value = n || '1111-42';
+  }
+
+  /* "1111-42" -> "1111-43". Se incrementa lo que hay después del último guion. */
+  function siguienteNumero(n){
+    var m = /^(.*?)(\d+)\s*$/.exec(String(n).trim());
+    if(!m) return String(n);
+    return m[1] + String(parseInt(m[2], 10) + 1);
+  }
+
+  function analizarEgresos(){
+    if(!DATA){ EGRESOS = null; pintarEgresos(); return; }
+
+    var numero = ($('gnumero').value || '').trim() || '1111-1';
+    var comprobantes = [], sinCuenta = [], negativos = [], excluidos = [];
+
+    GRANJAS.forEach(function(g){
+      if(GRANJAS_FUERA[g.nombre]) return;      // destildada en la lista de arriba
+      var porCuenta = {}, orden = [];
+
+      DATA.insumos.forEach(function(it){
+        var cant = 0;
+        for(var p in it.por) if(puntoClave(p) === g.punto) cant += it.por[p];
+        if(cant < 0){ negativos.push({granja:g.nombre, cod:it.cod, nombre:it.nombre, cant:cant}); return; }
+        if(!(cant > 0)) return;
+
+        /* Lo que está en la lista de excluidos no se egresa: son productos que
+           en Albor están ocultos, y si se mandan no se pueden cargar. */
+        if(esExcluido(it)){
+          excluidos.push({granja:g.nombre, cod:it.cod, nombre:it.nombre, tipo:it.cat, cant:cant});
+          return;
+        }
+
+        var cta = CUENTAS.cods[clave(it.cod)] || CUENTAS.tipos[(it.cat || '').toUpperCase()];
+        if(!cta){
+          sinCuenta.push({granja:g.nombre, cod:it.cod, nombre:it.nombre, tipo:it.cat, cant:cant});
+          return;
+        }
+
+        var b = porCuenta[cta];
+        if(!b){ b = porCuenta[cta] = {granja:g, cuenta:cta, items:[]}; orden.push(b); }
+        b.items.push({cod:it.cod, nombre:it.nombre, tipo:it.cat, unidad:it.unidad, cant:cant});
+      });
+
+      orden.sort(function(a,b){ return cmp(a.cuenta, b.cuenta); });
+      orden.forEach(function(b){
+        b.items.sort(function(x,y){ return cmp(x.nombre, y.nombre); });
+        b.numero = numero;
+        b.total = b.items.reduce(function(s,i){ return s + i.cant; }, 0);
+        numero = siguienteNumero(numero);
+        comprobantes.push(b);
+      });
+    });
+
+    EGRESOS = {
+      comprobantes: comprobantes,
+      sinCuenta: sinCuenta,
+      excluidos: excluidos,
+      negativos: negativos,
+      ultimoNumero: numero,
+      insumos: comprobantes.reduce(function(s,c){ return s + c.items.length; }, 0)
+    };
+    pintarEgresos();
+  }
+
+  /* Qué granjas se egresan. Arranca con todas tildadas cada vez que se baja un
+     reporte nuevo; la lista de granjas (con sus # para comentar) sigue
+     mandando sobre cuáles existen. */
+  var GRANJAS_FUERA = {};
+
+  function pintarChecksGranjas(){
+    var caja = $('gchecks');
+    if(!DATA || !GRANJAS.length){ caja.innerHTML = ''; return; }
+    var hay = {};
+    DATA.puntos.forEach(function(p){ hay[puntoClave(p)] = true; });
+    var hechas = (EGRESADAS && EGRESADAS.data === DATA) ? EGRESADAS.granjas : {};
+    caja.innerHTML = '<span class="quien">Egresar:</span>' + GRANJAS.map(function(g){
+      var nota = hechas[g.nombre] ? ' (ya egresada)' : (hay[g.punto] ? '' : ' (sin datos)');
+      return '<label class="check' + (GRANJAS_FUERA[g.nombre] ? ' apagada' : '') + '">' +
+             '<input type="checkbox" data-granja="' + esc(g.nombre) + '"' +
+             (GRANJAS_FUERA[g.nombre] ? '' : ' checked') + '> ' + esc(g.nombre) + esc(nota) + '</label>';
+    }).join('');
+  }
+
+  $('gchecks').addEventListener('change', function(e){
+    var g = e.target.getAttribute && e.target.getAttribute('data-granja');
+    if(!g) return;
+    if(e.target.checked) delete GRANJAS_FUERA[g]; else GRANJAS_FUERA[g] = true;
+    analizarEgresos();
+  });
+
+  function pintarEgresos(){
+    pintarChecksGranjas();
+    var e = $('gexist');
+    e.classList.remove('ok','falta','aviso');
+    limpiarErrorG();
+
+    if(!DATA){
+      e.classList.add('falta');
+      $('gexisttxt').innerHTML = 'Falta cargar el CSV en la pestaña <b>Conteo de stock</b>.';
+      $('gresumen').innerHTML = '';
+      $('gtoolbar').classList.remove('on');
+      $('gtablewrap').classList.remove('on');
+      return;
+    }
+
+    // ¿El archivo cargado trae puntos de granja, o es el de las oficinas?
+    var presentes = GRANJAS.filter(function(g){
+      return DATA.puntos.some(function(p){ return puntoClave(p) === g.punto; });
+    });
+    e.classList.add(presentes.length ? 'ok' : 'falta');
+    $('gexisttxt').innerHTML = '<b>' + esc(DATA.archivoNombre || 'CSV cargado') + '</b> · ' +
+      (DATA.hasta ? 'existencias hasta el <b>' + esc(DATA.hasta) + '</b> · ' : '') +
+      (presentes.length
+        ? presentes.length + ' de ' + GRANJAS.length + ' granjas en el archivo: ' +
+          esc(presentes.map(function(g){ return g.nombre; }).join(', '))
+        : 'ninguna granja de la lista aparece en este archivo. Puntos que trae: ' +
+          esc(DATA.puntos.join(', ')));
+
+    $('gp-fecha').textContent = ($('gfecha').value || '').split('-').reverse().join('/');
+
+    if(!EGRESOS || !EGRESOS.comprobantes.length){
+      $('gresumen').innerHTML = '';
+      $('gtoolbar').classList.remove('on');
+      $('gtablewrap').classList.remove('on');
+      if(DATA && presentes.length && EGRESOS){
+        errorG('Las granjas están en el archivo pero ningún insumo quedó para egresar. ' +
+               'Puede que el export venga con existencia 0, o que los tipos que tienen stock ' +
+               'no estén en la lista de cuentas.');
+      }
+      return;
+    }
+
+    var totalUnid = EGRESOS.comprobantes.reduce(function(s,c){ return s + c.total; }, 0);
+    $('gresumen').innerHTML =
+      '<div><span>Comprobantes</span><b>' + EGRESOS.comprobantes.length + '</b></div>' +
+      '<div class="va"><span>Insumos a egresar</span><b>' + EGRESOS.insumos + '</b></div>' +
+      '<div><span>Unidades</span><b>' + fmt(totalUnid) + '</b></div>' +
+      (EGRESOS.sinCuenta.length
+        ? '<div class="falta"><span>Sin cuenta</span><b>' + EGRESOS.sinCuenta.length + '</b></div>'
+        : '');
+    $('gp-cant').textContent = EGRESOS.comprobantes.length;
+
+    var avisos = [];
+    if(EGRESOS.sinCuenta.length){
+      var tipos = {};
+      EGRESOS.sinCuenta.forEach(function(s){ tipos[s.tipo || 'sin tipo'] = true; });
+      avisos.push('<b>' + EGRESOS.sinCuenta.length + ' insumos quedan afuera</b> porque su tipo no ' +
+                  'está en la lista de cuentas: ' + esc(Object.keys(tipos).join(', ')) + '.');
+    }
+    if(EGRESOS.excluidos.length){
+      avisos.push('<b>' + EGRESOS.excluidos.length + ' excluidos</b> no se egresan (están en la lista de ' +
+                  'productos excluidos).');
+    }
+    if(EGRESOS.negativos.length){
+      avisos.push('<b>' + EGRESOS.negativos.length + ' con existencia negativa</b>, se saltean.');
+    }
+    $('gaviso').innerHTML = avisos.join(' ');
+
+    var h = [];
+    h.push('<table><thead><tr>');
+    h.push('<th class="name">Insumo</th><th>Tipo</th><th>Unidad</th><th class="total">A egresar</th>');
+    h.push('</tr></thead><tbody>');
+
+    EGRESOS.comprobantes.forEach(function(c){
+      h.push('<tr class="cat"><td colspan="4">' + esc(c.granja.nombre) +
+             ' · cuenta ' + esc(c.cuenta) +
+             '<small>comprobante ' + esc(c.numero) +
+             ' · centro de costo ' + esc(c.granja.centro) +
+             ' · unidad ' + esc(c.granja.negocio) +
+             ' · ' + c.items.length + ' insumos · ' + fmt(c.total) + ' unidades</small></td></tr>');
+      var i = 0;
+      c.items.forEach(function(it){
+        h.push('<tr class="row' + (i++ % 2 ? ' alt' : '') + '">');
+        h.push('<td class="name">' + esc(it.nombre) + '</td>');
+        h.push('<td class="name">' + esc(it.tipo) + '</td>');
+        h.push('<td class="name">' + esc(it.unidad) + '</td>');
+        h.push('<td class="total">' + fmt(it.cant) + '</td>');
+        h.push('</tr>');
+      });
+    });
+    h.push('</tbody></table>');
+
+    if(EGRESOS.sinCuenta.length){
+      h.push('<div class="sincuenta"><b>Quedan afuera (su tipo no está en la lista de cuentas):</b><ul>');
+      EGRESOS.sinCuenta.forEach(function(s){
+        h.push('<li>' + esc(s.granja) + ' · ' + esc(s.cod) + ' ' + esc(s.nombre) +
+               ' <span class="marca">' + esc(s.tipo || 'sin tipo') + '</span> · ' + fmt(s.cant) + '</li>');
+      });
+      h.push('</ul></div>');
+    }
+    if(EGRESOS.excluidos.length){
+      h.push('<div class="sincuenta"><b>No se egresan (productos excluidos):</b><ul>');
+      EGRESOS.excluidos.forEach(function(s){
+        h.push('<li>' + esc(s.granja) + ' · ' + esc(s.cod) + ' ' + esc(s.nombre) + ' · ' + fmt(s.cant) + '</li>');
+      });
+      h.push('</ul></div>');
+    }
+
+    $('gtablehost').innerHTML = h.join('');
+    $('gtoolbar').classList.add('on');
+    $('gtablewrap').classList.add('on');
+  }
+
+  /* Un comprobante por granja y por cuenta: lo que carga el programa en
+     Albor, y lo mismo que va al CSV cuando se usa suelto en el navegador. */
+  function comprobantesEgreso(){
+    var fecha = ($('gfecha').value || '').split('-').reverse().join('/');
+    return EGRESOS.comprobantes.map(function(c){
+      return {
+        empresa_id: c.granja.empresa, punto_id: c.granja.id, punto_nombre: c.granja.nombre,
+        centro_costo: c.granja.centro, unidad_negocio: c.granja.negocio,
+        tipo_comprobante: TIPO_COMPROBANTE, numero: c.numero, fecha: fecha, cuenta: c.cuenta,
+        items: c.items.map(function(it){ return { codigo: it.cod, nombre: it.nombre, unidad: it.cant }; })
+      };
+    });
+  }
+
+  async function exportarEgresos(){
+    if(!EGRESOS || !EGRESOS.comprobantes.length){
+      errorG('No hay nada para egresar todavía.');
+      return;
+    }
+    var out = ['empresa_id,punto_id,punto_nombre,centro_costo,unidad_negocio,tipo_comprobante,' +
+               'numero,fecha,cuenta,codigo,nombre,unidad'];
+
+    comprobantesEgreso().forEach(function(c){
+      c.items.forEach(function(it){
+        out.push([c.empresa_id, c.punto_id, c.punto_nombre, c.centro_costo, c.unidad_negocio,
+                  c.tipo_comprobante, c.numero, c.fecha, c.cuenta,
+                  it.codigo, it.nombre, it.unidad].map(comaCSV).join(','));
+      });
+    });
+
+    // El contador avanza recién cuando el archivo se generó de verdad.
+    escribirGuardado(CLAVE_NROEGR, EGRESOS.ultimoNumero);
+    $('gnumero').value = EGRESOS.ultimoNumero;
+
+    await descargar(limpiarNombre('egresos_albor ' + ($('gfecha').value || 'sin-fecha')) + '.csv',
+              '﻿' + out.join('\r\n') + '\r\n', 'text/csv;charset=utf-8');
+
+    // El archivo para Albor se borra después de cargarlo; esto es lo que queda.
+    await planillaEgresos();
+
+    analizarEgresos();
+  }
+
+  /* La planilla de control: qué se dio por consumido en cada granja, con el
+     tipo de insumo al que pertenece cada renglón. */
+  async function planillaEgresos(){
+    var l = libroEgresos();
+    await descargar(l.nombre, l.datos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }
+
+  function libroEgresos(){
+    var fecha = ($('gfecha').value || '').split('-').reverse().join('/');
+
+    var filas = [];
+    filas.push([{v:'Egresos de fin de mes — control', s:2}]);
+    filas.push(['Fecha:', {v:fecha, s:3}]);
+    filas.push(['Comprobantes:', {v:EGRESOS.comprobantes.length, s:3}]);
+    filas.push([]);
+    filas.push(['Punto de stock','Tipo de insumo','Código','Insumo','Cantidad','Unidad','Cuenta','Comprobante']
+               .map(function(c){ return {v:c, s:1}; }));
+
+    var total = 0;
+    EGRESOS.comprobantes.forEach(function(c){
+      c.items.forEach(function(it){
+        total += it.cant;
+        filas.push([c.granja.nombre, it.tipo, it.cod, it.nombre, it.cant, it.unidad, c.cuenta, c.numero]);
+      });
+    });
+
+    filas.push([]);
+    filas.push(['', '', '', {v:EGRESOS.insumos + ' insumos', s:3}, {v:total, s:3}, '', '', '']);
+
+    if(EGRESOS.sinCuenta.length){
+      filas.push([]);
+      filas.push([{v:'Quedaron afuera (su tipo no se egresa)', s:3}]);
+      filas.push(['Punto de stock','Tipo de insumo','Código','Insumo','Cantidad']
+                 .map(function(c){ return {v:c, s:1}; }));
+      EGRESOS.sinCuenta.forEach(function(s){
+        filas.push([s.granja, s.tipo, s.cod, s.nombre, s.cant]);
+      });
+    }
+    if(EGRESOS.excluidos.length){
+      filas.push([]);
+      filas.push([{v:'No se egresan (productos excluidos)', s:3}]);
+      filas.push(['Punto de stock','Tipo de insumo','Código','Insumo','Cantidad']
+                 .map(function(c){ return {v:c, s:1}; }));
+      EGRESOS.excluidos.forEach(function(s){
+        filas.push([s.granja, s.tipo, s.cod, s.nombre, s.cant]);
+      });
+    }
+
+    return {
+      nombre: limpiarNombre('Planilla egresos ' + ($('gfecha').value || 'sin-fecha')) + '.xlsx',
+      datos: armarXLSX({ hoja:'Egresos', filas:filas, anchos:[22, 22, 14, 42, 11, 11, 13, 13], congelarHasta:5 })
+    };
+  }
+
+  /* ---------- Eventos de la pestaña ---------- */
+
+
+  function panelConfig(verId, panelId, txtId, guardarId, resetId, avisoId,
+                       leer, guardar, original, etiqueta){
+    var timer = null;
+    function avisar(msg, esError){
+      var e = $(avisoId);
+      e.innerHTML = msg;
+      e.style.color = esError ? '#b3261e' : '';
+      clearTimeout(timer);
+      if(!esError) timer = setTimeout(function(){ e.innerHTML = ''; }, 3500);
+    }
+    $(verId).addEventListener('click', function(){
+      var abierto = $(panelId).classList.toggle('on');
+      this.textContent = abierto ? 'cerrar' : ('editar ' + etiqueta);
+      if(abierto) $(txtId).focus();
+    });
+    $(guardarId).addEventListener('click', function(){
+      var leidos = leer($(txtId).value);
+      var cuantos = leidos.length !== undefined
+        ? leidos.length
+        : Object.keys(leidos.tipos).length + Object.keys(leidos.cods).length;
+      if(!cuantos){
+        avisar('No se guardó nada: ninguna línea tiene los datos separados por ";".', true);
+        return;
+      }
+      guardar($(txtId).value);
+      analizarEgresos();
+      avisar(cuantos + ' líneas guardadas.');
+    });
+    $(resetId).addEventListener('click', function(){
+      var o = original();               // la de siempre llega de la planilla al abrir
+      guardar(o);
+      $(txtId).value = o;
+      analizarEgresos();
+      avisar('Lista original restaurada.');
+    });
+  }
+
+  panelConfig('ggranjasver','ggranjas','ggranjastxt','ggranjasguardar','ggranjasreset','ggranjasaviso',
+              leerGranjas, guardarGranjas, function(){ return GRANJAS_ORIGINAL; }, 'granjas');
+  panelConfig('gcuentasver','gcuentas','gcuentastxt','gcuentasguardar','gcuentasreset','gcuentasaviso',
+              leerCuentas, guardarCuentas, function(){ return CUENTAS_ORIGINAL; }, 'cuentas');
+
+  $('gfecha').addEventListener('input', pintarEgresos);
+  $('gnumero').addEventListener('input', analizarEgresos);
+  $('gcarga').addEventListener('click', function(){ motor() ? cargarEgresosEnAlbor() : exportarEgresos(); });
+  $('gprint').addEventListener('click', function(){ window.print(); });
+
+
+  /* ==================================================================
+     PEDIDOS DE LAS GRANJAS
+     Antes viajaban por una carpeta compartida; ahora (Fase extra) por la
+     planilla: App_Catalogo, App_Transferencias y App_TransfLineas.
+     La granja los arma en "Armar pedido"; la oficina los recibe en
+     "Transferir" y los usa sin descargar nada.
+     ================================================================== */
+
+  var CLAVE_QUIEN  = 'programa-compras:quien';
+  var CLAVE_MIGRAN = 'programa-compras:migranja';
+  var CLAVE_VISTOS = 'programa-compras:pedidosvistos';
+
+  var CATALOGO = [];          // lo que publica la oficina
+  var ARMANDO = [];           // los renglones del pedido que se está armando
+  var BORRADORES = [];        // los pedidos a medio armar de esta computadora
+  var RECIBIDOS = [];         // los pedidos que esperan en compras
+  var PEDIDO_ELEGIDO = null;  // el que la oficina está usando ahora
+
+  /* El que maneja Albor. Antes era Python dentro del programa (pywebview);
+     ahora es el Programa de Compras instalado en la computadora, sin pantalla
+     (Paso T2). Mientras no esté, null: la pantalla hace lo de siempre en el
+     navegador (bajar el archivo para Albor, arrastrar el CSV de existencias). */
+  function motor(){ return null; }
+
+  function errorA(msg){ var e = $('aerror'); e.textContent = msg; e.classList.add('on'); }
+  function limpiarErrorA(){ $('aerror').classList.remove('on'); }
+
+  function vistos(){
+    try{ return JSON.parse(leerGuardado(CLAVE_VISTOS) || '{}') || {}; }catch(e){ return {}; }
+  }
+  function marcarVisto(id){
+    var v = vistos();
+    v[id] = Date.now();
+    escribirGuardado(CLAVE_VISTOS, JSON.stringify(v));
+  }
+
+  /* ---------- Catálogo ---------- */
+
+  /* La oficina publica la lista de insumos a partir de las existencias que ya
+     tiene cargadas. Que la granja elija de esa lista es lo que evita que
+     lleguen códigos inventados. */
+  async function publicarCatalogo(avisar){
+    avisar = (typeof avisar === 'function') ? avisar : avisarEnArmar;
+    if(!ES_ADMIN){ avisar('El catálogo lo publica un administrador.', true); return; }
+    if(!DATA && !motor()){
+      avisar('Primero cargá las existencias en Conteo de stock (el CSV de Albor): el catálogo sale de ahí.', true);
+      return;
+    }
+
+    /* El catálogo sale de las existencias. Si todavía no están, se bajan acá
+       mismo: antes había que ir a la otra pestaña, bajarlas y volver. */
+    if(!DATA){
+      if(!confirm('Para publicar el catálogo hacen falta las existencias de Albor.\n\n' +
+                  '¿Las bajo ahora?')){
+        avisar('Sin existencias no se puede publicar el catálogo.', true);
+        return;
+      }
+      var volver = $('panel-armar').classList.contains('on') ? 'panel-armar' : null;
+      irA('panel-conteo');                 // el progreso y los errores viven ahí
+      await bajarOficinas();
+      if(volver) irA(volver);
+      if(!DATA){ avisar('No se pudieron bajar las existencias.', true); return; }
+    }
+
+    /* Lo que está en la lista de excluidos no se cuenta, así que tampoco se
+       puede pedir: el catálogo lo deja afuera siempre, sin importar cómo esté
+       el tilde de "Ocultar excluidos", que es solo para mirar en pantalla. */
+    var fuera = DATA.insumos.filter(esExcluido).length;
+    var lista = DATA.insumos.filter(function(it){ return !esExcluido(it); }).map(function(it){
+      return { cod: it.cod, nombre: it.nombre, unidad: it.unidad,
+               tipo: it.cat, cuenta: CUENTAS.cods[clave(it.cod)] ||
+                                     CUENTAS.tipos[(it.cat || '').toUpperCase()] || '' };
+    });
+    avisar('Publicando…', false);
+    var r = await api('publicarCatalogo', lista);
+    if(r && r.ok){
+      TR.catalogo = { actualizado: new Date().toLocaleString('sv-SE').slice(0, 16), insumos: lista };
+      guardado.guardarJSON(K_TR, TR);
+      cargarCatalogo();
+      traerDatos();
+    }
+    avisar(r && r.ok
+      ? ('Catálogo publicado: ' + r.insumos + ' insumos' +
+         (fuera ? ' · ' + fuera + ' quedaron afuera por estar en la lista de excluidos.' : '.'))
+      : ('No se pudo publicar: ' + ((r && r.error) || '')), !(r && r.ok));
+  }
+
+  function cargarCatalogo(){
+    var e = $('acatalogo');
+    e.classList.remove('ok','falta','aviso');
+    var c = TR.catalogo || {};
+    CATALOGO = c.insumos || [];
+    if(!CATALOGO.length){
+      e.classList.add('falta');
+      $('acatalogotxt').textContent = 'Todavía no hay catálogo: lo publica compras.';
+      return;
+    }
+    e.classList.add('ok');
+    $('acatalogotxt').textContent = CATALOGO.length + ' insumos · actualizado el ' + (c.actualizado || '');
+  }
+
+  /* ---------- Armar el pedido (granja) ---------- */
+
+  /* "draxxin 6" -> insumo draxxin, cantidad 6. Con ":" o "=" el corte es
+     seguro. Sin eso se prueba primero el texto entero, porque hay nombres que
+     terminan en número ("Guantes de tela - Pack 12"), y recién si no aparece
+     nada se toma el número del final como cantidad. */
+  function partirEntrada(s){
+    s = String(s).trim();
+    var m = s.match(/^(.*?)\s*[:=]\s*(\d+(?:[.,]\d+)?)$/);
+    if(m) return [{texto: m[1].trim(), cant: m[2]}];
+    var opciones = [{texto: s, cant: ''}];
+    m = s.match(/^(.*\S)\s+(?:x\s*)?(\d+(?:[.,]\d+)?)$/i);
+    if(m) opciones.push({texto: m[1].trim(), cant: m[2]});
+    return opciones;
+  }
+
+  /* Un texto -> un insumo del catálogo. El código exacto manda; si no, el
+     nombre, siempre que haya uno solo que coincida. */
+  function resolverInsumo(texto){
+    var k = clave(texto);
+    var exacto = CATALOGO.filter(function(i){ return clave(i.cod) === k; });
+    if(exacto.length) return {ins: exacto[0]};
+    var q = norm(texto);
+    if(!q) return {nada: true};
+    var hay = CATALOGO.filter(function(i){
+      return norm(i.nombre).indexOf(q) >= 0 || norm(i.cod).indexOf(q) >= 0;
+    });
+    if(hay.length === 1) return {ins: hay[0]};
+    if(!hay.length) return {nada: true};
+    var igual = hay.filter(function(i){ return norm(i.nombre) === q; });
+    if(igual.length === 1) return {ins: igual[0]};
+    return {varios: hay};
+  }
+
+  function interpretar(s){
+    var ops = partirEntrada(s), mejor = null;
+    for(var n = 0; n < ops.length; n++){
+      var r = resolverInsumo(ops[n].texto);
+      r.cant = ops[n].cant;
+      r.texto = ops[n].texto;
+      if(r.ins) return r;
+      if(!mejor || (r.varios && !mejor.varios)) mejor = r;   // para explicar por qué no
+    }
+    return mejor;
+  }
+
+  function renglonDe(ins, cant){
+    return { cod: ins.cod, nombre: ins.nombre, unidad: cant || '',
+             medida: ins.unidad, tipo: ins.tipo, cuenta: ins.cuenta };
+  }
+
+  /* La carga rápida: varios de una vez, separados por coma o renglón. La coma
+     seguida de un número no corta, así "2,5" queda como cantidad. Lo que no se
+     entiende queda en el cuadro para corregirlo, con el motivo al lado. */
+  function cargaRapida(){
+    if(!CATALOGO.length){ errorA('Todavía no hay catálogo: no hay de dónde elegir.'); return; }
+    limpiarErrorA();
+    var entradas = $('arapidatxt').value.split(/\n|;|,(?!\d)/)
+      .map(function(s){ return s.trim(); }).filter(Boolean);
+    if(!entradas.length) return;
+
+    var agregados = 0, actualizados = 0, sinCant = 0, quedan = [], motivos = [];
+    entradas.forEach(function(e){
+      var r = interpretar(e);
+      if(!r || !r.ins){
+        quedan.push(e);
+        motivos.push(r && r.varios
+          ? '«' + r.texto + '» coincide con ' + r.varios.length + ' (' +
+            r.varios.slice(0, 3).map(function(i){ return i.nombre; }).join(' / ') +
+            (r.varios.length > 3 ? '…' : '') + ')'
+          : 'no encontré «' + ((r && r.texto) || e) + '»');
+        return;
+      }
+      var ya = ARMANDO.filter(function(i){ return clave(i.cod) === clave(r.ins.cod); })[0];
+      if(ya){
+        if(r.cant){ ya.unidad = r.cant; actualizados++; }
+        return;
+      }
+      ARMANDO.push(renglonDe(r.ins, r.cant));
+      agregados++;
+      if(!r.cant) sinCant++;
+    });
+
+    pintarArmado();
+    $('arapidatxt').value = quedan.join('\n');
+    var h = [];
+    if(agregados) h.push('<b>' + agregados + '</b> agregados' + (sinCant ? ' (' + sinCant + ' sin cantidad)' : ''));
+    if(actualizados) h.push(actualizados + ' ya estaban: les puse la cantidad nueva');
+    if(motivos.length) h.push('<span style="color:#b3261e">quedaron ' + motivos.length +
+                              ' en el cuadro: ' + esc(motivos.join(' · ')) + '</span>');
+    $('arapidaaviso').innerHTML = h.join(' · ');
+  }
+
+  function buscarEnCatalogo(texto){
+    var q = norm(texto.trim());
+    if(!q) return [];
+    var ya = {};
+    ARMANDO.forEach(function(i){ ya[clave(i.cod)] = true; });
+    return CATALOGO.filter(function(i){
+      if(ya[clave(i.cod)]) return false;
+      return norm(i.nombre).indexOf(q) >= 0 || norm(i.cod).indexOf(q) >= 0;
+    }).slice(0, 12);
+  }
+
+  var CANT_BUSQUEDA = '';     // la cantidad escrita al final de la búsqueda
+
+  function pintarSugerencias(){
+    var caja = $('asugerencias');
+    var texto = $('abuscar').value;
+    if(!texto.trim()){ caja.classList.remove('on'); caja.innerHTML = ''; return; }
+
+    var hallados = buscarEnCatalogo(texto);
+    CANT_BUSQUEDA = '';
+    if(!hallados.length){
+      var conCant = partirEntrada(texto).filter(function(o){ return o.cant; })[0];
+      if(conCant){
+        hallados = buscarEnCatalogo(conCant.texto);
+        if(hallados.length) CANT_BUSQUEDA = conCant.cant;
+      }
+    }
+    if(!hallados.length){
+      caja.innerHTML = '<div class="nada">Ningún insumo con «' + esc(texto.trim()) + '».' +
+        (CATALOGO.length ? '' : ' El catálogo todavía no está publicado.') + '</div>';
+      caja.classList.add('on');
+      return;
+    }
+    caja.innerHTML = hallados.map(function(i, n){
+      return '<div class="op' + (n === 0 ? ' marcada' : '') + '" data-cod="' + esc(i.cod) + '">' +
+             '<span class="cod">' + esc(i.cod) + '</span>' +
+             '<span>' + esc(i.nombre) + '</span>' +
+             '<span class="tipo">' + esc(i.tipo || '') + '</span>' +
+             (CANT_BUSQUEDA ? '<span class="tipo"><b>cantidad ' + esc(CANT_BUSQUEDA) + '</b></span>' : '') +
+             '</div>';
+    }).join('');
+    caja.classList.add('on');
+  }
+
+  /* Después de agregar, el cursor vuelve al buscador: se tipea el próximo
+     sin tocar el mouse. La cantidad va en la misma búsqueda ("draxxin 6") o
+     después en la tabla. */
+  function agregarInsumo(cod){
+    var ins = CATALOGO.filter(function(i){ return clave(i.cod) === clave(cod); })[0];
+    if(!ins) return;
+    if(ARMANDO.some(function(i){ return clave(i.cod) === clave(cod); })) return;
+    ARMANDO.push(renglonDe(ins, CANT_BUSQUEDA));
+    $('abuscar').value = '';
+    pintarSugerencias();
+    pintarArmado();
+    $('abuscar').focus();
+  }
+
+  function pintarArmado(){
+    $('ap-granja').textContent = $('agranja').value || '';
+    $('ap-quien').textContent = $('aquien').value.trim() || '';
+    var f = $('afecha').value;
+    $('ap-fecha').textContent = f ? f.split('-').reverse().join('/') : '';
+
+    var h = ['<table><thead><tr>',
+             '<th class="name">Insumo</th><th>Unidad</th><th class="count">Cantidad</th><th></th>',
+             '</tr></thead><tbody>'];
+    if(!ARMANDO.length){
+      h.push('<tr><td class="name" colspan="4">Todavía no agregaste ningún insumo. ' +
+             'Buscalo arriba y hacé clic para sumarlo.</td></tr>');
+    }
+    ARMANDO.forEach(function(it, n){
+      h.push('<tr class="row' + (n % 2 ? ' alt' : '') + '">');
+      h.push('<td class="name">' + esc(it.nombre) +
+             '<span class="marca">' + esc(it.cod) + '</span></td>');
+      h.push('<td class="name">' + esc(it.medida || '') + '</td>');
+      h.push('<td class="count cant"><input class="ci" type="text" inputmode="decimal" ' +
+             'autocomplete="off" data-n="' + n + '" aria-label="Cantidad de ' + esc(it.nombre) +
+             '" value="' + esc(it.unidad) + '"></td>');
+      h.push('<td><button class="quitar" data-quitar="' + n + '" title="Quitar">×</button></td>');
+      h.push('</tr>');
+    });
+    h.push('</tbody></table>');
+    $('atablehost').innerHTML = h.join('');
+
+    var cargados = ARMANDO.filter(function(i){ return numEscrito(i.unidad) > 0; }).length;
+    $('aaviso').innerHTML = ARMANDO.length
+      ? '<b>' + ARMANDO.length + '</b> insumos · ' + cargados + ' con cantidad puesta'
+      : '';
+  }
+
+  function pedidoArmado(){
+    return {
+      granja: $('agranja').value,
+      quien: $('aquien').value.trim(),
+      fecha: $('afecha').value,
+      observaciones: $('aobs').value.trim(),
+      items: ARMANDO.map(function(i){
+        return { cod: i.cod, nombre: i.nombre, unidad: i.unidad,
+                 medida: i.medida, tipo: i.tipo, cuenta: i.cuenta };
+      })
+    };
+  }
+
+  function faltaAlgo(){
+    if(!$('aquien').value.trim()) return 'Poné tu nombre antes de mandar el pedido.';
+    if(!ARMANDO.length) return 'El pedido no tiene ningún insumo.';
+    var sin = ARMANDO.filter(function(i){ return !(numEscrito(i.unidad) > 0); });
+    if(sin.length){
+      return sin.length + ' insumo(s) sin cantidad: ' +
+             sin.slice(0,3).map(function(i){ return i.nombre; }).join(', ') +
+             (sin.length > 3 ? '…' : '');
+    }
+    return '';
+  }
+
+  /* ---------- Borradores: en este dispositivo ----------
+     Uno por granja y por persona (como antes, en la carpeta local del
+     programa): hay varios encargados y no se pisan entre ellos. */
+  var K_BORRADORES = 'compras_tr_borradores';
+
+  function borradoresGuardados(){ return guardado.leerJSON(K_BORRADORES, {}) || {}; }
+  function claveBorrador(p){ return (p.granja || 'sin granja') + ' - ' + (p.quien || ''); }
+  function ahoraTexto(){ return new Date().toLocaleString('sv-SE').slice(0, 16); }   // 2026-10-01 14:32
+
+  function guardarBorrador(){
+    limpiarErrorA();
+    var p = pedidoArmado();
+    if(!p.items.length){ errorA('Todavía no agregaste ningún insumo.'); return; }
+    var todos = borradoresGuardados();
+    p.estado = 'borrador';
+    p.guardado = ahoraTexto();
+    todos[claveBorrador(p)] = p;
+    if(!guardado.guardarJSON(K_BORRADORES, todos)){ errorA('Este navegador no deja guardar el borrador.'); return; }
+    escribirGuardado(CLAVE_MIGRAN, $('agranja').value);
+    $('aaviso').innerHTML = 'Borrador guardado en este dispositivo. Podés seguir otro día: ' +
+                            'te va a esperar en la lista de arriba.';
+    refrescarBorradores();
+  }
+
+  /* El pedido queda en la bandeja de salida de la app: se manda ya, o solo
+     cuando vuelva la señal. Lleva su número (lo arma la app), así un
+     reintento no lo duplica en la planilla. */
+  var K_ENVIADOS = 'compras_tr_enviados';
+
+  function enviarPedido(){
+    var falta = faltaAlgo();
+    if(falta){ errorA(falta); return; }
+    if(!confirm('¿Mandar el pedido de ' + $('agranja').value + ' a compras?')) return;
+    limpiarErrorA();
+
+    var p = pedidoArmado();
+    p.id = 'T' + nuevoId().slice(1);
+    bandeja.agregar('enviarPedidoGranja', [{
+      id: p.id, granja: p.granja, fecha: p.fecha, observaciones: p.observaciones,
+      items: p.items.map(function(i){
+        return { cod: i.cod, nombre: i.nombre, cantidad: numEscrito(i.unidad), medida: i.medida, tipo: i.tipo, cuenta: i.cuenta };
+      })
+    }], 'mandar el pedido de ' + p.granja);
+    var env = guardado.leerJSON(K_ENVIADOS, []) || [];
+    env.unshift({ id: p.id, granja: p.granja, cuando: ahoraTexto(), renglones: p.items.length });
+    guardado.guardarJSON(K_ENVIADOS, env.slice(0, 10));
+
+    var todos = borradoresGuardados();
+    delete todos[claveBorrador(p)];
+    guardado.guardarJSON(K_BORRADORES, todos);
+    escribirGuardado(CLAVE_MIGRAN, $('agranja').value);
+    ARMANDO = [];
+    $('aobs').value = '';
+    pintarArmado();
+    $('aaviso').innerHTML = 'Mandando el pedido…';
+    refrescarBorradores();
+    pintarEnviados();
+    esperarBandeja().then(function(){
+      var falta = bandeja.lista().some(function(m){ return m.fn === 'enviarPedidoGranja' && m.args[0].id === p.id; });
+      if(!ARMANDO.length) $('aaviso').innerHTML = falta
+        ? 'Pedido guardado en este dispositivo. Hay poca señal: se manda solo cuando vuelva.'
+        : 'Pedido enviado. Compras ya lo ve.';
+      pintarEnviados();
+    });
+  }
+
+  /* Hasta que la bandeja termina de intentar (con o sin señal). */
+  function esperarBandeja(){
+    return new Promise(function(listo){
+      var hasta = Date.now() + 70000;
+      (function mirar(){
+        if(!bandeja.enviando || Date.now() > hasta) return listo();
+        setTimeout(mirar, 300);
+      })();
+    });
+  }
+
+  /* Los últimos pedidos que salieron de este dispositivo, con si ya llegaron. */
+  function pintarEnviados(){
+    var env = guardado.leerJSON(K_ENVIADOS, []) || [];
+    var esperan = {};
+    bandeja.lista().forEach(function(m){ if(m.fn === 'enviarPedidoGranja') esperan[m.args[0].id] = true; });
+    var h = env.slice(0, 3).map(function(e){
+      return esc(e.granja) + ' · ' + esc(e.cuando) + ' · ' + e.renglones + ' insumos · ' +
+             (esperan[e.id] ? '<b>esperando señal para mandarse</b>' : 'recibido por compras');
+    });
+    $('aenviados').innerHTML = h.length ? 'Últimos pedidos mandados desde acá:<br>' + h.join('<br>') : '';
+  }
+
+  /* Los borradores quedan en este dispositivo. Se muestran en una lista arriba
+     de todo para retomarlos. */
+  function refrescarBorradores(){
+    var todos = borradoresGuardados();
+    BORRADORES = Object.keys(todos).map(function(k){
+      var p = todos[k];
+      return { ruta: k, granja: p.granja, quien: p.quien, fecha: p.guardado, renglones: (p.items || []).length };
+    }).filter(function(p){ return puedoArmarPara(p.granja); });
+    pintarBorradores();
+  }
+
+  function pintarBorradores(){
+    var caja = $('aborradores');
+    if(!BORRADORES.length){ caja.classList.remove('on'); caja.innerHTML = ''; return; }
+
+    var h = ['<div class="cabeza">Pedidos a medio armar — tocá uno para seguir ' +
+             'completándolo</div><div class="lista">'];
+    BORRADORES.forEach(function(p){
+      h.push('<div class="uno" data-ruta="' + esc(p.ruta) + '">');
+      h.push('<span class="visto"></span>');
+      h.push('<span class="quien">' + esc(p.granja || 'sin granja') + '</span>');
+      h.push('<span class="granja">' + esc(p.quien || '') + '</span>');
+      h.push('<span class="cuando">' + esc(p.fecha || '') + '</span>');
+      h.push('<span class="cuanto">' + p.renglones + ' insumos</span>');
+      h.push('<button class="tirar" data-tirar="' + esc(p.ruta) +
+             '" title="Descartar este borrador">×</button>');
+      h.push('</div>');
+    });
+    h.push('</div>');
+    caja.innerHTML = h.join('');
+    caja.classList.add('on');
+  }
+
+  function continuarBorrador(ruta){
+    var pedido = borradoresGuardados()[ruta];
+    if(!pedido){ errorA('Ese borrador ya no está.'); refrescarBorradores(); return; }
+    limpiarErrorA();
+
+    /* La granja se pone solo si sigue estando en la lista: si se cambió el
+       nombre, mejor que quede a la vista que no coincide. */
+    var sel = $('agranja');
+    var hay = [].some.call(sel.options, function(o){ return o.value === pedido.granja; });
+    if(hay) sel.value = pedido.granja;
+    if(pedido.fecha) $('afecha').value = pedido.fecha;
+    $('aobs').value = pedido.observaciones || '';
+    ARMANDO = (pedido.items || []).slice();
+    pintarArmado();
+
+    $('aaviso').innerHTML = 'Retomaste el borrador de <b>' + esc(pedido.granja || '') +
+      '</b> guardado el ' + esc(pedido.guardado || '') + '.' +
+      (hay ? '' : ' La granja «' + esc(pedido.granja || '') + '» ya no está en la lista: elegila de nuevo.');
+  }
+
+  function descartarBorrador(ruta){
+    var p = borradoresGuardados()[ruta] || {};
+    if(!confirm('¿Descartar el borrador de ' + (p.granja || '') + '?\n\n' +
+                'Se borra de este dispositivo y no se puede deshacer.')) return;
+    var todos = borradoresGuardados();
+    delete todos[ruta];
+    guardado.guardarJSON(K_BORRADORES, todos);
+    refrescarBorradores();
+  }
+
+  /* Al entrar, si hay un borrador de esta granja y esta persona se retoma solo.
+     Nunca se pisa algo a medio escribir: para eso está la lista. */
+  function recuperarBorrador(){
+    refrescarBorradores();
+    if(ARMANDO.length) return;
+    var mio = borradoresGuardados()[claveBorrador({ granja: $('agranja').value, quien: $('aquien').value.trim() })];
+    if(mio) continuarBorrador(claveBorrador(mio));
+  }
+
+  /* ---------- Recibir el pedido (oficina) ---------- */
+
+  /* Los que mandaron las granjas y todavía no se transfirieron. */
+  async function refrescarRecibidos(){
+    if(!ES_ADMIN) return;
+    var r = await api('listarPedidosGranja', ['Enviado']);
+    if(!r.ok){ if(!r.sinConexion) errorP('No se pudieron traer los pedidos: ' + (r.error || '')); return; }
+    RECIBIDOS = (r.pedidos || []).map(function(p){
+      return { ruta: p.id, id: p.id, granja: p.granja, quien: p.quien, observaciones: p.observaciones,
+               fecha: new Date(p.fecha).toLocaleString('sv-SE').slice(0, 16), renglones: p.renglones };
+    });
+    pintarRecibidos();
+    actualizarBadge();
+  }
+
+  function actualizarBadge(){
+    var v = vistos();
+    var nuevos = RECIBIDOS.filter(function(p){ return !v[p.id || p.archivo]; }).length;
+    var b = $('badgepedidos');
+    b.textContent = nuevos || '';
+    b.classList.toggle('on', nuevos > 0);
+  }
+
+  function pintarRecibidos(){
+    var caja = $('precibidos');
+    if(!ES_ADMIN){ caja.classList.remove('on'); return; }
+
+    var v = vistos();
+    var h = ['<div class="cabeza">Pedidos que mandaron las granjas</div><div class="lista">'];
+    if(!RECIBIDOS.length){
+      h.push('<div class="vacio">No hay pedidos esperando.</div>');
+    }
+    RECIBIDOS.forEach(function(p){
+      var nuevo = !v[p.id || p.archivo];
+      var elegido = PEDIDO_ELEGIDO && PEDIDO_ELEGIDO.ruta === p.ruta;
+      h.push('<div class="uno' + (elegido ? ' elegido' : '') + '" data-ruta="' + esc(p.ruta) + '">');
+      h.push(nuevo ? '<span class="nuevo" title="Sin abrir"></span>' : '<span class="visto"></span>');
+      h.push('<span class="quien">' + esc(p.quien || 'sin nombre') + '</span>');
+      h.push('<span class="granja">' + esc(p.granja || '') + '</span>');
+      h.push('<span class="cuando">' + esc(p.fecha || '') + '</span>');
+      h.push('<span class="cuanto">' + p.renglones + ' insumos</span>');
+      h.push('</div>');
+      if(elegido && p.observaciones){
+        h.push('<div class="obs"><b>Observaciones:</b> ' + esc(p.observaciones) + '</div>');
+      }
+    });
+    h.push('</div>');
+    caja.innerHTML = h.join('');
+    caja.classList.add('on');
+  }
+
+  /* El pedido que llega del programa no necesita mapeo de columnas: ya viene
+     con código, nombre y cantidad separados. Se arma la misma estructura que
+     deja un Excel para que todo lo que sigue funcione igual. */
+  async function usarPedidoRecibido(ruta){
+    var resumen = RECIBIDOS.filter(function(p){ return p.ruta === ruta; })[0];
+    if(!resumen) return;
+    var d = await api('leerPedidoGranja', ruta);
+    if(!d || !d.ok){ errorP('No se pudo leer el pedido: ' + ((d && d.error) || '')); return; }
+    d.pedido.items = d.items;
+
+    var items = d.pedido.items || [];
+    PEDIDO = {
+      cab: ['codigo', 'nombre', 'unidad', 'cuenta'],
+      filas: items.map(function(i){ return [i.cod, i.nombre, i.cantidad, i.cuenta || '']; }),
+      filaCab: -1,
+      mapa: {cod:0, nom:1, cant:2, cta:3},
+      nombre: (d.pedido.granja || '') + ' · ' + (d.pedido.quien || '')
+    };
+    PEDIDO_ELEGIDO = resumen;
+    marcarVisto(resumen.id || resumen.archivo);
+
+    dibujarSelectoresCol();
+    marcarPedidoCargado();
+
+    /* El envío se elige solo a partir de la granja que puso el encargado.
+       Primero se busca el punto de destino exacto, que es el dato firme;
+       recién si no aparece se prueba por el nombre del envío. */
+    var granja = norm(d.pedido.granja || '');
+    var calza = DESTINOS.filter(function(x){
+      return x.bloques.some(function(b){ return norm(b.destinoNombre) === granja; });
+    })[0] || DESTINOS.filter(function(x){
+      return granja && norm(x.nombre).indexOf(granja) >= 0;
+    })[0];
+
+    if(calza){
+      $('pdestino').value = calza.clave;
+      $('ppedidotxt').innerHTML += ' · envío <b>' + esc(calza.nombre) + '</b>';
+    }else if(d.pedido.granja){
+      errorP('El pedido es para «' + d.pedido.granja + '», que no figura en la lista de envíos. ' +
+             'Elegí el envío a mano o agregala en "editar destinos".');
+    }
+
+    analizar();
+    pintarRecibidos();
+    actualizarBadge();
+  }
+
+  /* ---------- Avisos de Armar pedido ---------- */
+
+  function avisarEnArmar(msg, esError){
+    var e = $('acarpetaaviso');
+    e.textContent = msg;
+    e.style.color = esError ? '#b3261e' : '';
+    if(!esError) setTimeout(function(){ e.textContent = ''; }, 5000);
+  }
+
+  /* ---------- Eventos ---------- */
+
+  $('afecha').value = $('fecha') ? $('fecha').value : '';
+
+  $('abuscar').addEventListener('input', pintarSugerencias);
+  $('abuscar').addEventListener('keydown', function(e){
+    var caja = $('asugerencias');
+    if(!caja.classList.contains('on')) return;
+    var ops = [].slice.call(caja.querySelectorAll('.op'));
+    if(!ops.length) return;
+    var i = ops.findIndex(function(o){ return o.classList.contains('marcada'); });
+    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      ops[Math.max(0, i)].classList.remove('marcada');
+      var j = (i + (e.key === 'ArrowDown' ? 1 : -1) + ops.length) % ops.length;
+      ops[j].classList.add('marcada');
+      ops[j].scrollIntoView({block:'nearest'});
+    }else if(e.key === 'Enter'){
+      e.preventDefault();
+      agregarInsumo(ops[Math.max(0, i)].getAttribute('data-cod'));
+    }
+  });
+  $('arapidaver').addEventListener('click', function(){
+    var caja = $('arapida'), abrir = caja.style.display === 'none';
+    caja.style.display = abrir ? '' : 'none';
+    this.textContent = abrir ? 'cerrar carga rápida' : 'carga rápida';
+    if(abrir) $('arapidatxt').focus();
+  });
+  $('arapidabtn').addEventListener('click', cargaRapida);
+  $('arapidatxt').addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)){ e.preventDefault(); cargaRapida(); }
+  });
+
+  $('asugerencias').addEventListener('click', function(e){
+    var op = e.target.closest ? e.target.closest('.op') : null;
+    if(op) agregarInsumo(op.getAttribute('data-cod'));
+  });
+
+  $('atablehost').addEventListener('input', function(e){
+    var inp = e.target;
+    if(!inp.classList || !inp.classList.contains('ci')) return;
+    var n = parseInt(inp.getAttribute('data-n'), 10);
+    if(ARMANDO[n]) ARMANDO[n].unidad = inp.value.trim();
+    var cargados = ARMANDO.filter(function(i){ return numEscrito(i.unidad) > 0; }).length;
+    $('aaviso').innerHTML = '<b>' + ARMANDO.length + '</b> insumos · ' + cargados + ' con cantidad puesta';
+  });
+  $('atablehost').addEventListener('keydown', function(e){
+    var inp = e.target;
+    if(!inp.classList || !inp.classList.contains('ci')) return;
+    var salto = (e.key === 'Enter' || e.key === 'ArrowDown') ? 1 : (e.key === 'ArrowUp' ? -1 : 0);
+    if(!salto) return;
+    e.preventDefault();
+    var todos = [].slice.call($('atablehost').querySelectorAll('input.ci'));
+    var sig = todos[todos.indexOf(inp) + salto];
+    if(sig){ sig.focus(); sig.select(); } else { $('abuscar').focus(); }
+  });
+  $('atablehost').addEventListener('click', function(e){
+    var q = e.target.getAttribute && e.target.getAttribute('data-quitar');
+    if(q === null || q === undefined) return;
+    ARMANDO.splice(parseInt(q, 10), 1);
+    pintarArmado();
+  });
+
+  $('aborradores').addEventListener('click', function(e){
+    var tirar = e.target.getAttribute && e.target.getAttribute('data-tirar');
+    if(tirar){ descartarBorrador(tirar); return; }
+    var uno = e.target.closest ? e.target.closest('.uno') : null;
+    if(uno) continuarBorrador(uno.getAttribute('data-ruta'));
+  });
+
+  $('agranja').addEventListener('change', function(){ pintarArmado(); recuperarBorrador(); });
+  $('aquien').addEventListener('input', pintarArmado);
+  $('afecha').addEventListener('input', pintarArmado);
+  $('aborrador').addEventListener('click', guardarBorrador);
+  $('aenviar').addEventListener('click', enviarPedido);
+
+  $('precibidos').addEventListener('click', function(e){
+    var uno = e.target.closest ? e.target.closest('.uno') : null;
+    if(uno) usarPedidoRecibido(uno.getAttribute('data-ruta'));
+  });
+
+  $('acatalogopublicar').addEventListener('click', function(){ publicarCatalogo(avisarEnArmar); });
+
+  /* Las granjas que puede elegir el encargado salen de la misma lista de
+     envíos que usa la oficina: un solo lugar donde mantenerlas. Una por
+     envío, la del primer comprobante: La Colorada (envío doble) sale una
+     sola vez, como "G4 - LA COLORADA" (Feli: GRANJA LA COLORADA no se usa).
+     Cada encargado ve solo las suyas (Admin → Personas); los admins, todas. */
+  function granjasDelPedido(){
+    var nombres = [];
+    DESTINOS.forEach(function(d){
+      var n = d.bloques[0] && d.bloques[0].destinoNombre;
+      if(n && nombres.indexOf(n) < 0 && puedoArmarPara(n)) nombres.push(n);
+    });
+    return nombres.sort(cmp);
+  }
+  function puedoArmarPara(granja){
+    if(!TR.granjas) return true;                       // admins: todas
+    var k = norm(String(granja || '').trim());
+    return TR.granjas.some(function(g){ return norm(String(g).trim()) === k; });
+  }
+
+  function llenarGranjasDelPedido(){
+    var sel = $('agranja'), antes = sel.value;
+    var nombres = granjasDelPedido();
+    sel.innerHTML = nombres.map(function(n){
+      return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+    }).join('');
+    var mia = leerGuardado(CLAVE_MIGRAN);
+    if(antes && nombres.indexOf(antes) >= 0) sel.value = antes;
+    else if(mia && nombres.indexOf(mia) >= 0) sel.value = mia;
+    var nada = !nombres.length, msg = 'Todavía no tenés ninguna granja asignada. Avisale a un administrador (Admin → Personas).';
+    if(nada && TR.actualizado) errorA(msg);                        // recién cuando ya llegó lo de la planilla
+    else if(!nada && $('aerror').textContent === msg) limpiarErrorA();
+    $('aenviar').disabled = $('aborrador').disabled = nada;
+  }
+
+  function arrancarPedidos(){
+    llenarGranjasDelPedido();
+    $('aquien').value = (APP.yo && APP.yo.nombre) || '';     // quién pide: el de la sesión
+    $('afecha').value = $('fecha').value;
+    $('acatalogofila').hidden = !ES_ADMIN;
+    pintarArmado();
+    cargarCatalogo();
+    recuperarBorrador();
+    pintarEnviados();
+    refrescarRecibidos();
+  }
+
+
+  /* ---------- Traer las existencias de Albor ---------- */
+
+  /* Las tres oficinas: es lo que se mira en Conteo de stock y lo que se
+     transfiere en Transferir. Los egresos tienen su propio botón con
+     las granjas, porque es otro momento y otro reporte. */
+  var PUNTOS_OFICINA = ['123', '131', '134'];    // OFICINA JM, CASA, LC 50
+
+  function puntosDeGranjas(){
+    var puntos = [];
+    GRANJAS.forEach(function(g){
+      if(g.id && g.id !== '?' && puntos.indexOf(g.id) < 0) puntos.push(g.id);
+    });
+    return puntos;
+  }
+
+  function progreso(texto){
+    var caja = $('progreso');
+    caja.classList.add('on');
+    var linea = document.createElement('div');
+    linea.textContent = texto;
+    caja.appendChild(linea);
+    caja.scrollTop = caja.scrollHeight;
+  }
+  window.__progreso = progreso;   // Python empuja el avance por acá
+
+  var bajando = false;
+
+  /* Hasta qué fecha mira el reporte. Para las oficinas, bien adelante: así
+     cuenta los comprobantes con fecha futura que ya se llevan stock (una
+     transferencia del 1/10 cargada el 28/9), que con "hasta hoy" no se ven y
+     después Albor no deja transferir. Para las granjas, la fecha del egreso. */
+  function fechaAlborDe(d){
+    return ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear();
+  }
+  /* Conteo de stock y Transferir usan las existencias de HOY (el
+     reporte sale así si no se toca la fecha). Egresos baja las granjas hasta
+     la fecha que diga su campo, que arranca en un mes adelante: así entran
+     los movimientos pendientes con fecha futura. */
+  function unMesAdelante(){
+    var d = new Date(), dia = d.getDate();
+    d.setMonth(d.getMonth() + 1);
+    if(d.getDate() !== dia) d.setDate(0);      // 31/01 + 1 mes -> 28 o 29/02, no 03/03
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function hastaBajada(){
+    if(!$('bajarhasta').value) $('bajarhasta').value = unMesAdelante();
+    return $('bajarhasta').value.split('-').reverse().join('/');
+  }
+
+  async function bajarDeAlbor(puntos, boton, etiqueta, hasta, usar){
+    if(bajando || CARGANDO) return;
+    if(!motor()){ mostrarError('Esto funciona dentro del programa, no desde el navegador.'); return; }
+    if(!puntos.length){
+      mostrarError('No hay puntos de stock para pedir. Revisá la lista de granjas.');
+      return;
+    }
+
+    bajando = true;
+    limpiarError();
+    $('progreso').innerHTML = '';
+    $('progreso').classList.add('on');
+    if(boton){ boton.disabled = true; boton.textContent = 'Bajando…'; }
+    progreso('Abriendo Albor…');
+
+    try{
+      var r = await motor().bajar_existencias(puntos, hasta || null);
+      if(r && r.ok){
+        progreso('Leyendo el reporte…');
+        (usar || cargarTexto)(r.csv, 'Albor · ' + new Date().toLocaleString('es-AR'), Date.now());
+        // La fecha que dice el propio reporte manda sobre la pedida.
+        if(DATA){ DATA.hasta = r.hasta || hasta || ''; mostrarFechaReporte(); }
+        if(r.aviso) mostrarError(r.aviso);
+        pintarEgresos();
+        progreso('Listo.');
+        setTimeout(function(){ $('progreso').classList.remove('on'); }, 4000);
+      }else{
+        progreso('No se pudo.');
+        mostrarError((r && r.motivo) || 'No se pudo traer el reporte de Albor.');
+      }
+    }catch(e){
+      mostrarError('Falló la conexión con Albor: ' + e);
+    }
+
+    bajando = false;
+    if(boton){ boton.disabled = false; boton.textContent = etiqueta; }
+  }
+
+  /* Un solo reporte con las oficinas y las granjas de la lista: alcanza para
+     las cuatro pestañas. */
+  function puntosTodos(){
+    var p = PUNTOS_OFICINA.slice();
+    puntosDeGranjas().forEach(function(g){ if(p.indexOf(g) < 0) p.push(g); });
+    return p;
+  }
+  function bajarOficinas(){
+    return bajarDeAlbor(puntosTodos(), $('bajarbtn'), 'Bajar existencias de Albor', hastaBajada());
+  }
+
+  $('bajarbtn').addEventListener('click', bajarOficinas);
+  $('rebajar').addEventListener('click', bajarOficinas);
+
+  /* ---------- Cargar comprobantes en Albor ----------
+     Antes esto era: bajar un CSV, abrir la carpeta del script, doble clic en
+     el .bat y apretar ENTER en una ventana negra. Ahora lo hace el programa
+     con la misma sesión de Albor, y las pausas son un botón en el recuadro. */
+
+  var CARGANDO = false;
+
+  /* Con qué existencias se cargó lo último. Después de cargar, la pantalla
+     sigue mostrando el stock de antes hasta que se bajan de nuevo, y un
+     segundo clic cargaría todo dos veces en Albor. */
+  var EGRESADAS = null;                  // {data, granjas:{nombre:true}} ya egresadas con ese DATA
+  var TRANSFERIDO_CON = null;            // {data, envio}
+
+  function alborLog(texto){
+    var log = $('alborlog');
+    log.appendChild(document.createTextNode(texto + '\n'));
+    log.scrollTop = log.scrollHeight;
+  }
+  window.__alborLog = alborLog;
+
+  window.__alborPausa = function(texto, boton){
+    $('alborpausatxt').textContent = texto;
+    $('alborseguir').textContent = boton || 'Seguir';
+    $('alborpausa').classList.add('on');
+    $('alborseguir').focus();
+  };
+
+  function abrirAlbor(titulo){
+    CARGANDO = true;
+    $('albortitulo').textContent = titulo;
+    $('alborlog').textContent = '';
+    $('alborpausa').classList.remove('on');
+    $('alborfin').classList.remove('on');
+    $('alborfin').innerHTML = '';
+    $('alborcancelar').style.display = '';
+    $('alborcerrar').style.display = 'none';
+    $('albor').classList.add('on');
+  }
+
+  function terminarAlbor(r, lineas){
+    CARGANDO = false;
+    $('alborpausa').classList.remove('on');
+    $('alborcancelar').style.display = 'none';
+    $('alborcerrar').style.display = '';
+
+    var h = [];
+    if(r && r.ok) h.push('<b>Listo.</b>');
+    else h.push('<b style="color:#b3261e">' + esc((r && r.motivo) || 'La carga no terminó.') + '</b>');
+    if(lineas.length) h.push('<ul>' + lineas.join('') + '</ul>');
+    if(r && r.carpeta){
+      h.push('<button class="btn" id="alborcarpeta">Abrir la carpeta</button>');
+    }
+    $('alborfin').innerHTML = h.join('');
+    $('alborfin').classList.add('on');
+    var b = $('alborcarpeta');
+    if(b) b.addEventListener('click', function(){ motor().abrir_carpeta(r.carpeta); });
+  }
+
+  function lineaFallados(f){
+    if(!f || !f.length) return '';
+    return '<br><span style="color:#b3261e">No entraron, cargalos a mano: ' +
+           esc(f.map(function(i){ return i.codigo + ' × ' + i.unidad; }).join(', ')) + '</span>';
+  }
+
+  $('alborseguir').addEventListener('click', function(){
+    $('alborpausa').classList.remove('on');
+    motor().responder_carga('seguir');
+  });
+  $('alborcancelar').addEventListener('click', function(){
+    if(!confirm('¿Cancelar la carga?\n\nLo que ya se cargó en Albor queda cargado; ' +
+                'el comprobante que esté a medio hacer lo terminás o lo borrás a mano.')) return;
+    $('alborpausa').classList.remove('on');
+    alborLog('Cancelando…');
+    motor().responder_carga('cancelar');
+  });
+  $('alborcerrar').addEventListener('click', function(){ $('albor').classList.remove('on'); });
+
+  function archivoParaPython(l){ return l ? { nombre: l.nombre, base64: aBase64(l.datos) } : null; }
+
+  async function cargarTransferenciaEnAlbor(){
+    if(CARGANDO || bajando) return;
+    if(!ANALISIS || !ANALISIS.hay){ errorP('No hay nada para transferir todavía.'); return; }
+    if(TRANSFERIDO_CON && TRANSFERIDO_CON.data === DATA && TRANSFERIDO_CON.envio === ANALISIS.dest.nombre){
+      errorP('Ya cargaste una transferencia a ' + ANALISIS.dest.nombre + ' con estas existencias. ' +
+             'Bajalas de nuevo antes de cargar otra: si no, se transfiere dos veces lo mismo.');
+      return;
+    }
+    var dest = ANALISIS.dest, bloques = bloquesTransferencia();
+    var renglones = bloques.reduce(function(s, b){ return s + b.items.length; }, 0);
+    if(!confirm('Cargar en Albor la transferencia a ' + dest.nombre + '\n\n' +
+                bloques.map(function(b){
+                  return '· ' + b.origen_nombre + ' → ' + b.destino_nombre + ': ' + b.items.length + ' insumos';
+                }).join('\n') + '\n\nFecha: ' + (fechaAlbor() || 'sin fecha') +
+                '\n\nVas a poder revisar cada comprobante antes de aplicarlo.')) return;
+    limpiarErrorP();
+
+    var pedido = PEDIDO_ELEGIDO;
+    var archivos = [archivoParaPython(libroTransferencia()), archivoParaPython(libroPendientes())]
+                   .filter(Boolean);
+    abrirAlbor('Transferencia a ' + dest.nombre + ' · ' + renglones + ' renglones');
+    alborLog('Abriendo Albor…');
+
+    var r;
+    try{
+      r = await motor().cargar_transferencia(bloques, archivos,
+            ($('pfecha').value || 'sin-fecha') + ' ' + dest.nombre);
+    }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
+
+    var hechos = (r && r.hechos) || [];
+    if(hechos.length) TRANSFERIDO_CON = { data: DATA, envio: dest.nombre };
+    var lineas = hechos.map(function(x){
+      return '<li>' + esc(x.origen) + ' → ' + esc(x.destino) + ': comprobante <b>' +
+             esc(x.comprobante || 'sin número') + '</b> · ' + x.cargados + ' de ' + x.total +
+             lineaFallados(x.fallados) + '</li>';
+    });
+
+    // El pedido de la granja ya se usó: pasa a Procesados con el número.
+    if(r && r.ok && pedido){
+      var nros = hechos.map(function(x){ return x.comprobante; }).filter(Boolean).join(' / ');
+      var m = await motor().marcar_procesado(pedido.ruta, nros);
+      if(m && m.ok){
+        lineas.push('<li>El pedido de ' + esc(pedido.granja || '') + ' pasó a Procesados.</li>');
+        PEDIDO_ELEGIDO = null;
+        refrescarRecibidos();
+      }
+    }
+    terminarAlbor(r, lineas);
+  }
+
+  async function cargarEgresosEnAlbor(){
+    if(CARGANDO || bajando) return;
+    if(!EGRESOS || !EGRESOS.comprobantes.length){
+      errorG(EGRESADAS && EGRESADAS.data === DATA
+        ? 'Ya cargaste los egresos de estas granjas con estas existencias. Para seguir con otras, tildalas arriba.'
+        : 'No hay nada para egresar todavía.');
+      return;
+    }
+    var comps = comprobantesEgreso();
+    /* Se puede egresar de a partes (unas granjas hoy, otras mañana) con el
+       mismo reporte, pero nunca dos veces la misma granja: el reporte sigue
+       mostrando su stock de antes hasta que se baja de nuevo. */
+    var repetidas = (EGRESADAS && EGRESADAS.data === DATA)
+      ? comps.map(function(c){ return c.punto_nombre; })
+             .filter(function(g, i, a){ return EGRESADAS.granjas[g] && a.indexOf(g) === i; })
+      : [];
+    if(repetidas.length){
+      errorG('Ya cargaste el egreso de ' + repetidas.join(', ') + ' con estas existencias. ' +
+             'Destildala arriba, o bajá las existencias de nuevo: si no, se egresa dos veces lo mismo.');
+      return;
+    }
+    var granjas = {};
+    comps.forEach(function(c){ granjas[c.punto_nombre] = true; });
+    if(!confirm('Cargar en Albor ' + comps.length + ' egresos (N° ' + comps[0].numero + ' al ' +
+                comps[comps.length - 1].numero + ')\n\nGranjas: ' + Object.keys(granjas).join(', ') +
+                '\nFecha: ' + (comps[0].fecha || 'sin fecha') +
+                '\n\nLas oficinas no se tocan. Vas a poder revisar cada comprobante antes de guardarlo.')) return;
+    limpiarErrorG();
+
+    abrirAlbor('Egresos de fin de mes · ' + comps.length + ' comprobantes');
+    alborLog('Abriendo Albor…');
+
+    var r;
+    try{
+      r = await motor().cargar_egresos(comps, [archivoParaPython(libroEgresos())],
+            'Cierre ' + ($('gfecha').value || 'sin-fecha'));
+    }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
+
+    var hechos = (r && r.hechos) || [];
+    var lineas = hechos.map(function(x){
+      return '<li>N° <b>' + esc(x.numero) + '</b> · ' + esc(x.punto) + ' · ' + esc(x.cuenta_nombre || x.cuenta) +
+             (x.centro ? ' · centro ' + esc(x.centro) : ' · <span style="color:#b3261e">sin centro de costo</span>') +
+             ' · ' + x.cargados + ' de ' + x.total + lineaFallados(x.fallados) + '</li>';
+    });
+
+    /* La numeración avanza solo por los comprobantes que se guardaron de
+       verdad: si se canceló a la mitad, el próximo número sigue siendo el
+       que quedó libre. */
+    if(hechos.length){
+      if(!EGRESADAS || EGRESADAS.data !== DATA) EGRESADAS = { data: DATA, granjas: {} };
+      hechos.forEach(function(x){
+        EGRESADAS.granjas[x.punto] = true;
+        GRANJAS_FUERA[x.punto] = true;   // se destilda sola: ya está hecha
+      });
+      var proximo = siguienteNumero(hechos[hechos.length - 1].numero);
+      escribirGuardado(CLAVE_NROEGR, proximo);
+      $('gnumero').value = proximo;
+      analizarEgresos();
+      lineas.push('<li>Próximo número de comprobante: <b>' + esc(proximo) + '</b>. ' +
+                  'Bajá de nuevo las existencias de las granjas para verlas en cero.</li>');
+    }
+    terminarAlbor(r, lineas);
+  }
+
+  /* ---------- Pestañas ---------- */
+
+  function irA(idPanel){
+    [].forEach.call(document.querySelectorAll('.tab'), function(b){
+      b.setAttribute('aria-selected', b.getAttribute('data-panel') === idPanel ? 'true' : 'false');
+    });
+    [].forEach.call(document.querySelectorAll('.panel'), function(s){
+      s.classList.toggle('on', s.id === idPanel);
+    });
+    if(idPanel === 'panel-pedido'){ limpiarErrorP(); analizar(); }
+    if(idPanel === 'panel-egresos'){ limpiarErrorG(); analizarEgresos(); }
+    if(idPanel === 'panel-armar'){
+      limpiarErrorA(); cargarCatalogo(); refrescarBorradores(); pintarEnviados();
+    }
+    if(idPanel === 'panel-pedido'){ refrescarRecibidos(); }
+  }
+  [].forEach.call(document.querySelectorAll('.tab'), function(b){
+    b.addEventListener('click', function(){ irA(this.getAttribute('data-panel')); });
+  });
+
+  function pedidoActivo(){ return $('panel-pedido').classList.contains('on'); }
+
+  /* ============ Arranque ============ */
+
+  function aplicarGuardado(){
+    var o = TR.originales || {};
+    EXCLUIDOS_ORIGINAL = o.excluidos || '';
+    DESTINOS_ORIGINAL = o.envios || '';
+    GRANJAS_ORIGINAL = o.granjas || '';
+    CUENTAS_ORIGINAL = o.cuentas || '';
+    cargarConteo();
+
+    cargarExcluidos();
+    $('excltxt').value = EXCLUIDOS_TEXTO;
+
+    cargarDestinos();
+    llenarSelectDestinos();
+    $('destxt').value = DESTINOS_TEXTO;
+
+    cargarConfigEgresos();
+    $('ggranjastxt').value = GRANJAS_TEXTO;
+    $('gcuentastxt').value = CUENTAS_TEXTO;
+
+    $('pfecha').value = $('fecha').value;
+    $('gfecha').value = $('fecha').value;
+    if(!$('bajarhasta').value) $('bajarhasta').value = unMesAdelante();
+    arrancarPedidos();
+  }
+
+  /* ============ Quién sos y qué ves ============
+     Admins: las cuatro pestañas. Encargados de granja: solo Armar pedido
+     (Feli, 2026-10-01). Arriba, el selector de apartados y tu nombre (lleva
+     a Tu cuenta, en la app). */
+  function pintarQuienSoy(){
+    var yo = APP.yo || {};
+    $('yo').textContent = (yo.nombre || '') + (yo.prueba ? ' · 🧪 ' + (yo.rol === 'encargado' ? 'encargado' : 'empleado') : '');
+    pintarApartados($('apartados'), yo, 'transferencias');
+    [].forEach.call(document.querySelectorAll('.tab[data-admin]'), function(t){ t.hidden = !ES_ADMIN; });
+  }
+
+  /* Lo de la planilla (listas, catálogo, granjas), por detrás. La pantalla
+     ya está dibujada con lo guardado: sin señal, se sigue con eso. */
+  async function traerDatos(){
+    var r = await api('datosTransferencias');
+    if(!r.ok){
+      if(!r.sinConexion && !r.sinSesion) errorA(r.error || 'No se pudieron traer los datos.');
+      return;
+    }
+    TR = { listas: r.listas || {}, originales: r.originales || {}, catalogo: r.catalogo || { insumos: [] },
+           granjas: r.granjas, actualizado: r.actualizado };
+    guardado.guardarJSON(K_TR, TR);
+    var armando = ARMANDO.length;
+    aplicarGuardado();
+    if(armando) pintarArmado();
+  }
+
+  /* Quién sos, de nuevo (si un admin te cambió el rol o las granjas). */
+  async function refrescarInicio(){
+    var r;
+    try{ r = await llamar('inicioApp', [APP.token]); }catch(e){ return; }
+    if(r.sinSesion) return sesionPerdida();
+    if(!r.ok) return;
+    var inicio = guardado.leerJSON(K.inicio, {}) || {};
+    inicio.yo = r.yo; inicio.config = r.config; inicio.actualizado = new Date().toISOString();
+    guardado.guardarJSON(K.inicio, inicio);
+    var antes = JSON.stringify([APP.yo && APP.yo.admin, APP.yo && APP.yo.apartados]);
+    APP.yo = r.yo;
+    if(JSON.stringify([r.yo.admin, r.yo.apartados]) !== antes){ ES_ADMIN = !!r.yo.admin; return arrancar(); }
+    pintarQuienSoy();
+  }
+
+  /* La sesión ya no vale (cerrada o revocada): a entrar de nuevo, en la app. */
+  window.sesionPerdida = function(){
+    guardado.borrar(K.token); guardado.borrar(K.inicio);
+    guardado.guardar(K_APARTADO, 'transferencias');
+    location.replace(APARTADOS.compras.url);
+  };
+
+  /* Un pedido que el servidor no aceptó (ej. la granja ya no es tuya): se avisa acá. */
+  bandeja.alTerminar = function(m, r){
+    if(m.fn !== 'enviarPedidoGranja') return;
+    if(!r.ok && !r.sinSesion) errorA('No se pudo mandar el pedido de ' + m.args[0].granja + ': ' + (r.error || ''));
+    pintarEnviados();
+  };
+  window.alVolverLaSenal = function(){ traerDatos(); };
+  window.alVolverALaApp = function(){ traerDatos(); refrescarInicio(); if(ES_ADMIN) refrescarRecibidos(); };
+
+  function arrancar(){
+    if(!APP.yo){ window.sesionPerdida(); return; }
+    if(!ES_ADMIN && APP.yo.rol !== 'encargado'){           // sin acceso: a la app, sin cerrar la sesión
+      guardado.guardar(K_APARTADO, 'compras');
+      location.replace(APARTADOS.compras.url + '#cuenta');
+      return;
+    }
+    guardado.guardar(K_APARTADO, 'transferencias');
+    pintarQuienSoy();
+    aplicarGuardado();
+    if(!ES_ADMIN) irA('panel-armar');
+    pintarSinRed();
+    bandeja.procesar();
+    traerDatos();
+    refrescarInicio();
+  }
+
+  // Hooks de verificación / automatización: la misma ruta que la carga de archivo.
+  window.__cargarCSVTexto = function(texto, nombre, fecha){
+    return cargarTexto(texto, nombre || 'CSV', fecha || Date.now());
+  };
+  window.__cargarPedidoTexto = function(texto, nombre){
+    return cargarPedidoFilas(leerTabla(texto), nombre || 'pedido');
+  };
+  window.__pedido = function(){ return { irA:irA, analisis:function(){ return ANALISIS; },
+                                          puntosTodos:puntosTodos }; };
+
+  arrancar();
+})();
+</script>
+</body>
+</html>

@@ -66,6 +66,12 @@ dd{margin:0;overflow-wrap:anywhere;font-family:var(--f-mono);font-size:13px}
 .barra button{background:none;border:0;color:inherit;font:inherit;cursor:pointer;min-height:48px;min-width:48px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 10px}
 .barra button:hover{background:rgba(255,255,255,.1)}
 .barra .yo{font-weight:600;font-size:15px}
+/* Apartados (Fase extra): "Compras | Transferencias" en la barra */
+.apartados{display:flex;gap:2px;background:rgba(0,0,0,.18);border-radius:10px;padding:3px;flex:none}
+.apartados a{color:inherit;text-decoration:none;font-weight:600;font-size:14px;padding:7px 10px;border-radius:8px;opacity:.75;white-space:nowrap}
+.apartados a:hover{opacity:1}
+.apartados a[aria-current="page"]{background:rgba(255,255,255,.2);opacity:1}
+@media (max-width:420px){.apartados a{padding:7px 7px;font-size:13px}}
 .inicial{width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.18);display:grid;place-items:center;font-weight:800;font-size:14px}
 .contenido{max-width:960px;margin:0 auto;padding:16px 16px calc(var(--alto-nav) + 32px + env(safe-area-inset-bottom))}
 .contenido h2.titulo{font-size:24px;font-weight:800;margin:8px 0 4px}
