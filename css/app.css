@@ -413,7 +413,8 @@ label.check input{width:22px;height:22px;min-height:0;flex:none;margin:1px 0 0;a
 #ma-crear{margin-top:16px}
 
 /* ---------- Estilos del tablero (Paso 6, Feli): cada uno elige el suyo en Tu cuenta ----------
-   <html data-estilo="profundidad|liso|vidrio">; sin nada, Profundidad. Valen para los pedidos y
+   <html data-estilo="sobrio|profundidad|liso|vidrio|aurora">; Sobrio y Aurora están más abajo
+   (con el aspecto de Transferencias); sin nada, Profundidad. Valen para los pedidos y
    las tareas. Los degradés salen del color de cada uno (--fondo-a…d, ver cssDeColor_ en Code.js). */
 .tablero{background:linear-gradient(135deg,var(--fondo-a,#113429),var(--fondo-b,#071510))}
 .tablero .col{background:#101204;box-shadow:0 1px 1px rgba(0,0,0,.45),0 4px 14px rgba(0,0,0,.35)}
@@ -431,7 +432,7 @@ label.check input{width:22px;height:22px;min-height:0;flex:none;margin:1px 0 0;a
 .tablero .tarjeta.urgente:hover,:root[data-estilo] .tablero .tarjeta.urgente:hover{background:var(--tj-roja-hover)}
 /* Tu cuenta: elegir el estilo y el color */
 .asp-t{font-size:14px;margin:14px 0 8px}
-.asp-estilos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.asp-estilos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .asp-estilo{display:flex;flex-direction:column;gap:2px;align-items:flex-start;text-align:left;border:1.5px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;border-radius:12px;padding:8px;cursor:pointer}
 .asp-estilo[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .asp-estilo b{font-size:14px}
@@ -442,6 +443,10 @@ label.check input{width:22px;height:22px;min-height:0;flex:none;margin:1px 0 0;a
 .asp-mini[data-mini="liso"] i{background:#1f2226;box-shadow:0 0 0 1px #2c3036;border-top:2px solid var(--accent)}
 .asp-mini[data-mini="vidrio"]{background:linear-gradient(160deg,var(--fondo-c,#164334),var(--fondo-d,#091d16))}
 .asp-mini[data-mini="vidrio"] i{background:rgba(0,0,0,.32);box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.asp-mini[data-mini="sobrio"]{background:#141416;box-shadow:inset 0 0 0 1px #33333a}
+.asp-mini[data-mini="sobrio"] i{background:#1d1d20;box-shadow:0 0 0 1px #33333a}
+.asp-mini[data-mini="aurora"]{background:radial-gradient(80% 90% at 10% -10%,var(--fondo-c,#92616a) 0%,rgba(20,20,22,0) 75%),radial-gradient(70% 80% at 95% 110%,var(--fondo-a,#724c51) 0%,rgba(20,20,22,0) 70%),#141416}
+.asp-mini[data-mini="aurora"] i{background:rgba(18,18,20,.55);box-shadow:0 0 0 1px rgba(255,255,255,.08)}
 .asp-colores{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
 .asp-color{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;font-size:13px;font-weight:600;border-radius:999px;padding:4px 10px 4px 4px;min-height:40px;cursor:pointer;text-align:left}
 .asp-color i{flex:none;width:28px;height:28px;border-radius:50%}
@@ -449,14 +454,13 @@ label.check input{width:22px;height:22px;min-height:0;flex:none;margin:1px 0 0;a
 @media (max-width:420px){.asp-estilo small{display:none}}
 
 
-/* ---------- Prueba (Feli, 2026-10-01): Compras con el aspecto de Transferencias ----------
-   <html data-aspecto="programa">, solo en el dispositivo que lo elige (Tu cuenta). Los
-   colores, la letra y los recuadros del Programa de Compras (pagina/transferencias) con
-   fondo oscuro (Feli: "que quede en fondo oscuro, como Transferencias").
-   "html" adelante: así le gana al color de cada uno (#estiloColor). */
+/* ---------- El aspecto de Transferencias, siempre (Feli, 2026-10-01) ----------
+   <html data-aspecto="programa"> fijo en index.html: el fondo oscuro, la letra y los
+   recuadros del Programa de Compras (pagina/transferencias), en toda la app. Lo único que
+   elige cada uno es el color (--accent…, de #estiloColor), el mismo en Compras,
+   Transferencias y el formulario. "html" adelante: le gana a los estilos de tablero. */
 html:root[data-aspecto="programa"]{
   --bg:#141416; --fg:#eceae5; --muted:#a3a099; --line:#33333a; --soft:#1d1d20;
-  --accent:#d08a93; --accent-soft:#33232a; --accent-fg:#1a1013;
   --danger:#f08b84; --danger-soft:#3a1f1d; --warn:#e8c070; --warn-soft:#332a17;
   --band:#1d1d20; --band-fg:#eceae5; --tablero:#141416;
   --col:#1d1d20; --tj:#26262c; --tj-sombra:0 1px 2px rgba(0,0,0,.35); --tj-hover:#2d2d34;
@@ -476,13 +480,15 @@ html[data-aspecto="programa"] .caja{border-width:1px;border-radius:10px}
 html[data-aspecto="programa"] .caja h2{font-size:13px;font-weight:600}
 html[data-aspecto="programa"] .btn{border-radius:6px}
 html[data-aspecto="programa"] .btn2,html[data-aspecto="programa"] .choice,html[data-aspecto="programa"] input{border-width:1px;border-radius:6px;background:var(--soft)}
-html[data-aspecto="programa"] .tablero,
-html[data-aspecto="programa"][data-estilo] .tablero{background:var(--bg)}
-html[data-aspecto="programa"] .tablero .col,
-html[data-aspecto="programa"][data-estilo] .tablero .col{background:var(--col);border:1px solid var(--line);border-top:1px solid var(--line);border-radius:10px;box-shadow:none}
-html[data-aspecto="programa"] .tablero .tarjeta,
-html[data-aspecto="programa"][data-estilo] .tablero .tarjeta{background:var(--tj);color:var(--fg);border:1px solid var(--line);border-radius:7px;box-shadow:var(--tj-sombra)}
-html[data-aspecto="programa"] .tablero .tarjeta:hover,
-html[data-aspecto="programa"][data-estilo] .tablero .tarjeta:hover{background:var(--tj-hover);border-color:var(--accent)}
-html[data-aspecto="programa"] .tablero .tarjeta.urgente,
-html[data-aspecto="programa"][data-estilo] .tablero .tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg);border-color:#7a2a34}
+/* Los estilos de tablero siguen siendo a elección (Feli, 2026-10-01). Sobrio es el de
+   Transferencias y el de quien no eligió; Aurora, una luz del color de cada uno arriba. */
+html[data-estilo="sobrio"] .tablero{background:var(--bg)}
+html[data-estilo="sobrio"] .tablero .col{background:var(--col);border:1px solid var(--line);border-radius:10px;box-shadow:none}
+html[data-estilo="sobrio"] .tablero .tarjeta{background:var(--tj);color:var(--fg);border:1px solid var(--line);border-radius:7px;box-shadow:var(--tj-sombra)}
+html[data-estilo="sobrio"] .tablero .tarjeta:hover{background:var(--tj-hover);border-color:var(--accent)}
+html[data-estilo="aurora"] .tablero{background:radial-gradient(70% 60% at 12% -8%,var(--fondo-c,#92616a) 0%,rgba(20,20,22,0) 72%),radial-gradient(60% 55% at 92% 108%,var(--fondo-a,#724c51) 0%,rgba(20,20,22,0) 70%),var(--bg);background-attachment:local}
+html[data-estilo="aurora"] .tablero .col{background:rgba(18,18,20,.55);border:1px solid rgba(255,255,255,.07);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+html[data-estilo="aurora"] .tablero .tarjeta{background:rgba(38,38,44,.94);color:var(--fg);border:1px solid rgba(255,255,255,.06);border-radius:9px;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96);border-color:var(--accent)}
+html[data-aspecto="programa"] .tablero .tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg);border-color:#7a2a34}
+html[data-aspecto="programa"] .tablero .tarjeta.urgente:hover{background:var(--tj-roja-hover)}

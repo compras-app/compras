@@ -181,8 +181,9 @@ function mostrarTablero() {
   pintarTablero();
   cargarTablero();
   const h = decodeURIComponent(location.hash.slice(1));
-  if (h && /^K/.test(h)) { if (APP.yo.admin) ir('tareas'); return; }     // link a una tarea: se abre en Tareas
-  if (h && !TB.abierta) abrirTarjeta(h, true);
+  if (!h || h === 'cuenta') return;                                       // #cuenta es Tu cuenta, no un pedido
+  if (/^K/.test(h)) { if (APP.yo.admin) ir('tareas'); return; }           // link a una tarea: se abre en Tareas
+  if (!TB.abierta) abrirTarjeta(h, true);
 }
 
 function pintarTablero() {
@@ -677,6 +678,7 @@ window.addEventListener('popstate', function () {
 // Un link #Ref con la app ya abierta (ej. el WhatsApp de una mención): abre esa tarjeta
 window.addEventListener('hashchange', function () {
   const ref = decodeURIComponent(location.hash.slice(1));
+  if (ref === 'cuenta') { if (APP.token && !$('app').hidden) abrir('cuenta'); return; }
   if (ref && APP.token && !$('app').hidden && TB.abierta !== ref) abrirTarjeta(ref, true);
 });
 $('tj-cerrar').addEventListener('click', cerrarTarjeta);

@@ -1,22 +1,24 @@
 /* Formulario de la app descargada (antes Formulario.html en Apps Script; mismos estilos).
    Una sola columna tipo Tally, preguntas apiladas, bloque de producto repetible como tarjeta.
-   El color de App_Config llega aparte (<style id="estiloColor">). */
+   El color de cada uno llega aparte (<style id="estiloColor">), el mismo de la app.
+   Feli (2026-10-01): el fondo, los recuadros y la letra son los de Transferencias. */
 :root{
   --bg:#ffffff; --fg:#1d2320; --muted:#6a736e; --line:#dde2df; --soft:#f4f6f5;
   --accent:#1f5f4a; --accent-soft:#e6f0ec; --accent-fg:#ffffff;
   --danger:#b3261e; --danger-soft:#fbeceb; --warn:#8a5a00; --warn-soft:#fdf3dd;
   --band:#1f5f4a;
-  --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --f-mono:ui-monospace,Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#141816; --fg:#e7ecea; --muted:#9aa5a0; --line:#2e3532; --soft:#1c211f;
+  --bg:#141416; --fg:#eceae5; --muted:#a3a099; --line:#33333a; --soft:#1d1d20;
   --accent:#5fb393; --accent-soft:#1d2e27; --accent-fg:#0f1412;
-  --danger:#f08b84; --danger-soft:#3a1f1d; --warn:#e8c070; --warn-soft:#332a17; --band:#24453a; color-scheme:dark}}
+  --danger:#f08b84; --danger-soft:#3a1f1d; --warn:#e8c070; --warn-soft:#332a17; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#141816; --fg:#e7ecea; --muted:#9aa5a0; --line:#2e3532; --soft:#1c211f;
+  --bg:#141416; --fg:#eceae5; --muted:#a3a099; --line:#33333a; --soft:#1d1d20;
   --accent:#5fb393; --accent-soft:#1d2e27; --accent-fg:#0f1412;
-  --danger:#f08b84; --danger-soft:#3a1f1d; --warn:#e8c070; --warn-soft:#332a17; --band:#24453a; color-scheme:dark}
+  --danger:#f08b84; --danger-soft:#3a1f1d; --warn:#e8c070; --warn-soft:#332a17; color-scheme:dark}
+html:root[data-theme="dark"]{--band:#1d1d20}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:16px;line-height:1.5}

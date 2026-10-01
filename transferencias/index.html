@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -22,7 +22,8 @@
       planilla por Apps Script. El conteo real y los borradores quedan en el
       dispositivo. Mandar un pedido va por la bandeja de salida: sin señal,
       sale solo cuando vuelve.
-    - Albor lo maneja el Programa de Compras instalado en la computadora (Paso T2).
+    - Albor lo maneja la extensión de Chrome "Programa de Compras · Albor"
+      con albor.js (Paso T2-bis).
 -->
 <style>
   :root{
@@ -57,7 +58,7 @@
       --write:#26231c;
       --head:#26262c;
       --catbg:#2d2d34;
-      --btn-ink:#1a1013;
+      --btn-ink:var(--accent-fg, #1a1013);
     }
   }
   :root[data-theme="dark"]{
@@ -74,7 +75,7 @@
     --write:#26231c;
     --head:#26262c;
     --catbg:#2d2d34;
-    --btn-ink:#1a1013;
+    --btn-ink:var(--accent-fg, #1a1013);
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -597,6 +598,11 @@
     .sheethead .line{flex-wrap:wrap;gap:4px 14px}
   }
 </style>
+<!-- El color de cada uno, el mismo que en Compras y el formulario (Feli, 2026-10-01): lo que
+     eligió en Tu cuenta, guardado en el dispositivo; si no eligió, Rosa viejo. Pisa --accent y
+     --accent-soft de arriba; el fondo y la letra son siempre los de acá. -->
+<style id="estiloColor">:root{--accent:#9c686e;--accent-soft:#f3edee;--accent-fg:#ffffff;--band:#9c686e;--tablero:#c4828a;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#d08a93;--accent-soft:#3a2f2f;--accent-fg:#0f1412;--band:#7b575b;--tablero:#5b4346;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}}:root[data-theme="dark"]{--accent:#d08a93;--accent-soft:#3a2f2f;--accent-fg:#0f1412;--band:#7b575b;--tablero:#5b4346;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}</style>
+<script>try { var c = localStorage.getItem('compras_css_mio'); if (c === null) c = localStorage.getItem('compras_css'); if (c !== null) document.getElementById('estiloColor').textContent = c; } catch (e) {}</script>
 </head>
 <body>
 
@@ -625,7 +631,7 @@
       <p class="nota">Entra a Albor y trae las tres oficinas y las granjas en un solo reporte, hasta la
          fecha de al lado. Viene puesta <b>un mes adelante</b>, así entran los movimientos cargados con
          fecha futura; la podés cambiar. Ese mismo reporte usan las cuatro pestañas.
-         La primera vez te va a pedir que inicies sesión; después la recuerda.</p>
+         Usa la sesión de Albor de este Chrome: si no entraste, te pide que inicies sesión.</p>
       <div class="progreso" id="progreso"></div>
     </div>
 
@@ -965,6 +971,7 @@
 </div>
 
 <script src="../js/base.js"></script>
+<script src="albor.js"></script>
 <script>
 /* Sin sesión de la app: a entrar (la app trae de vuelta acá después del código). */
 (function(){
@@ -3190,110 +3197,56 @@
   var RECIBIDOS = [];         // los pedidos que esperan en compras
   var PEDIDO_ELEGIDO = null;  // el que la oficina está usando ahora
 
-  /* ---------- El motor de Albor (Paso T2) ----------
-     Antes era Python dentro del programa (window.pywebview.api). Ahora es el
-     Programa de Compras instalado en ESTA computadora, sin pantalla: escucha
-     en 127.0.0.1 y solo le contesta a la app. motor() devuelve lo mismo que
-     antes (las mismas funciones), o null si el programa no está abierto: ahí
-     la pantalla hace lo del navegador (bajar el archivo para Albor,
-     arrastrar el CSV de existencias).
-     Lo que antes Python le empujaba a la pantalla (avance y pausas) ahora se
-     pregunta cada medio segundo mientras dura un pedido (/avance). */
-  var MOTOR = { url: 'http://127.0.0.1:47615', vivo: false, n: 0, pausaVista: '' };
+  /* ---------- Albor: la extensión de Chrome (Paso T2-bis) ----------
+     Antes era Python: primero dentro del programa (pywebview) y después el
+     Programa de Compras instalado de fondo (motor.py). Ahora son la
+     extensión "Programa de Compras · Albor" de este Chrome (las manos) y
+     albor.js, en esta misma carpeta (la cabeza: albor.py y cargas.py
+     pasados tal cual). motor() devuelve las mismas funciones de antes, o
+     null si la extensión no está: ahí la pantalla hace lo del navegador
+     (bajar el archivo para Albor, arrastrar el CSV de existencias). */
+  var MOTOR = { vivo: false, version: '' };
   var EN_CELULAR = /iPhone|iPad|iPod|Android/.test(navigator.userAgent);
 
-  function pedirMotor(ruta, cuerpo, limiteMs){
-    var ctl = window.AbortController ? new AbortController() : null;
-    var t = limiteMs ? setTimeout(function(){ if(ctl) ctl.abort(); }, limiteMs) : null;
-    return fetch(MOTOR.url + ruta, {
-      method: cuerpo ? 'POST' : 'GET', cache: 'no-store', signal: ctl ? ctl.signal : undefined,
-      headers: cuerpo ? { 'Content-Type': 'application/json', 'X-Compras': '1' } : { 'X-Compras': '1' },
-      body: cuerpo ? JSON.stringify(cuerpo) : undefined
-    }).then(function(r){ return r.json(); }).finally(function(){ if(t) clearTimeout(t); });
-  }
-
-  /* Lo que llegó desde la última vez: líneas de avance y pausas. */
-  function procesarAvance(r){
-    (r.eventos || []).forEach(function(e){
-      MOTOR.n = Math.max(MOTOR.n, e.n);
-      if(e.tipo === 'linea'){ var f = window[e.salida]; if(f) f(e.texto); }
-    });
-    // La pausa a la vista (también si se recargó la página en el medio)
-    var p = r.pausa;
-    if(p && MOTOR.pausaVista !== p.texto){ MOTOR.pausaVista = p.texto; window.__alborPausa(p.texto, p.boton); }
-    if(!p) MOTOR.pausaVista = '';
-  }
-
-  /* Lo largo (bajar existencias, cargar en Albor): el programa lo empieza y
-     contesta enseguida con un número; después se le pregunta cada medio
-     segundo cómo va, hasta que termina. Así ninguna conexión queda abierta
-     varios minutos (por ejemplo, mientras se inicia sesión en Albor), que
-     Chrome corta ("Failed to fetch"). Si algo no anduvo, se muestra lo
-     último que dijo el programa. */
-  function llamarMotor(fn, args){
-    return pedirMotor('/empezar', { fn: fn, args: args }, 15000).then(function(r){
-      if(r && r.motivo === 'No existe.')
-        return { ok: false, motivo: 'El Programa de Compras de esta computadora es de una versión vieja: armalo de nuevo (build.command) y abrilo.' };
-      if(!r || !r.ok || !r.trabajo) return r;
-      return new Promise(function(listo){
-        var fallos = 0;
-        (function mirar(){
-          pedirMotor('/avance?desde=' + MOTOR.n + '&trabajo=' + r.trabajo, null, 8000).then(function(a){
-            fallos = 0;
-            procesarAvance(a);
-            if(a.trabajo && a.trabajo.listo) return listo(a.trabajo.resultado || { ok: false, motivo: 'Terminó sin resultado.' });
-            if(a.trabajo === null) return listo({ ok: false, motivo: 'El Programa de Compras se cerró en el medio. Abrilo de nuevo y repetí.' });
-            setTimeout(mirar, 500);
-          }).catch(function(){
-            if(++fallos > 30) return listo({ ok: false, motivo: 'El Programa de Compras de esta computadora dejó de contestar.' });
-            setTimeout(mirar, 1000);
-          });
-        })();
-      });
-    }).catch(function(e){
-      return { ok: false, motivo: 'No pude hablar con el Programa de Compras de esta computadora (' + e.message + ').' };
-    }).then(function(r){
-      if(r && !r.ok && !r.cancelado) mostrarRegistro(fn === 'bajar_existencias' ? progreso : alborLog);
-      return r;
-    });
-  }
-
-  /* Lo último que dijo el programa (su motor.log), en el recuadro de avance. */
+  /* Si algo no anduvo, el detalle técnico del último error, para Claude. */
   function mostrarRegistro(escribir){
-    pedirMotor('/registro', null, 4000).then(function(r){
-      var l = (r && r.lineas) || [];
-      if(!l.length) return;
-      escribir('— Lo último que dijo el Programa de Compras (para Claude, si hace falta) —');
-      l.slice(-25).forEach(function(x){ escribir(x); });
-    }).catch(function(){});
+    var l = window.AlborExt ? window.AlborExt.registro().slice(-40) : [];
+    var err = l.filter(function(x){ return x.indexOf(' ERROR: ') >= 0; }).pop();
+    if(err) escribir('(detalle para Claude, si hace falta: ' + err.slice(0, 300) + ')');
+  }
+  function conRegistro(fn, escribir){
+    return function(){
+      return fn.apply(null, arguments).then(function(r){
+        if(r && !r.ok && !r.cancelado) mostrarRegistro(escribir);
+        return r;
+      });
+    };
   }
 
-  var MOTOR_API = {
-    bajar_existencias: function(puntos, hasta){ return llamarMotor('bajar_existencias', [puntos, hasta]); },
-    cargar_transferencia: function(b, a, e){ return llamarMotor('cargar_transferencia', [b, a, e]); },
-    cargar_egresos: function(c, a, e){ return llamarMotor('cargar_egresos', [c, a, e]); },
-    responder_carga: function(que){ MOTOR.pausaVista = ''; return pedirMotor('/llamar', { fn: 'responder_carga', args: [que] }); },
-    cerrar_albor: function(){ return llamarMotor('cerrar_albor', []); },
-    abrir_carpeta: function(ruta){ return pedirMotor('/llamar', { fn: 'abrir_carpeta', args: [ruta] }); }
-  };
+  var MOTOR_API = window.AlborExt ? {
+    bajar_existencias: conRegistro(window.AlborExt.api.bajar_existencias, function(t){ progreso(t); }),
+    cargar_transferencia: conRegistro(window.AlborExt.api.cargar_transferencia, function(t){ alborLog(t); }),
+    cargar_egresos: conRegistro(window.AlborExt.api.cargar_egresos, function(t){ alborLog(t); }),
+    responder_carga: window.AlborExt.api.responder_carga,
+    cerrar_albor: window.AlborExt.api.cerrar_albor,
+    abrir_carpeta: window.AlborExt.api.abrir_carpeta
+  } : null;
 
   function motor(){ return MOTOR.vivo ? MOTOR_API : null; }
 
-  /* ¿Está abierto el programa en esta computadora? Se pregunta al abrir y
-     cada 15 segundos (si se abre después, la pantalla se entera sola). */
+  /* ¿Está la extensión en este Chrome? Se pregunta al abrir y cada 15
+     segundos (si se instala después, la pantalla se entera sola). */
   function buscarMotor(){
-    if(!ES_ADMIN || EN_CELULAR) return;
-    pedirMotor('/estado', null, 2500).then(function(r){
-      var antes = MOTOR.vivo;
+    if(!ES_ADMIN || EN_CELULAR || !MOTOR_API){ MOTOR.vivo = false; pintarMotor(); return; }
+    window.AlborExt.buscar().then(function(r){
       MOTOR.vivo = !!(r && r.ok);
-      if(MOTOR.vivo && !antes){ MOTOR.n = r.n || 0; }
-      if(MOTOR.vivo) MOTOR.arrancarSolo = r.arrancar_solo !== false;
+      MOTOR.version = r ? r.version : '';
       pintarMotor();
-    }).catch(function(){ MOTOR.vivo = false; pintarMotor(); });
+    });
   }
 
-  /* Con el programa: "Bajar existencias de Albor" y "Cargar en Albor". Sin
-     él: arrastrar el CSV y el archivo para Albor, como en el navegador. */
+  /* Con la extensión: "Bajar existencias de Albor" y "Cargar en Albor". Sin
+     ella: arrastrar el CSV y el archivo para Albor, como en el navegador. */
   function pintarMotor(){
     var vivo = MOTOR.vivo;
     document.documentElement.toggleAttribute('data-app', vivo);
@@ -3303,31 +3256,11 @@
     /* El texto va todo en un <span>: .estado es flex y, si no, cada palabra en
        negrita queda como una columna aparte (Feli, 2026-10-01). */
     $('motorestado').innerHTML = vivo
-      ? '<span class="punto"></span><span>Programa de Compras de esta computadora: <b>listo</b>.</span>' +
-        '<label class="check" style="margin-left:12px"><input type="checkbox" id="motorsolo"' + (MOTOR.arrancarSolo ? ' checked' : '') +
-        '> que arranque solo al prender esta compu</label>' +
-        '<button class="linkbtn" id="motorapagar" style="margin-left:12px">cerrar el programa</button>'
-      : '<span class="punto"></span><span>El <b>Programa de Compras</b> no está abierto en esta computadora. ' +
-        'Abrilo para usar Albor desde acá. Hasta entonces podés arrastrar el CSV abajo. ' +
-        'Si Chrome pregunta si esta página puede acceder a otros dispositivos de la red local, tocá <b>Permitir</b>.</span>';
+      ? '<span class="punto"></span><span>Extensión de Albor de este Chrome: <b>lista</b>.</span>'
+      : '<span class="punto"></span><span>Para usar Albor desde acá falta la extensión ' +
+        '<b>Programa de Compras · Albor</b> en este Chrome (o Edge). ' +
+        'Hasta entonces podés arrastrar el CSV abajo.</span>';
     $('motorestado').className = 'estado ' + (vivo ? 'ok' : 'falta');
-    if(vivo){
-      /* Que arranque solo se elige por computadora (Feli: en las de los admins sí, en la suya no). */
-      $('motorsolo').addEventListener('change', function(){
-        var si = this.checked;
-        pedirMotor('/llamar', { fn: 'arranque_solo', args: [si] }, 5000)
-          .then(function(r){ MOTOR.arrancarSolo = r.arrancar_solo !== false; pintarMotor(); })
-          .catch(function(){ buscarMotor(); });
-      });
-      $('motorapagar').addEventListener('click', function(){
-        if(!confirm('¿Cerrar el Programa de Compras en esta computadora?\n\n' +
-                    'Para usar Albor desde la app, abrilo de nuevo' + (MOTOR.arrancarSolo ? ' (o se abre solo la próxima vez que prendas la compu).' : '.'))) return;
-        pedirMotor('/llamar', { fn: 'apagar', args: [] }, 5000).then(function(r){
-          if(r && !r.ok) mostrarError(r.motivo || 'No se pudo cerrar.');
-          setTimeout(buscarMotor, 1500);
-        }).catch(function(){ setTimeout(buscarMotor, 1500); });
-      });
-    }
     $('pcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
     $('gcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
   }
@@ -4057,7 +3990,7 @@
     caja.appendChild(linea);
     caja.scrollTop = caja.scrollHeight;
   }
-  window.__progreso = progreso;   // Python empuja el avance por acá
+  window.__progreso = progreso;   // albor.js empuja el avance por acá
 
   var bajando = false;
 
@@ -4085,7 +4018,7 @@
 
   async function bajarDeAlbor(puntos, boton, etiqueta, hasta, usar){
     if(bajando || CARGANDO) return;
-    if(!motor()){ mostrarError('Abrí el Programa de Compras en esta computadora: es el que entra a Albor.'); return; }
+    if(!motor()){ mostrarError('Falta la extensión Programa de Compras · Albor en este Chrome: es la que entra a Albor.'); return; }
     if(!puntos.length){
       mostrarError('No hay puntos de stock para pedir. Revisá la lista de granjas.');
       return;
@@ -4443,6 +4376,17 @@
   }
 
   /* Quién sos, de nuevo (si un admin te cambió el rol o las granjas). */
+  /* El color que eligió (o el de siempre), como en js/login.js: si cambió el
+     color en otro dispositivo, acá también. Si hay un cambio esperando señal,
+     manda ese. */
+  function aplicarColorDe(r){
+    if(!r || !r.config || typeof r.config.css !== 'string') return;
+    if(bandeja.lista().some(function(m){ return m.fn === 'guardarAspecto'; })) return;
+    if(r.yo && r.yo.color) guardado.guardar(K.cssMio, r.config.css);
+    else{ guardado.borrar(K.cssMio); guardado.guardar(K.css, r.config.css); }
+    $('estiloColor').textContent = r.config.css;
+  }
+
   async function refrescarInicio(){
     var r;
     try{ r = await llamar('inicioApp', [APP.token]); }catch(e){ return; }
@@ -4453,6 +4397,7 @@
     guardado.guardarJSON(K.inicio, inicio);
     var antes = JSON.stringify([APP.yo && APP.yo.admin, APP.yo && APP.yo.apartados]);
     APP.yo = r.yo;
+    aplicarColorDe(r);
     if(JSON.stringify([r.yo.admin, r.yo.apartados]) !== antes){ ES_ADMIN = !!r.yo.admin; return arrancar(); }
     pintarQuienSoy();
   }

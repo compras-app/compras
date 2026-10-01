@@ -27,7 +27,11 @@ function mostrarApp() {
   pintarBarra();
   pintarSinRed();
   if (sinCompras()) ir('cuenta');
-  else if (location.hash === '#cuenta') { ir('tablero'); abrir('cuenta'); }
+  else if (location.hash === '#cuenta') {
+    // Viene de "Tu cuenta" en Transferencias: #cuenta no es un pedido (si queda, el tablero lo abría como tarjeta)
+    history.replaceState(null, '', location.pathname + location.search);
+    ir('tablero'); abrir('cuenta');
+  }
   else ir('tablero');
   mostrarNoAplicados();          // los que quedaron de antes (aunque se haya cerrado la app)
 }
@@ -89,52 +93,42 @@ function pantallaCuenta() {
   pintarAspecto();
 }
 
-/* ---------- Cómo se ve la app (Paso 6, Feli): estilo del tablero y color de cada uno ----------
-   Se ve al instante y va por la bandeja (sin señal, se guarda cuando vuelve). */
+/* ---------- El color y el tablero de cada uno (Paso 6, Feli) ----------
+   Feli (2026-10-01): el formato y la letra son siempre los de Transferencias
+   (data-aspecto="programa"). Cada uno elige el color (se usa en Compras,
+   Transferencias y el formulario) y el estilo del tablero. Se ve al instante
+   y va por la bandeja (sin señal, se guarda cuando vuelve). */
 const ESTILOS = [
+  { id: 'sobrio', nombre: 'Sobrio', nota: 'Como Transferencias' },
   { id: 'profundidad', nombre: 'Profundidad', nota: 'Como Trello' },
   { id: 'liso', nombre: 'Liso oscuro', nota: 'Fondo parejo' },
-  { id: 'vidrio', nombre: 'Vidrio', nota: 'Columnas transparentes' }
+  { id: 'vidrio', nombre: 'Vidrio', nota: 'Columnas transparentes' },
+  { id: 'aurora', nombre: 'Aurora', nota: 'Una luz de tu color' }
 ];
 function pintarAspecto() {
-  const estilo = document.documentElement.dataset.estilo || (APP.yo && APP.yo.estilo) || 'profundidad';
+  const estilo = document.documentElement.dataset.estilo || (APP.yo && APP.yo.estilo) || 'sobrio';
   const colores = (APP.config && APP.config.colores) || [];
-  const mio = (APP.yo && APP.yo.color) || 'Azul';     // si no eligió, Azul (Feli)
+  const mio = (APP.yo && APP.yo.color) || 'Rosa viejo';     // si no eligió, Rosa viejo (Feli, 2026-10-01)
   $('c-aspecto').hidden = !colores.length;          // una versión vieja del servidor todavía no los manda
-  // Prueba (Feli, 2026-10-01): ver Compras con el aspecto de Transferencias, solo en este dispositivo
-  $('c-prueba-aspecto').hidden = !(APP.yo && APP.yo.adminReal);
-  const gral = document.documentElement.dataset.aspecto || '';
-  $('c-aspecto-gral').querySelectorAll('button').forEach(function (b) {
-    b.setAttribute('aria-pressed', String(b.dataset.aspecto === gral));
-    b.onclick = function () { aspectoGeneral(b.dataset.aspecto); };
-  });
   $('c-estilos').innerHTML = ESTILOS.map(function (e) {
     return '<button type="button" class="asp-estilo" data-estilo="' + e.id + '" aria-pressed="' + (e.id === estilo) + '">' +
       '<span class="asp-mini" data-mini="' + e.id + '"><i></i><i></i><i></i></span><b>' + esc(e.nombre) + '</b><small>' + esc(e.nota) + '</small></button>';
   }).join('');
+  $('c-estilos').querySelectorAll('[data-estilo]').forEach(function (b) {
+    b.addEventListener('click', function () { cambiarAspecto({ estilo: b.dataset.estilo }); });
+  });
   $('c-colores').innerHTML = colores.map(function (c) {
       return '<button type="button" class="asp-color" data-color="' + esc(c.nombre) + '" aria-pressed="' + (c.nombre === mio) + '" title="' + esc(c.nombre) + '">' +
         '<i style="background:' + esc(c.hex) + '"></i><span>' + esc(c.nombre) + '</span></button>';
     }).join('');
-  $('c-estilos').querySelectorAll('[data-estilo]').forEach(function (b) {
-    b.addEventListener('click', function () { cambiarAspecto({ estilo: b.dataset.estilo }); });
-  });
   $('c-colores').querySelectorAll('[data-color]').forEach(function (b) {
     b.addEventListener('click', function () { cambiarAspecto({ color: b.dataset.color }); });
   });
 }
-/** '' = como siempre; 'programa' = como Transferencias (oscuro, como se ve el Programa de Compras con fondo oscuro; Feli). */
-function aspectoGeneral(cual) {
-  const html = document.documentElement;
-  if (cual === 'programa') { html.dataset.aspecto = 'programa'; guardado.guardar('compras_aspecto', 'programa'); }
-  else { delete html.dataset.aspecto; guardado.borrar('compras_aspecto'); }
-  pintarAspecto();
-}
-
 function cambiarAspecto(a) {
   const yo = APP.yo;
-  const color = a.color || yo.color || 'Azul';
-  const estilo = a.estilo || document.documentElement.dataset.estilo || yo.estilo || 'profundidad';
+  const color = a.color || yo.color || 'Rosa viejo';
+  const estilo = a.estilo || document.documentElement.dataset.estilo || yo.estilo || 'sobrio';
   const c = (APP.config.colores || []).filter(function (x) { return x.nombre === color; })[0];
   aplicarAspecto(c ? c.css : null, estilo);
   yo.color = color; yo.estilo = estilo;
