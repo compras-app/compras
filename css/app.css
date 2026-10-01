@@ -316,7 +316,7 @@ html,body{touch-action:pan-x pan-y}
 .enlaces .ir{display:flex;align-items:center;gap:8px;text-align:left;border:1.5px solid var(--line);border-radius:10px;background:var(--soft);color:var(--fg);font:inherit;font-size:14px;padding:8px 10px;min-height:44px;cursor:pointer}
 .enlaces .ir span{flex:1}
 .producto .en-tarjeta{border:0;background:none;color:var(--accent);font:inherit;font-size:13px;padding:2px 0;cursor:pointer;text-align:left}
-.tarjeta .trabajo{flex:none;font-size:13px}
+.tarjeta .sobre{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:3px}
 .sub-choice{margin-left:18px;width:calc(100% - 18px)}
 .choice .marca{font-size:18px;line-height:1}
 

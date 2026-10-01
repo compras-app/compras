@@ -246,7 +246,7 @@ function pintarProcesando() {
   const abierto = guardado.leer(K_PROCESANDO) === '1';
   cont.innerHTML = '<button type="button" class="proc-h" id="tb-proc-h" aria-expanded="' + abierto + '">' + (abierto ? '▾' : '▸') +
     ' 📦 Procesando <span class="n">(' + lista.length + ')</span></button>' +
-    (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">Todavía no hay ninguno. Acá aparecen los pedidos cuyos productos ya están todos en tarjetas de trabajo (las que se arman en la Decisión y en la Tanda verde).</p>' : '') +
+    (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">Todavía no hay ninguno. Acá aparecen los pedidos cuyos productos ya están todos en tarjetas de seguimiento (las que se arman en la Decisión y en la Tanda verde).</p>' : '') +
     (abierto && lista.length ? '<div class="proc-l">' + lista.map(function (x) {
       return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
         '<small>' + esc(x.resumen || '') + '</small></button>';
@@ -263,9 +263,9 @@ function esUrgente(u) { const l = (APP.config && APP.config.urgencias) || []; re
 
 function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+    (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
-    (t.trabajo ? '<span class="trabajo" title="Tarjeta de trabajo">📋</span>' : '') +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
     (enPorRecibir && t.entrega ? '<span class="entrega">' + esc(ENTREGA_CORTO[t.entrega] || t.entrega) + '</span>' : '') +
     (t.paraAprobar && APP.yo && APP.yo.admin ? '<span class="aprobar" title="Cambios para aprobar">⏳ ' + t.paraAprobar + '</span>' : '') +
@@ -764,7 +764,7 @@ function pintarTarjeta() {
   $('tj-datos').innerHTML = datos.join('');
 
   const etiquetas = [];
-  if (trabajo) etiquetas.push('📋 Tarjeta de trabajo');
+  if (trabajo) etiquetas.push('📋 Tarjeta de seguimiento');
   if ((t && t.masivo) || (p && p.origen === 'masivo')) etiquetas.push('Pedido masivo');
   if ((t && t.manual) || (p && p.manual)) etiquetas.push('✋ Gestión manual');
   if (!enTb && p && p.columna) etiquetas.push((p.columna === 'Procesando' ? '📦 ' : 'Finalizado: ') + p.columna);
@@ -848,10 +848,10 @@ function pintarEnlaces(d, trabajo) {
   };
   let html = '';
   if (trabajo && d && d.trabajo && d.trabajo.pedidos.length) {
-    html = '<small>' + (d.trabajo.pedidos.length === 1 ? 'Viene del pedido' : 'Viene de los pedidos') + '</small>' +
+    html = '<small>Esta tarjeta es una tarjeta de seguimiento ' + (d.trabajo.pedidos.length === 1 ? 'del pedido:' : 'de los pedidos:') + '</small>' +
       d.trabajo.pedidos.map(function (x) { return ir(x.ref, '📦 ' + (x.titulo || x.ref), x.sitio + ' · ' + x.solicitante); }).join('');
   } else if (!trabajo && d && d.tarjetas && d.tarjetas.length) {
-    html = '<small>Sus tarjetas</small>' +
+    html = '<small>Sus tarjetas de seguimiento</small>' +
       d.tarjetas.map(function (w) { return ir(w.id, '📋 ' + w.nombre + ' · ' + w.estado, w.titulo); }).join('');
   }
   cont.hidden = !html;
