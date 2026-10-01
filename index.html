@@ -222,6 +222,16 @@
         <div class="aj-dias"><label for="aj-dias">Avisar cada</label><input type="number" id="aj-dias" min="1" max="60" inputmode="numeric"><span>días</span>
           <button type="button" class="btn2" id="aj-dias-ok">Guardar</button></div>
       </div>
+      <div class="caja">
+        <h2>Pedir cotización</h2>
+        <label class="aj-prueba"><input type="checkbox" id="aj-prueba"> <span><b>🧪 Modo prueba</b><br><small>Todos los pedidos de cotización le llegan al número de prueba, no a los proveedores. Se apaga cuando la app entra en uso.</small></span></label>
+        <div class="campo"><label for="aj-numero">Número de prueba</label><input type="tel" id="aj-numero" inputmode="numeric" placeholder="5493525415029"></div>
+        <div class="campo"><label for="aj-msj-cot">Pedido de cotización</label><textarea id="aj-msj-cot" rows="7"></textarea>
+          <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto.</small></div>
+        <div class="campo"><label for="aj-msj-conf">Confirmación al ganador</label><textarea id="aj-msj-conf" rows="4"></textarea></div>
+        <div class="campo"><label for="aj-msj-gracias">A los que no ganaron</label><input type="text" id="aj-msj-gracias"></div>
+        <button type="button" class="btn2" id="aj-cot-ok">Guardar</button>
+      </div>
       <p class="nota ad-estado" id="aj-estado" role="status" aria-live="polite"></p>
     </section>
 
@@ -320,6 +330,11 @@
             <div id="tj-productos"></div>
             <button type="button" class="btn2" id="tj-agregar" hidden style="width:auto">+ Agregar producto</button>
           </div>
+          <!-- Fase 3: a quién se le pidió cotización (cotizar.js) -->
+          <div class="bloque" id="tj-cot-b" hidden>
+            <div class="act-h"><h3>Cotizaciones</h3><button type="button" class="btn-chico si" id="tj-cotizar" hidden>📤 Pedir cotización</button></div>
+            <div id="tj-cot"></div>
+          </div>
           <div class="bloque">
             <div class="act-h"><h3 id="tj-adj-t">Adjuntos</h3><button type="button" class="btn-chico" id="tj-adjuntar-b">📎 Adjuntar foto o PDF</button></div>
             <input type="file" id="tj-adjuntar" accept="image/*,application/pdf" multiple style="display:none">
@@ -379,6 +394,7 @@
 <script src="js/login.js"></script>
 <script src="js/envio-pedidos.js"></script>
 <script src="js/tablero.js"></script>
+<script src="js/cotizar.js"></script>
 <script src="js/tareas.js"></script>
 <script src="js/buscar.js"></script>
 <script src="js/admin.js"></script>

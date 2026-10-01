@@ -503,3 +503,18 @@ html[data-estilo="aurora"] .tablero .tarjeta{background:rgba(38,38,44,.94);color
 html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96);border-color:var(--accent)}
 html[data-aspecto="programa"] .tablero .tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg);border-color:#7a2a34}
 html[data-aspecto="programa"] .tablero .tarjeta.urgente:hover{background:var(--tj-roja-hover)}
+
+/* Pedir cotización (Fase 3, Paso 2) */
+.tarjeta .marca-cot{display:block;width:100%;margin-top:8px;border:1.5px dashed var(--line);border-radius:8px;background:none;color:var(--accent);font:inherit;font-size:13px;font-weight:700;padding:6px 8px;text-align:left;cursor:pointer}
+.tarjeta div.marca-cot{cursor:default}
+.col-h .cot-col{margin-top:8px}
+.cotizar .cot-bloque{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.cotizar .cot-bloque.fuera .sub-choice{opacity:.5}
+.cotizar .sub{display:block;color:var(--muted);font-size:12px;font-weight:400}
+.cot-fila{border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:var(--soft)}
+.cot-fila .sub{color:var(--muted);font-size:13px;margin-top:2px}
+.cot-fila.mal{border-color:var(--warn)}
+.cot-fila.espera{color:var(--muted)}
+.cot-fila .btn-chico{margin-top:6px}
+.aj-prueba{display:flex;gap:10px;align-items:flex-start;margin:6px 0 12px;cursor:pointer}
+.aj-prueba input{width:22px;height:22px;margin-top:2px}

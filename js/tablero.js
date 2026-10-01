@@ -208,7 +208,8 @@ function pintarTablero() {
     const ts = porCol[c.columna];
     html.push('<div class="col" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
-      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span></div>' +
+      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
+      (admin && c.columna === colPorCotizar() ? '<button type="button" class="btn-chico si cot-col" id="tb-cotizar-col">📤 Pedir cotizaciones</button>' : '') + '</div>' +
       '<div class="lista" data-columna="' + esc(c.columna) + '">' +
       (ts.length ? ts.map(function (t) { return htmlTarjeta(t, c.columna === colPorRecibir()); }).join('')
                  : '<div class="vacia">Sin pedidos</div>') +
@@ -217,6 +218,11 @@ function pintarTablero() {
   cont.innerHTML = html.join('');
   cont.scrollLeft = scroll;
   cont.querySelectorAll('.lista').forEach(function (l) { if (listas[l.dataset.columna]) l.scrollTop = listas[l.dataset.columna]; });
+  const bc = $('tb-cotizar-col');
+  if (bc) bc.addEventListener('click', pedirCotizacionesColumna);
+  cont.querySelectorAll('[data-cotizar]').forEach(function (b) {
+    b.addEventListener('click', function (e) { e.stopPropagation(); if (!TB.recienArrastrada) abrirPedirCotizacion(b.dataset.cotizar); });
+  });
   cont.querySelectorAll('.tarjeta').forEach(function (el) {
     const ref = el.dataset.ref;
     el.addEventListener('click', function (e) {
@@ -270,7 +276,7 @@ function htmlTarjeta(t, enPorRecibir) {
     (enPorRecibir && t.entrega ? '<span class="entrega">' + esc(ENTREGA_CORTO[t.entrega] || t.entrega) + '</span>' : '') +
     (t.paraAprobar && APP.yo && APP.yo.admin ? '<span class="aprobar" title="Cambios para aprobar">⏳ ' + t.paraAprobar + '</span>' : '') +
     (t.responsable ? '<span class="resp" title="Responsable: ' + esc(t.responsable) + '">' + esc(inicial(t.responsable)) + '</span>' : '') +
-    '</div></div>';
+    '</div>' + htmlMarcaCotizar(t) + '</div>';                                     // Fase 3: "📤 Pedir cotización" (cotizar.js)
 }
 
 /* ---------- Secciones: saltar al principio de cada una ---------- */
@@ -366,6 +372,12 @@ async function moverA(ref, destino, despuesDe) {
   bandeja.agregar('moverTarjeta', [ref, op], que + t.titulo + '" a ' + destino);
   pintarTablero();
   if (TB.abierta === ref) pintarTarjeta();
+  // Fase 3: al llegar a Por cotizar, pregunta si se pide ya (si no, queda el botón en la tarjeta)
+  if (destino !== t.columna && sePuedeCotizar(Object.assign({}, t, { columna: destino })) && APP.yo.admin) {
+    const ya = await dialogo({ titulo: '¿Pedir cotización ahora?', texto: '"' + t.titulo + '" pasó a ' + destino + '. Si no, queda el botón "📤 Pedir cotización" en la tarjeta.',
+      botones: [{ texto: 'Sí, pedir ahora', clase: 'btn', valor: true }, { texto: 'Después', valor: null }] });
+    if (ya) abrirPedirCotizacion(ref);
+  }
 }
 
 /* ---------- Arrastrar (solo admins) ----------
@@ -670,7 +682,7 @@ async function traerTarjeta(ref) {
   } else if (r.ok) {
     const antes = TB.detalle;
     TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
-                   trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {},
+                   trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {}, solicitudes: r.solicitudes || [],
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -807,6 +819,7 @@ function pintarTarjeta() {
   $('tj-reabrir').hidden = !(admin && !enTb && p && p.volverA);     // Paso 5
   $('tj-reabrir').textContent = trabajo ? '↩️ Reabrir la tarjeta' : '↩️ Reabrir el pedido';
   pintarAdjuntos();
+  pintarCotizaciones();                                                    // cotizar.js
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {
@@ -1126,6 +1139,12 @@ function fraseEvento(e, d) {
     if (e.campo === 'Entrega') return n ? 'marcó cómo llega ' + nom + ': ' + (ENTREGA_TEXTO[n] || n) : '';
     return '';
   }
+  if (e.entidad === 'solicitud') {               // Fase 3: pedidos de cotización
+    if (e.accion === 'crear') return 'pidió cotización (' + n + ')';
+    if (e.accion === 'reintentar') return 'volvió a mandar el pedido de cotización a ' + n;
+    return '';
+  }
+  if (e.entidad === 'cotizacion') return '';
   if (e.entidad === 'adjunto') {
     if (e.accion === 'crear') return 'adjuntó "' + n + '"';
     return e.campo === 'Estado' && n === 'Quitado' ? 'quitó un adjunto' : '';
@@ -1998,7 +2017,7 @@ function bloquesDeTarea(tarea) {
   ['tj-check-b', 'tj-rec-b'].forEach(function (id) { $(id).hidden = !tarea; });
   $('tj-borrar-tarea').hidden = !tarea;
   if (!tarea) $('tj-editar').textContent = '✏️ Editar pedido';
-  if (tarea) ['tj-cancelar', 'tj-reabrir', 'tj-enlaces'].forEach(function (id) { $(id).hidden = true; });
+  if (tarea) ['tj-cancelar', 'tj-reabrir', 'tj-enlaces', 'tj-cot-b'].forEach(function (id) { $(id).hidden = true; });
 }
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */

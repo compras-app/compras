@@ -323,6 +323,14 @@ function pintarAjustes() {
   $('aj-granjas').querySelectorAll('[data-renombrar]').forEach(function (b) { b.addEventListener('click', function () { renombrarGranja(b.dataset.renombrar); }); });
   $('aj-granjas').querySelectorAll('[data-sacar]').forEach(function (b) { b.addEventListener('click', function () { sacarGranja(b.dataset.sacar); }); });
   if (a && document.activeElement !== $('aj-dias')) $('aj-dias').value = a.diasTanda;
+  if (a && a.cotizar && !AD.cotizarPintado) {           // Pedir cotización (Fase 3): se llena una vez, para no pisar lo que se escribe
+    AD.cotizarPintado = true;
+    $('aj-prueba').checked = a.cotizar.prueba;
+    $('aj-numero').value = a.cotizar.numeroPrueba || '';
+    $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';
+    $('aj-msj-conf').value = a.cotizar.msjConfirmar || '';
+    $('aj-msj-gracias').value = a.cotizar.msjGracias || '';
+  }
 }
 
 /** Después de cambiar las granjas: los filtros y el pedido masivo usan la lista nueva sin volver a abrir la app. */
@@ -383,6 +391,16 @@ async function sacarGranja(nombre) {
     botones: [{ texto: 'Sí, sacarla', clase: 'btn peligro-btn', valor: true }, { texto: 'Volver', valor: null }] });
   if (si) granjaOp({ accion: 'sacar', nombre: nombre }, function () { return 'Listo: se sacó ' + nombre + '.'; });
 }
+
+$('aj-cot-ok').addEventListener('click', async function () {
+  const r = await api('guardarAjustesCotizar', {
+    numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
+    msjConfirmar: $('aj-msj-conf').value, msjGracias: $('aj-msj-gracias').value
+  });
+  if (!r.ok) return aviso(textoDeError(r), 'bad');
+  AD.ajustes.cotizar = r.cotizar;
+  aviso(r.cotizar.prueba ? 'Listo. 🧪 Modo prueba prendido: todo le llega al número de prueba.' : 'Listo. ⚠️ Modo prueba apagado: los pedidos de cotización les llegan a los proveedores.');
+});
 
 $('aj-dias-ok').addEventListener('click', async function () {
   const n = Number($('aj-dias').value);
