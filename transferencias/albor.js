@@ -4,7 +4,7 @@
   Antes lo hacía el Programa de Compras de Python (albor.py, cargas.py y
   motor.py en compras-app/programa-compras). Ahora lo hace esta página con
   la extensión de Chrome "Programa de Compras · Albor", que son "las manos":
-  abre la ventana de Albor, hace clic, escribe y agarra el reporte. Los
+  abre la pestaña de Albor, hace clic, escribe y agarra el reporte. Los
   pasos, las esperas, los reintentos y las pausas viven acá, así cada cambio
   les llega a todos sin tocar las computadoras.
 
@@ -685,8 +685,8 @@ Albor.prototype.decir = function(texto){
   try{ this.avisar(texto); }catch(e){}
 };
 
-/* Abre la ventana de Albor en el Chrome de la persona, con su sesión.
-   Devuelve si la ventana es nueva. */
+/* Abre la pestaña de Albor en el Chrome de la persona, con su sesión.
+   Devuelve si la pestaña es nueva. */
 Albor.prototype.abrir = async function(){
   var r = await Mano.pedirSeguro('abrir', { url: C.URL_EXISTENCIAS }, 60000);
   this.abierta = true;
@@ -732,11 +732,11 @@ Albor.prototype.asegurarSesion = async function(minutos){
   if(await this.haySesion()) return true;
 
   await this.pg.traer();
-  this.decir('Iniciá sesión en la ventana de Albor que se abrió. Cuando entres sigo solo.');
+  this.decir('Iniciá sesión en la pestaña de Albor que se abrió. Cuando entres sigo solo.');
 
   var fin = Date.now() + minutos * 60000;
   while(Date.now() < fin){
-    if(!(await this.pg.viva())) throw new Error('Se cerró la ventana de Albor antes de iniciar sesión.');
+    if(!(await this.pg.viva())) throw new Error('Se cerró la pestaña de Albor antes de iniciar sesión.');
 
     if(await this.haySesion()){ this.decir('Sesión iniciada.'); return true; }
 
@@ -777,7 +777,7 @@ Albor.prototype.elegirPuntos = async function(puntos){
     // que van, como se hacía antes.
     for(var i = 0; i < quiero.length; i++) await tildar(pg, '#PuntosStock_Lista_chk_' + quiero[i], true);
     this.decir('[!] No pude leer la lista de puntos de stock. ' +
-               'Mirá en la ventana de Albor que queden tildados solo los que van.');
+               'Mirá en la pestaña de Albor que queden tildados solo los que van.');
     return [];
   }
 
@@ -897,7 +897,7 @@ Albor.prototype.exportarCsv = async function(espera, intentos){
     if(e instanceof Cortado) throw e;
     // Sin el recuadro del reporte no hay nada que exportar: casi siempre es
     // que quedó un aviso de Albor tapando el formulario.
-    throw new Error('Albor no abrió el reporte. Mirá la ventana: si quedó algún ' +
+    throw new Error('Albor no abrió el reporte. Mirá la pestaña de Albor: si quedó algún ' +
                     'cartel abierto, cerralo y volvé a tocar el botón.');
   }
   await esperar(pg, 30000);
@@ -937,7 +937,7 @@ Albor.prototype.exportarCsv = async function(espera, intentos){
   }
 
   throw new Error('Albor no terminó de armar el reporte en ' + (intentos * espera / 1000) + ' segundos (' + ultimo + '). ' +
-                  'La ventana quedó abierta: si el reporte está en pantalla, probá de nuevo.');
+                  'La pestaña de Albor quedó abierta: si el reporte está en pantalla, probá de nuevo.');
 };
 
 /* Lo que llegó después de pedir el reporte: la respuesta de Albor copiada
@@ -1670,7 +1670,7 @@ async function egresar(pg, comprobantes, charla, hechos, cuentas){
    ================================================================== */
 
 var M = {
-  albor: null,            // la ventana de Albor de esta pestaña (Albor)
+  albor: null,            // la pestaña de Albor de esta pestaña (Albor)
   ocupado: false,
   salida: '__progreso',   // adónde van las líneas: Conteo de stock o el recuadro de la carga
   cancelar: false,
@@ -1683,12 +1683,12 @@ function avisar(texto){
   if(f) f(String(texto));
 }
 
-/* El error, en una línea. Si se cerró la ventana de Albor en el medio, dicho simple. */
+/* El error, en una línea. Si se cerró la pestaña de Albor en el medio, dicho simple. */
 function motivoDe(e){
   var t = primeraLinea(e, 200);
   if(e instanceof Cortado) return t;
   if(/has been closed|Target closed|No tab with id|ya no está en Albor/.test(t))
-    return 'Se cerró la ventana de Albor mientras se usaba. Tocá el botón de nuevo: se abre una ventana nueva.';
+    return 'Se cerró la pestaña de Albor mientras se usaba. Tocá el botón de nuevo: se abre una pestaña nueva.';
   if(t === 'SIN_EXTENSION' || t === 'EXT_DESCONECTADA')
     return 'No encuentro la extensión "Programa de Compras · Albor" en este Chrome. Fijate que esté instalada y prendida.';
   return t;
@@ -1704,7 +1704,7 @@ Mano.escuchas.push(function(ev){
   if(ev.evento === 'descarga') anotar('Chrome empezó una descarga: ' + String(ev.url || '').slice(0, 160));
 });
 
-/* Lo largo, de a uno: la extensión maneja una sola ventana de Albor. */
+/* Lo largo, de a uno: la extensión maneja una sola pestaña de Albor. */
 async function trabajo(salida, fn){
   if(M.ocupado) return { ok: false, motivo: 'Ya se está trabajando en Albor. Esperá a que termine.' };
   M.ocupado = true;
@@ -1718,29 +1718,31 @@ async function trabajo(salida, fn){
     return { ok: false, motivo: motivoDe(e) };
   }finally{
     clearInterval(latido);
-    // Se saca el control remoto: se va la franja de Chrome. La ventana queda.
+    // Se saca el control remoto: se va la franja de Chrome. Si la pestaña de
+    // Albor quedó abierta (algo no anduvo), queda al lado; se vuelve a la app.
     await Mano.pedirSeguro('soltar', {}, 15000).catch(function(){});
+    await Mano.pedirSeguro('volver', {}, 15000).catch(function(){});
     await Mano.pedirSeguro('liberar', {}, 15000).catch(function(){});
     M.trabajo = null;
     M.ocupado = false;
   }
 }
 
-/* La ventana de Albor abierta y adentro de Albor. */
+/* La pestaña de Albor abierta y adentro de Albor. */
 async function alborConSesion(){
   if(M.albor && M.albor.abierta && !(await M.albor.pg.viva())){
-    avisar('La ventana de Albor estaba cerrada: abro una nueva.');
+    avisar('La pestaña de Albor estaba cerrada: abro una nueva.');
     M.albor = null;
   }
   if(!M.albor){
-    avisar('Abriendo el navegador…');
+    avisar('Abriendo la pestaña de Albor…');
     M.albor = new Albor(avisar);
   }
   M.albor.pg.cortado = null;
   M.trabajo = { pg: M.albor.pg };
   if(!(await M.albor.asegurarSesion()))
     throw new Error('Pasaron 5 minutos y Albor seguía sin sesión iniciada. ' +
-                    'La ventana quedó abierta: iniciá sesión ahí y volvé a tocar el botón.');
+                    'La pestaña de Albor quedó abierta: iniciá sesión ahí y volvé a tocar el botón.');
   return M.albor;
 }
 
@@ -1756,15 +1758,15 @@ function bajar_existencias(puntos, hasta){
       a.decir('[!] Se pidieron ' + pedidos + ' puntos y el reporte trajo ' + traidos.length + ': ' + traidos.join(', ') + '.');
     }
     if(!traidos.length)
-      return { ok: false, motivo: 'El reporte salió vacío. Fijate en la ventana de Albor si quedó algún filtro puesto de más.' };
+      return { ok: false, motivo: 'El reporte salió vacío. Fijate en la pestaña de Albor si quedó algún filtro puesto de más.' };
     a.decir('Listo: ' + traidos.join(', ') + '.');
     var leida = a.hasta_reporte, aviso = '';
     if(hasta && leida && !mismaFecha(hasta, leida)){
       aviso = 'Pediste existencias hasta el ' + hasta + ' pero el reporte de Albor salió hasta el ' + leida + '. ' +
-              "Revisá la fecha 'Hasta' en la ventana de Albor.";
+              "Revisá la fecha 'Hasta' en la pestaña de Albor.";
       a.decir('[!] ' + aviso);
     }
-    // Terminó bien: se cierra la ventana de Albor. Si algo falló, en cambio,
+    // Terminó bien: se cierra la pestaña de Albor. Si algo falló, en cambio,
     // queda abierta para que se vea qué pasó.
     await a.cerrar();
     M.albor = null;
@@ -1773,14 +1775,82 @@ function bajar_existencias(puntos, hasta){
   });
 }
 
-/* Una pausa en la pantalla; espera el botón (responder_carga). */
+/* El cartel de la pausa ADENTRO de la pestaña de Albor (Feli, 2026-10-01):
+   se revisa Albor y se toca el botón ahí mismo, sin ir y venir a la app. Se
+   pregunta cada medio segundo si lo tocaron. Mientras está el cartel no se
+   toca nada de Albor (es una pausa); se saca antes de seguir. */
+var JS_CARTEL = String(function(o){
+  var r = window.__pcResp;
+  if(r){ window.__pcResp = null; var v = document.getElementById('__pc_cartel'); if(v) v.remove(); return r; }
+  var c = document.getElementById('__pc_cartel');
+  if(!c){
+    window.__pcResp = null;
+    c = document.createElement('div');
+    c.id = '__pc_cartel';
+    c.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:2147483647;width:min(440px,calc(100vw - 36px));' +
+      'background:#1d1d20;color:#eceae5;border:1px solid #33333a;border-left:5px solid ' + o.color + ';border-radius:10px;' +
+      'padding:14px 16px;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
+      'box-shadow:0 12px 36px rgba(0,0,0,.45);text-align:left';
+    var b = 'font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;border-radius:6px;padding:9px 14px;cursor:pointer;';
+    c.innerHTML = '<div style="font-weight:700;margin-bottom:6px;color:' + o.color + '">Programa de Compras</div>' +
+      '<div class="t" style="white-space:pre-wrap;max-height:50vh;overflow:auto"></div>' +
+      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
+      '<button type="button" class="s" style="' + b + 'background:' + o.color + ';color:#1a1013;border:0"></button>' +
+      '<button type="button" class="x" style="' + b + 'background:none;color:#a3a099;border:1px solid #33333a">Cancelar la carga</button></div>';
+    c.querySelector('.s').onclick = function(){ window.__pcResp = 'seguir'; c.remove(); };
+    c.querySelector('.x').onclick = function(){
+      if(this.dataset.seguro){ window.__pcResp = 'cancelar'; c.remove(); }
+      else{ this.dataset.seguro = '1'; this.textContent = '¿Seguro? Tocá de nuevo para cancelar'; this.style.color = '#f08b84'; }
+    };
+    (document.body || document.documentElement).appendChild(c);
+  }
+  c.querySelector('.t').textContent = o.texto;
+  c.querySelector('.s').textContent = o.boton;
+  return null;
+});
+var JS_SACAR_CARTEL = "() => { const c = document.getElementById('__pc_cartel'); if (c) c.remove(); window.__pcResp = null; }";
+
+function colorDeLaApp(){
+  try{ return (getComputedStyle(document.documentElement).getPropertyValue('--accent') || '').trim() || '#d08a93'; }
+  catch(e){ return '#d08a93'; }
+}
+
+async function cartelEnAlbor(pausa){
+  var pg = M.albor && M.albor.pg;
+  if(!pg) return;
+  await pg.traer();
+  while(M.esperando === pausa){
+    try{
+      var r = await pg.evaluar(JS_CARTEL, { texto: pausa.texto, boton: pausa.boton, color: colorDeLaApp() });
+      if(r && M.esperando === pausa){
+        if(window.__alborPausaFin) window.__alborPausaFin(r);
+        responder_carga(r);
+        break;
+      }
+    }catch(e){ if(e instanceof Cortado) break; }
+    if(M.esperando === pausa) await dormir(500);
+  }
+}
+
+/* Una pausa en la pantalla y en Albor; espera el botón (responder_carga). */
 function preguntar(texto, boton){
   if(M.cancelar) return Promise.resolve(false);
   return new Promise(function(listo){
-    M.esperando = { texto: String(texto), boton: String(boton), responder: listo };
+    var pausa = { texto: String(texto), boton: String(boton), responder: listo };
+    M.esperando = pausa;
     anotar('PAUSA [' + boton + '] ' + String(texto).replace(/\n/g, ' | ').slice(0, 200));
     if(window.__alborPausa) window.__alborPausa(String(texto), String(boton));
-  }).then(function(r){ M.esperando = null; return r === 'seguir' && !M.cancelar; });
+    cartelEnAlbor(pausa);
+  }).then(async function(r){
+    M.esperando = null;
+    // Antes de seguir: sin cartel encima, y Albor a la vista mientras trabaja.
+    var pg = M.albor && M.albor.pg;
+    if(pg){
+      try{ await pg.evaluar(JS_SACAR_CARTEL); }catch(e){}
+      if(r === 'seguir' && !M.cancelar) await pg.traer();
+    }
+    return r === 'seguir' && !M.cancelar;
+  });
 }
 
 function responder_carga(que){
@@ -1815,6 +1885,11 @@ function cargar(hacer, base, etiqueta, archivos){
     try{
       var a2 = await alborConSesion();
       await hacer(a2.pg, charla, hechos);
+      // Terminó bien: se cierra la pestaña de Albor y se vuelve a la app
+      // (Feli, 2026-10-01). Si algo falló o se canceló, queda abierta.
+      await a2.cerrar();
+      M.albor = null;
+      charla.decir('Albor cerrado.');
       return { ok: true, hechos: hechos, carpeta: carpeta };
     }catch(e){
       if(e instanceof Cancelado)

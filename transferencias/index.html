@@ -1488,7 +1488,46 @@
     pintarEgresos();
   }
 
-  function cargarTexto(texto, nombreArchivo, fechaArchivo){
+  /* Las existencias quedan guardadas en esta computadora (Feli, 2026-10-01: ir a
+     Tu cuenta o a Compras las borraba y había que bajarlas de nuevo). Con
+     ellas va lo que ya se transfirió y egresó con ese reporte: así, al volver,
+     sigue sin dejar cargar dos veces lo mismo. Duran EXIST_DIAS días. */
+  var CLAVE_EXIST = 'programa-compras:existencias';
+  var EXIST_DIAS = 7;
+  function guardarExistencias(texto, nombre, fecha){
+    try{
+      localStorage.setItem(CLAVE_EXIST, JSON.stringify({ texto: texto, nombre: nombre || '', fecha: fecha || null,
+        cuando: Date.now(), hasta: '', transferido: '', egresadas: {} }));
+    }catch(e){ try{ localStorage.removeItem(CLAVE_EXIST); }catch(x){} }   // no entra: no se guarda
+  }
+  function recordarExistencias(cambios){
+    try{
+      var g = JSON.parse(localStorage.getItem(CLAVE_EXIST) || 'null');
+      if(!g) return;
+      Object.keys(cambios).forEach(function(k){ g[k] = cambios[k]; });
+      localStorage.setItem(CLAVE_EXIST, JSON.stringify(g));
+    }catch(e){}
+  }
+  function recuperarExistencias(){
+    var g = null;
+    try{ g = JSON.parse(localStorage.getItem(CLAVE_EXIST) || 'null'); }catch(e){}
+    if(!g || !g.texto) return;
+    if(Date.now() - (g.cuando || 0) > EXIST_DIAS * 864e5){
+      try{ localStorage.removeItem(CLAVE_EXIST); }catch(e){}
+      return;
+    }
+    if(!cargarTexto(g.texto, g.nombre, g.fecha, true)) return;
+    if(g.hasta){ DATA.hasta = g.hasta; mostrarFechaReporte(); }
+    if(g.transferido) TRANSFERIDO_CON = { data: DATA, envio: g.transferido };
+    var egr = g.egresadas || {};
+    if(Object.keys(egr).length){
+      EGRESADAS = { data: DATA, granjas: egr };
+      Object.keys(egr).forEach(function(k){ GRANJAS_FUERA[k] = true; });
+      analizarEgresos();
+    }
+  }
+
+  function cargarTexto(texto, nombreArchivo, fechaArchivo, recuperando){
     limpiarError();
     var d = construir(texto);
     if(!d){
@@ -1497,6 +1536,7 @@
       return false;
     }
     DATA = d;
+    if(!recuperando) guardarExistencias(texto, nombreArchivo, fechaArchivo);
     GRANJAS_FUERA = {};              // reporte nuevo: vuelven todas las granjas tildadas
     $('p-hasta').textContent = '';
     DATA.archivoNombre = nombreArchivo || '';
@@ -3234,6 +3274,17 @@
 
   function motor(){ return MOTOR.vivo ? MOTOR_API : null; }
 
+  /* La versión de la extensión que espera esta página: si la de la compu es
+     más vieja, anda igual, pero se avisa que hay una nueva. */
+  var VERSION_EXTENSION = '3.1';
+  function versionMenor(a, b){
+    var x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number);
+    for(var i = 0; i < Math.max(x.length, y.length); i++){
+      if((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+    }
+    return false;
+  }
+
   /* ¿Está la extensión en este Chrome? Se pregunta al abrir y cada 15
      segundos (si se instala después, la pantalla se entera sola). */
   function buscarMotor(){
@@ -3255,8 +3306,11 @@
     $('bajarbtn').disabled = !vivo;
     /* El texto va todo en un <span>: .estado es flex y, si no, cada palabra en
        negrita queda como una columna aparte (Feli, 2026-10-01). */
+    var vieja = vivo && versionMenor(MOTOR.version, VERSION_EXTENSION);
     $('motorestado').innerHTML = vivo
-      ? '<span class="punto"></span><span>Extensión de Albor de este Chrome: <b>lista</b>.</span>'
+      ? '<span class="punto"></span><span>Extensión de Albor de este Chrome: <b>lista</b>.' +
+        (vieja ? ' Hay una versión nueva: en <b>chrome://extensions</b>, tocá la flechita circular (Reload) de ' +
+                 '"Programa de Compras · Albor" (antes, <b>git pull</b> en la carpeta del programa).' : '') + '</span>'
       : '<span class="punto"></span><span>Para usar Albor desde acá falta la extensión ' +
         '<b>Programa de Compras · Albor</b> en este Chrome (o Edge). ' +
         'Hasta entonces podés arrastrar el CSV abajo.</span>';
@@ -4037,7 +4091,7 @@
         progreso('Leyendo el reporte…');
         (usar || cargarTexto)(r.csv, 'Albor · ' + new Date().toLocaleString('es-AR'), Date.now());
         // La fecha que dice el propio reporte manda sobre la pedida.
-        if(DATA){ DATA.hasta = r.hasta || hasta || ''; mostrarFechaReporte(); }
+        if(DATA){ DATA.hasta = r.hasta || hasta || ''; recordarExistencias({ hasta: DATA.hasta }); mostrarFechaReporte(); }
         if(r.aviso) mostrarError(r.aviso);
         pintarEgresos();
         progreso('Listo.');
@@ -4132,6 +4186,12 @@
            esc(f.map(function(i){ return i.codigo + ' × ' + i.unidad; }).join(', ')) + '</span>';
   }
 
+  /* La pausa se contestó en el cartel de la pestaña de Albor (albor.js). */
+  window.__alborPausaFin = function(que){
+    $('alborpausa').classList.remove('on');
+    if(que === 'cancelar') alborLog('Cancelando…');
+  };
+
   $('alborseguir').addEventListener('click', function(){
     $('alborpausa').classList.remove('on');
     motor().responder_carga('seguir');
@@ -4177,7 +4237,7 @@
     }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
 
     var hechos = (r && r.hechos) || [];
-    if(hechos.length) TRANSFERIDO_CON = { data: DATA, envio: dest.nombre };
+    if(hechos.length){ TRANSFERIDO_CON = { data: DATA, envio: dest.nombre }; recordarExistencias({ transferido: dest.nombre }); }
     var lineas = hechos.map(function(x){
       return '<li>' + esc(x.origen) + ' → ' + esc(x.destino) + ': comprobante <b>' +
              esc(x.comprobante || 'sin número') + '</b> · ' + x.cargados + ' de ' + x.total +
@@ -4265,6 +4325,7 @@
         EGRESADAS.granjas[x.punto] = true;
         GRANJAS_FUERA[x.punto] = true;   // se destilda sola: ya está hecha
       });
+      recordarExistencias({ egresadas: EGRESADAS.granjas });
       var proximo = siguienteNumero(hechos[hechos.length - 1].numero);
       escribirGuardado(CLAVE_NROEGR, proximo);
       $('gnumero').value = proximo;
@@ -4428,6 +4489,7 @@
     guardado.guardar(K_APARTADO, 'transferencias');
     pintarQuienSoy();
     aplicarGuardado();
+    if(ES_ADMIN) recuperarExistencias();
     if(!ES_ADMIN) irA('panel-armar');
     pintarSinRed();
     bandeja.procesar();
