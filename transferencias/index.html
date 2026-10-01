@@ -570,7 +570,9 @@
   input[readonly]{background:var(--head);color:var(--ink-soft)}
   .enviados{margin-top:6px;font-size:13px;color:var(--ink-soft)}
   .tab[hidden],.paso .fila[hidden]{display:none}
-  #motorestado{justify-content:center;margin:0 auto 12px;max-width:760px;text-align:left}
+  #motorestado{justify-content:center;flex-wrap:wrap;margin:0 auto 12px;max-width:760px;text-align:left}
+  #motorestado.falta{flex-wrap:nowrap;align-items:flex-start}
+  #motorestado.falta .punto{margin-top:5px}
   .recibidos .uno.pend .granja::after{content:' · pendientes';color:var(--accent)}
   /* Celular: la pantalla del programa, apilada (lo que más se usa ahí es Armar pedido) */
   @media (max-width:700px){
@@ -3211,29 +3213,59 @@
   }
 
   /* Lo que llegó desde la última vez: líneas de avance y pausas. */
-  function leerAvance(){
-    return pedirMotor('/avance?desde=' + MOTOR.n, null, 4000).then(function(r){
-      (r.eventos || []).forEach(function(e){
-        MOTOR.n = Math.max(MOTOR.n, e.n);
-        if(e.tipo === 'linea'){ var f = window[e.salida]; if(f) f(e.texto); }
-      });
-      // La pausa a la vista (también si se recargó la página en el medio)
-      var p = r.pausa;
-      if(p && MOTOR.pausaVista !== p.texto){ MOTOR.pausaVista = p.texto; window.__alborPausa(p.texto, p.boton); }
-      if(!p) MOTOR.pausaVista = '';
-    }).catch(function(){});
+  function procesarAvance(r){
+    (r.eventos || []).forEach(function(e){
+      MOTOR.n = Math.max(MOTOR.n, e.n);
+      if(e.tipo === 'linea'){ var f = window[e.salida]; if(f) f(e.texto); }
+    });
+    // La pausa a la vista (también si se recargó la página en el medio)
+    var p = r.pausa;
+    if(p && MOTOR.pausaVista !== p.texto){ MOTOR.pausaVista = p.texto; window.__alborPausa(p.texto, p.boton); }
+    if(!p) MOTOR.pausaVista = '';
   }
 
+  /* Lo largo (bajar existencias, cargar en Albor): el programa lo empieza y
+     contesta enseguida con un número; después se le pregunta cada medio
+     segundo cómo va, hasta que termina. Así ninguna conexión queda abierta
+     varios minutos (por ejemplo, mientras se inicia sesión en Albor), que
+     Chrome corta ("Failed to fetch"). Si algo no anduvo, se muestra lo
+     último que dijo el programa. */
   function llamarMotor(fn, args){
-    var corriendo = true;
-    (function mirar(){
-      if(!corriendo) return;
-      leerAvance().then(function(){ setTimeout(mirar, 500); });
-    })();
-    return pedirMotor('/llamar', { fn: fn, args: args })
-      .then(function(r){ return leerAvance().then(function(){ return r; }); })
-      .catch(function(e){ return { ok: false, motivo: 'Se perdió la conexión con el Programa de Compras de esta computadora (' + e.message + ').' }; })
-      .finally(function(){ corriendo = false; });
+    return pedirMotor('/empezar', { fn: fn, args: args }, 15000).then(function(r){
+      if(r && r.motivo === 'No existe.')
+        return { ok: false, motivo: 'El Programa de Compras de esta computadora es de una versión vieja: armalo de nuevo (build.command) y abrilo.' };
+      if(!r || !r.ok || !r.trabajo) return r;
+      return new Promise(function(listo){
+        var fallos = 0;
+        (function mirar(){
+          pedirMotor('/avance?desde=' + MOTOR.n + '&trabajo=' + r.trabajo, null, 8000).then(function(a){
+            fallos = 0;
+            procesarAvance(a);
+            if(a.trabajo && a.trabajo.listo) return listo(a.trabajo.resultado || { ok: false, motivo: 'Terminó sin resultado.' });
+            if(a.trabajo === null) return listo({ ok: false, motivo: 'El Programa de Compras se cerró en el medio. Abrilo de nuevo y repetí.' });
+            setTimeout(mirar, 500);
+          }).catch(function(){
+            if(++fallos > 30) return listo({ ok: false, motivo: 'El Programa de Compras de esta computadora dejó de contestar.' });
+            setTimeout(mirar, 1000);
+          });
+        })();
+      });
+    }).catch(function(e){
+      return { ok: false, motivo: 'No pude hablar con el Programa de Compras de esta computadora (' + e.message + ').' };
+    }).then(function(r){
+      if(r && !r.ok && !r.cancelado) mostrarRegistro(fn === 'bajar_existencias' ? progreso : alborLog);
+      return r;
+    });
+  }
+
+  /* Lo último que dijo el programa (su motor.log), en el recuadro de avance. */
+  function mostrarRegistro(escribir){
+    pedirMotor('/registro', null, 4000).then(function(r){
+      var l = (r && r.lineas) || [];
+      if(!l.length) return;
+      escribir('— Lo último que dijo el Programa de Compras (para Claude, si hace falta) —');
+      l.slice(-25).forEach(function(x){ escribir(x); });
+    }).catch(function(){});
   }
 
   var MOTOR_API = {
@@ -3241,7 +3273,7 @@
     cargar_transferencia: function(b, a, e){ return llamarMotor('cargar_transferencia', [b, a, e]); },
     cargar_egresos: function(c, a, e){ return llamarMotor('cargar_egresos', [c, a, e]); },
     responder_carga: function(que){ MOTOR.pausaVista = ''; return pedirMotor('/llamar', { fn: 'responder_carga', args: [que] }); },
-    cerrar_albor: function(){ return pedirMotor('/llamar', { fn: 'cerrar_albor', args: [] }); },
+    cerrar_albor: function(){ return llamarMotor('cerrar_albor', []); },
     abrir_carpeta: function(ruta){ return pedirMotor('/llamar', { fn: 'abrir_carpeta', args: [ruta] }); }
   };
 
@@ -3255,6 +3287,7 @@
       var antes = MOTOR.vivo;
       MOTOR.vivo = !!(r && r.ok);
       if(MOTOR.vivo && !antes){ MOTOR.n = r.n || 0; }
+      if(MOTOR.vivo) MOTOR.arrancarSolo = r.arrancar_solo !== false;
       pintarMotor();
     }).catch(function(){ MOTOR.vivo = false; pintarMotor(); });
   }
@@ -3267,12 +3300,34 @@
     $('bajar').classList.toggle('on', ES_ADMIN && !EN_CELULAR);
     $('rebajar').classList.toggle('on', vivo);
     $('bajarbtn').disabled = !vivo;
+    /* El texto va todo en un <span>: .estado es flex y, si no, cada palabra en
+       negrita queda como una columna aparte (Feli, 2026-10-01). */
     $('motorestado').innerHTML = vivo
-      ? '<span class="punto"></span>Programa de Compras de esta computadora: <b>listo</b>.'
-      : '<span class="punto"></span>El <b>Programa de Compras</b> no está abierto en esta computadora. ' +
-        'Abrilo (arranca solo al prender la compu) para usar Albor desde acá. Hasta entonces podés arrastrar el CSV abajo. ' +
-        'Si Chrome pregunta si esta página puede acceder a otros dispositivos de la red local, tocá <b>Permitir</b>.';
+      ? '<span class="punto"></span><span>Programa de Compras de esta computadora: <b>listo</b>.</span>' +
+        '<label class="check" style="margin-left:12px"><input type="checkbox" id="motorsolo"' + (MOTOR.arrancarSolo ? ' checked' : '') +
+        '> que arranque solo al prender esta compu</label>' +
+        '<button class="linkbtn" id="motorapagar" style="margin-left:12px">cerrar el programa</button>'
+      : '<span class="punto"></span><span>El <b>Programa de Compras</b> no está abierto en esta computadora. ' +
+        'Abrilo para usar Albor desde acá. Hasta entonces podés arrastrar el CSV abajo. ' +
+        'Si Chrome pregunta si esta página puede acceder a otros dispositivos de la red local, tocá <b>Permitir</b>.</span>';
     $('motorestado').className = 'estado ' + (vivo ? 'ok' : 'falta');
+    if(vivo){
+      /* Que arranque solo se elige por computadora (Feli: en las de los admins sí, en la suya no). */
+      $('motorsolo').addEventListener('change', function(){
+        var si = this.checked;
+        pedirMotor('/llamar', { fn: 'arranque_solo', args: [si] }, 5000)
+          .then(function(r){ MOTOR.arrancarSolo = r.arrancar_solo !== false; pintarMotor(); })
+          .catch(function(){ buscarMotor(); });
+      });
+      $('motorapagar').addEventListener('click', function(){
+        if(!confirm('¿Cerrar el Programa de Compras en esta computadora?\n\n' +
+                    'Para usar Albor desde la app, abrilo de nuevo' + (MOTOR.arrancarSolo ? ' (o se abre solo la próxima vez que prendas la compu).' : '.'))) return;
+        pedirMotor('/llamar', { fn: 'apagar', args: [] }, 5000).then(function(r){
+          if(r && !r.ok) mostrarError(r.motivo || 'No se pudo cerrar.');
+          setTimeout(buscarMotor, 1500);
+        }).catch(function(){ setTimeout(buscarMotor, 1500); });
+      });
+    }
     $('pcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
     $('gcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
   }
