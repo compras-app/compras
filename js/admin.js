@@ -323,6 +323,9 @@ function pintarAjustes() {
   $('aj-granjas').querySelectorAll('[data-renombrar]').forEach(function (b) { b.addEventListener('click', function () { renombrarGranja(b.dataset.renombrar); }); });
   $('aj-granjas').querySelectorAll('[data-sacar]').forEach(function (b) { b.addEventListener('click', function () { sacarGranja(b.dataset.sacar); }); });
   if (a && document.activeElement !== $('aj-dias')) $('aj-dias').value = a.diasTanda;
+  // Si el servidor publicado todavía no tiene la Fase 3, Paso 2, se avisa (en vez de mostrar los textos vacíos)
+  if (a && !a.cotizar) notaAd('aj-estado', 'Para los ajustes de "Pedir cotización" falta publicar la versión nueva (Deploy → Manage deployments → ✏️ → New version).');
+  $('aj-cot-ok').disabled = !(a && a.cotizar);
   if (a && a.cotizar && !AD.cotizarPintado) {           // Pedir cotización (Fase 3): se llena una vez, para no pisar lo que se escribe
     AD.cotizarPintado = true;
     $('aj-prueba').checked = a.cotizar.prueba;
