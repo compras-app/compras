@@ -239,13 +239,15 @@ function pintarTablero() {
 const K_PROCESANDO = 'compras_procesando_abierto';
 function pintarProcesando() {
   const cont = $('tb-procesando');
+  // Se ve siempre, aunque esté vacía (Feli), así se sabe dónde van a aparecer
   const lista = ((TB.datos && TB.datos.procesando) || []).filter(seVe);
-  cont.hidden = !lista.length;
-  if (!lista.length) { cont.innerHTML = ''; return; }
+  cont.hidden = !TB.datos;
+  if (!TB.datos) { cont.innerHTML = ''; return; }
   const abierto = guardado.leer(K_PROCESANDO) === '1';
   cont.innerHTML = '<button type="button" class="proc-h" id="tb-proc-h" aria-expanded="' + abierto + '">' + (abierto ? '▾' : '▸') +
     ' 📦 Procesando <span class="n">(' + lista.length + ')</span></button>' +
-    (abierto ? '<div class="proc-l">' + lista.map(function (x) {
+    (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">Todavía no hay ninguno. Acá aparecen los pedidos cuyos productos ya están todos en tarjetas de trabajo (las que se arman en la Decisión y en la Tanda verde).</p>' : '') +
+    (abierto && lista.length ? '<div class="proc-l">' + lista.map(function (x) {
       return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
         '<small>' + esc(x.resumen || '') + '</small></button>';
     }).join('') + '</div>' : '');
@@ -1677,7 +1679,7 @@ async function editarProducto(ref, id) {
 async function proveedoresParaVarios(ref) {
   const d = TB.detalle;
   if (!d || !d.lineas || !APP.yo.admin) return;
-  const ls = lineasConCambios(ref, d.lineas);
+  const ls = lineasConCambios(ref, d.lineas).filter(vigente);     // los quitados (o sin aprobar) no se proponen (Feli)
   const datos = await datosProductos();
   const proveedores = datos ? datos.proveedores.slice() : [];
   const elegidos = {}, provs = [];
