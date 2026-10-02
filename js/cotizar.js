@@ -28,8 +28,11 @@ function fechaCorta(iso) {
   const d = new Date(iso);
   return isNaN(d) ? '' : d.getDate() + '/' + (d.getMonth() + 1);
 }
-/** ¿Se le puede pedir cotización desde la app? Un pedido (no una tarjeta de seguimiento), no manual, en Por cotizar. */
-function sePuedeCotizar(t) { return !!t && !t.trabajo && !t.manual && t.columna === colPorCotizar(); }
+/**
+ * ¿Se le puede pedir cotización desde la app? Un pedido no manual, o una tarjeta de seguimiento
+ * de la Tanda verde (Paso 4), en Por cotizar.
+ */
+function sePuedeCotizar(t) { return !!t && (!t.trabajo || !!t.tanda) && !t.manual && t.columna === colPorCotizar(); }
 
 /** La marca de la tarjeta en el tablero, en Por cotizar. */
 function htmlMarcaCotizar(t) {
@@ -49,17 +52,27 @@ function htmlMarcaCotizar(t) {
    para tildar o destildar y "ver cuáles" (solo para mirar: de ahí no se cambian).
    Los productos con proveedores particulares van en su propio bloque ("🎯 …").
    "🎯 Proveedores para varios": a los productos que se elijan se los manda a los
-   proveedores que se elijan, solo esta vez (no cambia el rubro ni el padrón). */
+   proveedores que se elijan, solo esta vez (no cambia el rubro ni el padrón).
+   Paso 4: refs puede ser una lista (las tarjetas de la tanda, después de
+   "Mandar a Por cotizar"): una sola ventana, un bloque por tarjeta, y al
+   enviar, un pedido de cotización por tarjeta (cada una con su código). */
 let pidiendoCotizar = false;
-async function abrirPedirCotizacion(ref) {
+async function abrirPedirCotizacion(refs) {
   if (!APP.yo.admin || pidiendoCotizar) return;
+  const varias = Array.isArray(refs);
   pidiendoCotizar = true;
   aviso('📤 Buscando los proveedores…');
-  const r = await api('datosCotizar', ref);
+  const r0 = await api('datosCotizar', refs);
   pidiendoCotizar = false;
-  if (!r.ok) return aviso(r.sinConexion ? '📶 Para abrir "Pedir cotización" hace falta señal (tiene que ver a quién ya se le pidió). Probá en un rato.' : r.error, 'bad');
-  if (r.manual) return aviso('Es un pedido ✋ manual: se cotiza a mano, por fuera de la app.');
-  if (!r.productos.length) return aviso('Este pedido no tiene productos para pedir.');
+  if (!r0.ok) return aviso(r0.sinConexion ? '📶 Para abrir "Pedir cotización" hace falta señal (tiene que ver a quién ya se le pidió). Probá en un rato.' : r0.error, 'bad');
+  const partes = (r0.varios || [r0]).filter(function (x) { return !x.manual && x.productos.length; });
+  if (!partes.length) {
+    if (r0.manual) return aviso('Es un pedido ✋ manual: se cotiza a mano, por fuera de la app.');
+    return aviso(varias ? 'Esas tarjetas no tienen productos para pedir.' : 'Este pedido no tiene productos para pedir.');
+  }
+  // Todo junto, y cada producto sabe de qué tarjeta es (x.cref)
+  const r = { prueba: partes[0].prueba, proveedores: partes[0].proveedores, titulo: partes[0].titulo, sitio: partes[0].sitio, codigo: partes[0].codigo, productos: [] };
+  partes.forEach(function (pt) { pt.productos.forEach(function (x) { x.cref = pt.ref; r.productos.push(x); }); });
   const provs = {};
   r.proveedores.forEach(function (p) { provs[p.id] = p; });
   const nombreProv = function (id) { return (provs[id] || {}).nombre || id; };
@@ -72,19 +85,28 @@ async function abrirPedirCotizacion(ref) {
   const provsDe = function (x) { return puntual[x.id] || x.sugeridos; };
   const pendientes = function (x) { return provsDe(x).filter(function (p) { return !x.ya[p] && provs[p] && provs[p].activo !== false; }); };
   const bloqueDe = function (x) {
-    if (puntual[x.id]) return { clave: 'u:' + puntual[x.id].slice().sort().join(','), titulo: '🎯 ' + puntual[x.id].map(nombreProv).join(', '), sub: 'Solo esta vez', provs: puntual[x.id], puntual: true };
-    if (x.particulares) return { clave: 'p:' + x.sugeridos.slice().sort().join(','), titulo: '🎯 ' + x.sugeridos.map(nombreProv).join(', '), sub: 'Proveedores particulares', provs: x.sugeridos };
-    return { clave: 'r:' + x.rubro, titulo: 'Proveedores de ' + x.rubro, provs: x.sugeridos, rubro: x.rubro };
+    const c = varias ? x.cref + '|' : '';          // con varias tarjetas, cada una con sus bloques
+    if (puntual[x.id]) return { clave: c + 'u:' + puntual[x.id].slice().sort().join(','), titulo: '🎯 ' + puntual[x.id].map(nombreProv).join(', '), sub: 'Solo esta vez', provs: puntual[x.id], puntual: true };
+    if (x.particulares) return { clave: c + 'p:' + x.sugeridos.slice().sort().join(','), titulo: '🎯 ' + x.sugeridos.map(nombreProv).join(', '), sub: 'Proveedores particulares', provs: x.sugeridos };
+    return { clave: c + 'r:' + x.rubro, titulo: 'Proveedores de ' + x.rubro, provs: x.sugeridos, rubro: x.rubro };
   };
   const llega = function (p) { return !!provs[p] && (provs[p].telefono || r.prueba.si); };
-  const mensajes = function () {
-    const porProv = {};
+  /** [{ref, mensajes: [{proveedor, lineas}]}]: un pedido de cotización por tarjeta, un mensaje por proveedor. */
+  const envios = function () {
+    const porRef = {}, refs = [];
     r.productos.forEach(function (x) {
       if (fuera[x.id]) return;
-      pendientes(x).forEach(function (p) { if (llega(p)) (porProv[p] = porProv[p] || []).push(x.id); });
+      pendientes(x).forEach(function (p) {
+        if (!llega(p)) return;
+        if (!porRef[x.cref]) { porRef[x.cref] = {}; refs.push(x.cref); }
+        (porRef[x.cref][p] = porRef[x.cref][p] || []).push(x.id);
+      });
     });
-    return Object.keys(porProv).map(function (p) { return { proveedor: p, lineas: porProv[p] }; });
+    return refs.map(function (ref) {
+      return { ref: ref, mensajes: Object.keys(porRef[ref]).map(function (p) { return { proveedor: p, lineas: porRef[ref][p] }; }) };
+    });
   };
+  const cuantos = function () { return envios().reduce(function (n, e) { return n + e.mensajes.length; }, 0); };
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo cotizar';
   const pintar = function () {
@@ -95,8 +117,17 @@ async function abrirPedirCotizacion(ref) {
       porClave[b.clave].productos.push(x);
     });
     let html = (r.prueba.si ? '<p class="estado warn">🧪 Modo prueba: todos los mensajes le llegan al número de prueba (' + esc(r.prueba.numero) + '), no a los proveedores.</p>' : '') +
-      '<p class="nota">' + esc(r.titulo) + ' · ' + esc(r.sitio) + (r.codigo ? ' · Código ' + esc(r.codigo) : '') + '</p>';
+      (varias ? '<p class="nota">' + (partes.length === 1 ? '1 tarjeta' : partes.length + ' tarjetas') + ' de la tanda. A cada proveedor le llega un mensaje por tarjeta, con su código y los productos iguales sumados.</p>'
+              : '<p class="nota">' + esc(r.titulo) + ' · ' + esc(r.sitio) + (r.codigo ? ' · Código ' + esc(r.codigo) : '') + '</p>');
+    let ultimaTarjeta = '';
     html += bloques.map(function (b) {
+      // Varias tarjetas: el nombre de cada una arriba de sus bloques
+      const cref = b.productos[0].cref, pt = partes.filter(function (x) { return x.ref === cref; })[0];
+      const cab = varias && cref !== ultimaTarjeta ? '<h4 class="cot-tarjeta">' + esc(pt.titulo) + (pt.codigo ? ' <small>· ' + esc(pt.codigo) + '</small>' : '') + '</h4>' : '';
+      ultimaTarjeta = cref;
+      return cab + htmlBloque(b);
+    }).join('');
+    function htmlBloque(b) {
       const activos = b.provs.filter(function (p) { return provs[p] && provs[p].activo !== false; });
       const sinNadie = !activos.length;
       const k = esc(b.clave);
@@ -108,7 +139,7 @@ async function abrirPedirCotizacion(ref) {
         (abiertos[b.clave] ? '<div class="cot-ver">' + activos.map(function (p) {
           return '<div>' + esc(nombreProv(p)) + (provs[p].telefono ? '' : r.prueba.si ? ' <small>(sin teléfono: en modo prueba sale igual)</small>' : ' <small>(sin teléfono: no le llega)</small>') + '</div>';
         }).join('') + '</div>' : '') +
-        (sinNadie ? '<p class="estado warn">' + (b.rubro === 'Sin rubro' || b.rubro === 'OTROS' ? '✋ ' + esc(b.rubro) + ': elegí a quién pedírselo con "🎯 Proveedores para varios".'
+        (sinNadie ? '<p class="estado warn">' + (b.rubro === 'Sin rubro' || b.rubro === 'OTROS' ? '✋ ' + esc(b.rubro) + ': ' + (b.productos.length === 1 ? 'este producto debe' : 'estos productos deben') + ' ser gestionado' + (b.productos.length === 1 ? '' : 's') + ' manualmente. Si igual querés pedirlo desde acá, usá "🎯 Proveedores para varios".'
           : 'No hay proveedores para ' + esc(b.rubro) + '. Usá "🎯 Proveedores para varios".') + '</p>' : '') +
         b.productos.map(function (x) {
           const pend = pendientes(x), ya = Object.keys(x.ya);
@@ -117,10 +148,11 @@ async function abrirPedirCotizacion(ref) {
           return '<button type="button" class="choice sub-choice" data-linea="' + esc(x.id) + '"' + (pend.length ? '' : ' disabled') +
             ' aria-checked="' + marcado + '"><span class="marca">' + (marcado ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + 'x ' + x.nombre) +
             (x.nota ? ' — ' + esc(x.nota) : '') + (x.fotos.length ? ' 📷' : '') +
+            (x.de ? '<small class="sub">' + esc(x.de) + '</small>' : '') +          // Paso 4: de qué pedido de la tanda
             (todo ? '<small class="sub">Ya se le pidió a todos (' + esc(fechaCorta(x.ya[ya[0]])) + ')</small>'
                   : ya.length ? '<small class="sub">Ya se le pidió a ' + ya.length + ': va a los otros ' + pend.length + '</small>' : '') + '</span></button>';
         }).join('') + '</div>';
-    }).join('');
+    }
     // "🎯 Proveedores para varios": elegir productos y proveedores, solo esta vez
     if (!varios) html += '<button type="button" class="btn2" id="cz-varios">🎯 Proveedores para varios</button>';
     else {
@@ -178,22 +210,28 @@ async function abrirPedirCotizacion(ref) {
       });
       $('cz-varios-no').addEventListener('click', function () { varios = null; pintar(); });
     }
-    const n = mensajes().length, ok = $('dg-ok');
-    if (ok) { ok.disabled = !n || !!varios; ok.textContent = n ? 'Enviar a ' + n + (n === 1 ? ' proveedor' : ' proveedores') : 'Enviar'; }
+    const n = cuantos(), ok = $('dg-ok');
+    if (ok) {
+      ok.disabled = !n || !!varios;
+      ok.textContent = !n ? 'Enviar' : varias ? 'Enviar ' + n + (n === 1 ? ' mensaje' : ' mensajes') : 'Enviar a ' + n + (n === 1 ? ' proveedor' : ' proveedores');
+    }
   };
   const listo = await dialogo({
     titulo: '📤 Pedir cotización', cuerpo: cuerpo,
-    botones: [{ texto: 'Enviar', clase: 'btn', id: 'dg-ok', valor: function () { return mensajes(); } }, { texto: 'Volver', valor: null }],
+    botones: [{ texto: 'Enviar', clase: 'btn', id: 'dg-ok', valor: function () { return envios(); } }, { texto: 'Volver', valor: null }],
     alAbrir: pintar
   });
   if (!listo || !listo.length) return;
-  const huellas = {};
-  r.productos.forEach(function (x) { huellas[x.id] = x.huella; });
-  const t = buscarEnVista(ref) || { titulo: r.titulo };
-  bandeja.agregar('pedirCotizacion', [ref, { id: 'Q' + nuevoId(), mensajes: listo, huellas: huellas }],
-    'pedir cotización de "' + (t.titulo || ref) + '" a ' + listo.length + (listo.length === 1 ? ' proveedor' : ' proveedores'));
+  listo.forEach(function (e) {
+    const huellas = {};
+    r.productos.forEach(function (x) { if (x.cref === e.ref) huellas[x.id] = x.huella; });
+    const pt = partes.filter(function (x) { return x.ref === e.ref; })[0] || {};
+    const t = buscarEnVista(e.ref) || { titulo: pt.titulo };
+    bandeja.agregar('pedirCotizacion', [e.ref, { id: 'Q' + nuevoId(), mensajes: e.mensajes, huellas: huellas }],
+      'pedir cotización de "' + (t.titulo || e.ref) + '" a ' + e.mensajes.length + (e.mensajes.length === 1 ? ' proveedor' : ' proveedores'));
+  });
   pintarTablero();
-  if (TB.abierta === ref) pintarTarjeta();
+  if (listo.some(function (e) { return TB.abierta === e.ref; })) pintarTarjeta();
   aviso(APP.enLinea ? '📤 Mandando el pedido de cotización…' : '📶 Poca señal: el pedido de cotización se manda solo cuando vuelva.');
 }
 
@@ -205,7 +243,8 @@ function pintarCotizaciones() {
   const lista = (d && d.solicitudes) || [];
   const esperan = bandeja.lista().filter(function (m) { return OPS_COTIZAR[m.fn] && m.args[0] === ref; });
   const puede = APP.yo.admin && sePuedeCotizar(t);
-  b.hidden = TB.tipo === 'tarea' || esTrabajo(ref) || (!lista.length && !esperan.length && !puede);
+  const deTanda = (t && t.tanda) || (d && d.trabajo && d.trabajo.tanda);
+  b.hidden = TB.tipo === 'tarea' || (esTrabajo(ref) && !deTanda) || (!lista.length && !esperan.length && !puede);
   if (b.hidden) return;
   $('tj-cotizar').hidden = !puede;
   const reintento = {};

@@ -432,6 +432,8 @@
   .recibidos .granja{color:var(--ink-soft)}
   .recibidos .cuando{color:var(--ink-faint);font-size:12px;white-space:nowrap}
   .recibidos .cuanto{margin-left:auto;color:var(--ink-soft);white-space:nowrap}
+  .recibidos .sacar{font-size:12px;color:var(--ink-faint);white-space:nowrap}
+  .recibidos .sacar:hover{color:#b3261e}
   .recibidos .obs{
     padding:8px 12px 10px 32px;font-size:12.5px;color:var(--ink-soft);
     background:var(--zebra);border-bottom:1px solid var(--line);
@@ -491,7 +493,7 @@
   @media print{
     @page{size:A4 portrait;margin:11mm 9mm 12mm}
     body{background:#fff;font-size:10pt}
-    .topbar,.toolbar,.drop,.filebar,.meta,.error,.excl{display:none !important}
+    .topbar,.toolbar,.drop,.filebar,.meta,.error,.excl,.bajar{display:none !important}
     main{max-width:none;margin:0;padding:0}
     .tablewrap{border:0;border-radius:0}
     .sheethead{
@@ -557,6 +559,64 @@
     }
   }
 
+  /* ---------- Conteo: comentarios, observaciones y ancho (Feli, 2026-10-02) ---------- */
+  td.name .nombre{vertical-align:middle}
+  .notabtn{appearance:none;border:0;background:none;cursor:pointer;font-size:12px;line-height:1;
+           padding:2px 4px;margin-left:4px;border-radius:4px;opacity:0;vertical-align:middle}
+  tr.row:hover .notabtn,.notabtn:focus,.notabtn.tiene{opacity:1}
+  .notabtn:hover{background:var(--accent-soft)}
+  .notacom{font-size:12px;color:var(--ink-soft);font-style:italic;margin-top:3px;white-space:pre-wrap}
+  .notaedit{display:block;width:100%;margin-top:4px;font-size:12px;line-height:1.35;font-family:inherit;color:var(--ink);
+            background:var(--bg);border:1px solid var(--accent);border-radius:6px;padding:5px 7px;resize:vertical}
+  .notaayuda{font-size:11px;color:var(--ink-faint);margin-top:2px}
+  .obsgeneral{display:none;border-top:1.5px solid var(--line-strong);padding:12px 14px}
+  .tablewrap.on .obsgeneral{display:block}
+  .obsgeneral b{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+  .obsgeneral textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+                       border-radius:6px;padding:7px 9px;resize:vertical}
+  .obsprint{display:none;white-space:pre-wrap}
+  th.casalc,td.casalc{border-left:1.5px solid var(--line-strong)}
+  @media print{
+    .notabtn,.notaayuda,.notaedit,.obsgeneral textarea{display:none !important}
+    .notacom{color:#000;font-size:7.6pt}
+    .tablewrap{width:auto !important;margin-left:0 !important}
+    .obsgeneral{border-top:1px solid #000;padding:6px 0;break-inside:avoid}
+    .obsgeneral.vacia{display:none !important}
+    .obsprint{display:block;font-size:9pt;min-height:14mm}
+  }
+
+  /* ---------- Historial ---------- */
+  .hbotones{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .hb{appearance:none;font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:8px 14px;border-radius:8px;
+      border:1px solid var(--line);background:var(--panel);color:var(--ink-soft)}
+  .hb:hover{color:var(--ink)}
+  .hb.on{background:var(--accent);border-color:var(--accent);color:var(--btn-ink)}
+  .hresultado .cuenta{font-size:12.5px;color:var(--ink-soft);margin:4px 2px 8px}
+  .hresultado table{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+  .hresultado tbody td{white-space:normal;text-align:left}
+  .hresultado tbody td.num{text-align:right;white-space:nowrap}
+  .hresultado tr.uno{cursor:pointer}
+  .hresultado tr.uno:hover{background:var(--accent-soft)}
+  .hresultado tr.uno.abierto{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+  .hresultado .coinciden{font-size:12px;color:var(--accent)}
+  .hresultado tr.det > td{background:var(--bg);padding:12px 14px}
+  .hresultado .det table{font-size:12.5px;margin-top:8px}
+  .hresultado .det .obs{margin:8px 0 0;font-size:12.5px;color:var(--ink-soft);white-space:pre-wrap}
+  .hresultado .det .acciones{display:flex;gap:12px;align-items:center;margin-top:10px}
+  .hresultado .estado-c{color:#b3261e}
+  @media (max-width:700px){ .hresultado{overflow-x:auto} .hresultado table{min-width:560px} }
+
+  /* ---------- Ajustes ---------- */
+  #panel-ajustes .excl{margin-bottom:16px}
+  #panel-ajustes h4{margin:14px 0 6px;font-size:13px}
+  .jlistas{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:10px}
+  .jlistas .lista{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px}
+  .jlistas .lista b{display:block;margin-bottom:6px}
+  .jlistas .lista div{display:flex;gap:8px;padding:2px 0;border-bottom:1px solid var(--line)}
+  .jlistas .lista div span:first-child{color:var(--ink-faint);min-width:42px;font-variant-numeric:tabular-nums}
+  .jlistas .lista .scroll{max-height:220px;overflow:auto;display:block;border:0}
+  .jagregar{margin-top:6px}
+
   /* ---------- Sumado para la app (Fase extra) ---------- */
   .topbar .sep{flex:1}
   .aparts{display:flex;gap:2px;align-self:center;background:var(--head);border-radius:8px;padding:3px}
@@ -613,6 +673,8 @@
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-armar">Armar pedido</button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-pedido" data-admin>Transferir<span class="badge" id="badgepedidos"></span></button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-egresos" data-admin>Egresos</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="panel-historial" data-admin>Historial</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="panel-ajustes" data-admin>Ajustes</button>
   </div>
   <span class="sep"></span>
   <nav class="aparts" id="apartados" aria-label="Apartados" hidden></nav>
@@ -659,7 +721,8 @@
       <label class="check"><input type="checkbox" id="usarexcl" checked> Ocultar excluidos <span id="exclcount"></span></label>
       <label class="check"><input type="checkbox" id="mostrardif"> Mostrar diferencia</label>
       <label class="check" id="vergranjaslbl"><input type="checkbox" id="vergranjas"> Ver granjas</label>
-      <button class="linkbtn" id="vermas">editar lista</button>
+      <label class="check" id="difcasalbl" title="Solo los insumos en los que esas dos oficinas no tienen lo mismo"><input type="checkbox" id="difcasa"> Ver diferencias entre Oficina Casa y Oficina LC 50</label>
+      <button class="linkbtn" id="vermas" data-ajuste="excl">editar lista (Ajustes)</button>
       <span class="sep"></span>
       <label class="field">Fecha <input type="date" id="fecha"></label>
       <label class="field">Responsable <input type="text" id="resp" placeholder="nombre" autocomplete="off"></label>
@@ -672,18 +735,6 @@
       <span class="aviso" id="conteoaviso"></span>
     </div>
 
-    <div class="excl" id="excl">
-      <h3>Productos excluidos del conteo</h3>
-      <p>Una regla por línea: un <b>código de insumo</b> para sacar un producto suelto, o
-         <b><code>cat: NOMBRE</code></b> para sacar una categoría entera. Lo que va después de
-         un <code>#</code> es solo una nota. Un código que no exista en el CSV se ignora.</p>
-      <textarea id="excltxt" spellcheck="false"></textarea>
-      <div class="acciones">
-        <button class="btn" id="exclguardar">Guardar lista</button>
-        <button class="linkbtn" id="exclreset">Restaurar la lista original</button>
-        <span class="aviso" id="exclaviso"></span>
-      </div>
-    </div>
 
     <div class="meta" id="meta"></div>
 
@@ -698,6 +749,11 @@
         </div>
       </div>
       <div id="tablehost"></div>
+      <div class="obsgeneral" id="obsgeneral">
+        <b>Observaciones</b>
+        <textarea id="conteoobs" rows="3" placeholder="Algo general del conteo (se imprime)"></textarea>
+        <div class="obsprint" id="p-obs"></div>
+      </div>
     </div>
   </section>
 
@@ -746,23 +802,9 @@
         <label class="field">Fecha <input type="date" id="pfecha"></label>
         <span class="estado" id="pmodo"><span class="punto"></span><span id="pmodotxt"></span></span>
         <span class="sep" style="flex:1"></span>
-        <button class="linkbtn" id="desver">editar destinos</button>
+        <button class="linkbtn" id="desver" data-ajuste="des">editar envíos (Ajustes)</button>
       </div>
       <p class="nota" id="pmodonota"></p>
-      <div class="excl" id="des">
-        <h3>Envíos posibles</h3>
-        <p>Una línea por comprobante, con los datos separados por punto y coma:<br>
-           <code>nombre ; empresa ; id origen ; nombre origen ; id destino ; nombre destino</code><br>
-           Dos líneas con el <b>mismo nombre</b> salen como control doble. Un <b><code>?</code></b>
-           quiere decir que ese dato lo elegís a mano en Albor. El <b>nombre del origen</b> tiene
-           que estar escrito igual que en el CSV de existencias.</p>
-        <textarea id="destxt" spellcheck="false"></textarea>
-        <div class="acciones">
-          <button class="btn" id="desguardar">Guardar</button>
-          <button class="linkbtn" id="desreset">Restaurar la lista original</button>
-          <span class="aviso" id="desaviso"></span>
-        </div>
-      </div>
     </div>
 
     <div class="resumen" id="presumen"></div>
@@ -893,43 +935,21 @@
         <label class="field">Próximo comprobante
           <input type="text" id="gnumero" autocomplete="off" style="width:110px">
         </label>
+        <label class="field" title="La del año de la fecha del egreso (cambia el 1 de enero). Se puede cambiar a mano.">Campaña
+          <input type="text" id="gcampania" autocomplete="off" style="width:80px" placeholder="26/27">
+        </label>
         <span class="sep" style="flex:1"></span>
-        <button class="linkbtn" id="ggranjasver">editar granjas</button>
-        <button class="linkbtn" id="gcuentasver">editar cuentas</button>
+        <button class="linkbtn" id="ggranjasver" data-ajuste="ggranjas">editar granjas (Ajustes)</button>
+        <button class="linkbtn" id="gcuentasver" data-ajuste="gcuentas">editar cuentas (Ajustes)</button>
       </div>
       <div class="fila checks" id="gchecks"></div>
+      <div class="fila checks" id="gchecksc"></div>
       <p class="nota">Sale <b>un comprobante por granja y por cuenta contable</b>, solo de las granjas
-         tildadas. La numeración va
+         y las cuentas tildadas. La numeración va
          corriendo desde el número de acá y el programa te muestra abajo cuál le tocó a cada uno,
          para que puedas corregirlo si se desfasó con Albor.</p>
 
-      <div class="excl" id="ggranjas">
-        <h3>Granjas</h3>
-        <p>Una línea por granja: <code>nombre del punto ; empresa ; id del punto ; centro de costo</code><br>
-           El <b>nombre del punto</b> tiene que estar escrito igual que en el CSV de existencias.
-           Los números los sacás con <code>python egresos.py --listar</code>.</p>
-        <textarea id="ggranjastxt" spellcheck="false"></textarea>
-        <div class="acciones">
-          <button class="btn" id="ggranjasguardar">Guardar</button>
-          <button class="linkbtn" id="ggranjasreset">Restaurar la lista original</button>
-          <span class="aviso" id="ggranjasaviso"></span>
-        </div>
-      </div>
 
-      <div class="excl" id="gcuentas">
-        <h3>Tipos de insumo y su cuenta contable</h3>
-        <p>Una línea por tipo: <code>TIPO DE INSUMO ; cuenta</code>.
-           <b>El tipo que no esté en esta lista no se egresa</b> — así quedan afuera el alimento y
-           las premezclas.<br>
-           Para un producto que no siga la regla de su tipo:
-           <code>cod: VAC0033738 ; 510201003</code></p>
-        <textarea id="gcuentastxt" spellcheck="false"></textarea>
-        <div class="acciones">
-          <button class="btn" id="gcuentasguardar">Guardar</button>
-          <button class="linkbtn" id="gcuentasreset">Restaurar la lista original</button>
-          <span class="aviso" id="gcuentasaviso"></span>
-        </div>
-      </div>
     </div>
 
     <div class="resumen" id="gresumen"></div>
@@ -952,6 +972,155 @@
         </div>
       </div>
       <div id="gtablehost"></div>
+    </div>
+
+  </section>
+
+  <!-- Historial (Feli, 2026-10-02): conteos, armado de pedido, transferencias y
+       egresos, con un buscador por producto, fecha y granja. Solo admins. -->
+  <section id="panel-historial" class="panel">
+    <div class="error" id="herror"></div>
+    <div class="hbotones" role="tablist" aria-label="Qué historial">
+      <button type="button" class="hb on" data-hist="conteos">Conteos de stock</button>
+      <button type="button" class="hb" data-hist="pedidos">Armado de pedido</button>
+      <button type="button" class="hb" data-hist="transferencias">Transferencias</button>
+      <button type="button" class="hb" data-hist="egresos">Egresos</button>
+    </div>
+    <div class="paso hfiltros">
+      <div class="fila">
+        <label class="field">Producto <input type="text" id="hproducto" autocomplete="off" placeholder="nombre o código"></label>
+        <label class="field">Desde <input type="date" id="hdesde"></label>
+        <label class="field">Hasta <input type="date" id="hhasta"></label>
+        <label class="field" id="hgranjalbl">Granja <select class="select" id="hgranja"></select></label>
+        <button class="btn" id="hbuscar">Buscar</button>
+        <button class="linkbtn" id="hlimpiar">limpiar</button>
+      </div>
+      <p class="nota" id="hnota"></p>
+    </div>
+    <div class="hresultado" id="hresultado"></div>
+  </section>
+
+  <!-- Ajustes (Feli, 2026-10-02): todo lo que se configura, en un solo lugar.
+       Se guarda en la planilla (App_Config) y vale para todos los admins. -->
+  <section id="panel-ajustes" class="panel">
+    <div class="error" id="jerror"></div>
+    <p class="nota">Lo que cambies acá se guarda en la planilla y vale para todos los admins.
+       Cómo se maneja la pantalla de Albor (qué casillero, qué botón) no se cambia desde acá: eso va con la página.</p>
+
+    <div class="paso" id="jalbor">
+      <h3>Números de Albor</h3>
+      <div class="fila">
+        <button class="btn" id="jtraer">Traer de Albor</button>
+        <span class="aviso" id="jtraeraviso"></span>
+      </div>
+      <p class="nota">Entra a Albor y lee las empresas, los puntos de stock, los centros de costos, las unidades de
+         negocio y las campañas, con su número. Con eso agregás una granja o un envío eligiendo de una lista,
+         sin escribir números.</p>
+      <div class="jlistas" id="jlistas"></div>
+      <div class="jagregar" id="jagregar" hidden>
+        <h4>Agregar una granja (para los egresos)</h4>
+        <div class="fila">
+          <label class="field">Empresa <select class="select" id="jgempresa"></select></label>
+          <label class="field">Punto de stock <select class="select" id="jgpunto"></select></label>
+          <label class="field">Centro de costos <select class="select" id="jgcentro"></select></label>
+          <label class="field">Unidad de negocio <select class="select" id="jgunidad"></select></label>
+          <button class="btn" id="jgagregar">Agregar granja</button>
+        </div>
+        <h4>Agregar un envío (para las transferencias)</h4>
+        <div class="fila">
+          <label class="field">Nombre <input type="text" id="jenombre" autocomplete="off" placeholder="G5 - NUEVA"></label>
+          <label class="field">Empresa <select class="select" id="jeempresa"></select></label>
+          <label class="field">Sale de <select class="select" id="jeorigen"></select></label>
+          <label class="field">Va a <select class="select" id="jedestino"></select></label>
+          <button class="btn" id="jeagregar">Agregar envío</button>
+        </div>
+        <p class="nota">Se suma un renglón a la lista de abajo, ya guardado. Para un envío doble (como La Colorada),
+           agregá dos con el mismo nombre.</p>
+        <span class="aviso" id="jagregaraviso"></span>
+      </div>
+    </div>
+
+    <div class="paso">
+      <h3>Egresos</h3>
+      <div class="fila">
+        <label class="field">Próximo número de egreso <input type="text" id="jnumero" autocomplete="off" style="width:110px"></label>
+        <label class="field">Campaña
+          <select class="select" id="jcampaniamodo">
+            <option value="">Automática: la del año del egreso (cambia el 1 de enero)</option>
+            <option value="fija">Fija</option>
+          </select>
+        </label>
+        <input type="text" id="jcampania" autocomplete="off" style="width:80px" placeholder="26/27" hidden>
+        <button class="btn" id="jegresosguardar">Guardar</button>
+        <span class="aviso" id="jegresosaviso"></span>
+      </div>
+    </div>
+
+    <div class="paso">
+      <h3>Catálogo (lo que ven los encargados en Armar pedido)</h3>
+      <div class="fila">
+        <span class="estado" id="jcatalogo"><span class="punto"></span><span id="jcatalogotxt"></span></span>
+        <button class="btn" id="jcatalogopublicar">Publicar de nuevo</button>
+        <span class="aviso" id="jcatalogoaviso"></span>
+      </div>
+      <p class="nota">Sale de las existencias cargadas, sin los productos excluidos. Publicalo de nuevo cuando
+         aparezcan insumos nuevos en Albor.</p>
+    </div>
+
+    <div class="excl on" id="des">
+        <h3>Envíos posibles</h3>
+        <p>Una línea por comprobante, con los datos separados por punto y coma:<br>
+           <code>nombre ; empresa ; id origen ; nombre origen ; id destino ; nombre destino</code><br>
+           Dos líneas con el <b>mismo nombre</b> salen como control doble. Un <b><code>?</code></b>
+           quiere decir que ese dato lo elegís a mano en Albor. El <b>nombre del origen</b> tiene
+           que estar escrito igual que en el CSV de existencias.</p>
+        <textarea id="destxt" spellcheck="false"></textarea>
+        <div class="acciones">
+          <button class="btn" id="desguardar">Guardar</button>
+          <button class="linkbtn" id="desreset">Restaurar la lista original</button>
+          <span class="aviso" id="desaviso"></span>
+        </div>
+      </div>
+
+    <div class="excl on" id="ggranjas">
+        <h3>Granjas</h3>
+        <p>Una línea por granja: <code>nombre del punto ; empresa ; id del punto ; centro de costo</code><br>
+           El <b>nombre del punto</b> tiene que estar escrito igual que en el CSV de existencias.
+           Los números los ves con "Traer de Albor", arriba (o usá "Agregar una granja").</p>
+        <textarea id="ggranjastxt" spellcheck="false"></textarea>
+        <div class="acciones">
+          <button class="btn" id="ggranjasguardar">Guardar</button>
+          <button class="linkbtn" id="ggranjasreset">Restaurar la lista original</button>
+          <span class="aviso" id="ggranjasaviso"></span>
+        </div>
+      </div>
+
+    <div class="excl on" id="gcuentas">
+        <h3>Tipos de insumo y su cuenta contable</h3>
+        <p>Una línea por tipo: <code>TIPO DE INSUMO ; cuenta</code>.
+           <b>El tipo que no esté en esta lista no se egresa</b> — así quedan afuera el alimento y
+           las premezclas.<br>
+           Para un producto que no siga la regla de su tipo:
+           <code>cod: VAC0033738 ; 510201003</code></p>
+        <textarea id="gcuentastxt" spellcheck="false"></textarea>
+        <div class="acciones">
+          <button class="btn" id="gcuentasguardar">Guardar</button>
+          <button class="linkbtn" id="gcuentasreset">Restaurar la lista original</button>
+          <span class="aviso" id="gcuentasaviso"></span>
+        </div>
+      </div>
+
+    <div class="excl on" id="excl">
+      <h3>Productos excluidos del conteo</h3>
+      <p>Una regla por línea: un <b>código de insumo</b> para sacar un producto suelto, o
+         <b><code>cat: NOMBRE</code></b> para sacar una categoría entera. Lo que va después de
+         un <code>#</code> es solo una nota. Un código que no exista en el CSV se ignora.</p>
+      <textarea id="excltxt" spellcheck="false"></textarea>
+      <div class="acciones">
+        <button class="btn" id="exclguardar">Guardar lista</button>
+        <button class="linkbtn" id="exclreset">Restaurar la lista original</button>
+        <span class="aviso" id="exclaviso"></span>
+      </div>
     </div>
   </section>
 </main>
@@ -1002,7 +1171,8 @@
     'programa-compras:granjas': 'granjas',
     'programa-compras:cuentas': 'cuentas',
     'programa-compras:excluidos': 'excluidos',
-    'programa-compras:nroegreso': 'nroegreso'
+    'programa-compras:nroegreso': 'nroegreso',
+    'programa-compras:campania': 'campania'
   };
   var K_TR = 'compras_tr_datos';     // listas, catálogo y granjas de la última vez (para abrir sin señal)
   var TR = guardado.leerJSON(K_TR, null) || { listas: {}, catalogo: { insumos: [] }, granjas: [] };
@@ -1092,6 +1262,27 @@
       var g = leerGuardado(CLAVE_CONTEO);
       CONTEO = g ? JSON.parse(g) : {};
     }catch(e){ CONTEO = {}; }
+    try{
+      var n = leerGuardado(CLAVE_NOTAS);
+      NOTAS = n ? JSON.parse(n) : {};
+    }catch(e){ NOTAS = {}; }
+    $('conteoobs').value = leerGuardado(CLAVE_OBS) || '';
+    syncObs();
+  }
+
+  /* Comentarios en el conteo (Feli, 2026-10-02): como en los documentos de
+     Claude, un 💬 al lado de cada producto. Quedan abajo del nombre, en
+     pantalla y al imprimir. Más un recuadro de Observaciones al final. Todo
+     se guarda en esta computadora junto con el conteo real. */
+  var CLAVE_NOTAS = 'programa-compras:conteo_notas';
+  var CLAVE_OBS = 'programa-compras:conteo_obs';
+  var NOTAS = {};    // {codigo: "comentario"}
+
+  function guardarNotas(){ escribirGuardado(CLAVE_NOTAS, JSON.stringify(NOTAS)); }
+  function syncObs(){
+    var t = $('conteoobs').value.trim();
+    $('p-obs').textContent = t;
+    $('obsgeneral').classList.toggle('vacia', !t);
   }
 
   function cuantosContados(){
@@ -1099,6 +1290,16 @@
     for(var k in CONTEO){ if(CONTEO[k] !== '') n++; }
     return n;
   }
+
+  /* Oficina Casa y Oficina LC 50 (La Colorada, envío doble) tendrían que
+     tener lo mismo: la casilla deja ver solo los insumos en los que no. */
+  function puntosCasaLC(){
+    if(!DATA) return null;
+    var casa = DATA.oficinas.filter(function(p){ return /CASA/i.test(p); })[0];
+    var lc = DATA.oficinas.filter(function(p){ return /LC\s*50/i.test(p); })[0];
+    return casa && lc ? { casa: casa, lc: lc } : null;
+  }
+  function difCasaLC(it, pc){ return Math.round(((it.por[pc.casa] || 0) - (it.por[pc.lc] || 0)) * 1000) / 1000; }
 
   // Acepta "12", "12,5" y "12.5". Devuelve null si no es un número.
   function numEscrito(texto){
@@ -1273,8 +1474,10 @@
     out.push(['Responsable', $('resp').value.trim()].map(celda).join(sep));
     out.push('');
 
+    var pc = $('difcasa').checked ? puntosCasaLC() : null;
     var cab = ['Categoría', 'Insumo'].concat(puntos)
-      .concat([granjas.length ? 'Total oficinas' : 'Total', 'Conteo real', 'Diferencia']).concat(granjas);
+      .concat([granjas.length ? 'Total oficinas' : 'Total', 'Conteo real', 'Diferencia'])
+      .concat(pc ? ['Casa − LC 50'] : []).concat(granjas).concat(['Comentario']);
     out.push(cab.map(celda).join(sep));
 
     items.forEach(function(it){
@@ -1285,9 +1488,15 @@
       var v = numEscrito(escrito);
       fila.push(v === null ? '' : nro(v));
       fila.push(v === null ? '' : nro(v - it.total));
+      if(pc) fila.push(nro(difCasaLC(it, pc)));
       granjas.forEach(function(p){ fila.push(p in it.por ? nro(it.por[p]) : ''); });
+      fila.push(NOTAS[clave(it.cod)] || '');
       out.push(fila.map(celda).join(sep));
     });
+    if($('conteoobs').value.trim()){
+      out.push('');
+      out.push(['Observaciones', $('conteoobs').value.trim()].map(celda).join(sep));
+    }
 
     var texto = '\uFEFF' + out.join('\r\n');   // BOM: Excel respeta los acentos
     var fecha = ($('fecha').value || 'sin-fecha');
@@ -1352,8 +1561,10 @@
     var oz = $('hidezero').checked;
     var ex = $('usarexcl').checked;
     var granjas = $('vergranjas').checked ? DATA.granjas : [];
+    var pc = $('difcasa').checked ? puntosCasaLC() : null;
     return DATA.insumos.filter(function(it){
       if(ex && esExcluido(it)) return false;
+      if(pc && !difCasaLC(it, pc)) return false;
       // Sin las granjas a la vista, lo que solo existe en una granja no va.
       if(!granjas.length && !it.enOficina) return false;
       if(oz && it.total === 0 && granjas.every(function(p){ return !it.por[p]; })) return false;
@@ -1369,8 +1580,9 @@
     var granjas = $('vergranjas').checked ? DATA.granjas : [];
     var agrupar = $('bycat').checked;
     var verdif = $('mostrardif').checked;
-    // nombre + oficinas + total + conteo [+ dif] + granjas
-    var ncols = 1 + puntos.length + 2 + (verdif ? 1 : 0) + granjas.length;
+    var pc = $('difcasa').checked ? puntosCasaLC() : null;
+    // nombre + oficinas + total + conteo [+ dif] [+ casa/LC] + granjas
+    var ncols = 1 + puntos.length + 2 + (verdif ? 1 : 0) + (pc ? 1 : 0) + granjas.length;
 
     if(!items.length){
       $('tablehost').innerHTML = '<div class="empty">Ningún insumo coincide con los filtros.</div>';
@@ -1385,6 +1597,7 @@
     h.push('<th class="total">' + (granjas.length ? 'Total oficinas' : 'Total') + '</th>');
     h.push('<th class="count">Conteo real</th>');
     if(verdif) h.push('<th class="dif">Dif.</th>');
+    if(pc) h.push('<th class="casalc" title="Oficina Casa menos Oficina LC 50">Casa − LC 50</th>');
     granjas.forEach(function(p, n){ h.push('<th class="granja' + (n ? '' : ' primera') + '">' + esc(p) + '</th>'); });
     h.push('</tr></thead><tbody>');
 
@@ -1403,7 +1616,11 @@
                '<small>' + conteoPorCat[catActual] + ' insumo' + (conteoPorCat[catActual]===1?'':'s') + '</small></td></tr>');
       }
       h.push('<tr class="row' + (i++ % 2 ? ' alt' : '') + '">');
-      h.push('<td class="name">' + esc(it.nombre) + '</td>');
+      var nota = NOTAS[clave(it.cod)] || '';
+      h.push('<td class="name"><span class="nombre">' + esc(it.nombre) + '</span>' +
+             '<button type="button" class="notabtn' + (nota ? ' tiene' : '') + '" data-nota="' + esc(clave(it.cod)) + '" ' +
+             'title="' + (nota ? 'Editar el comentario' : 'Agregar un comentario') + '" aria-label="Comentario de ' + esc(it.nombre) + '">💬</button>' +
+             (nota ? '<div class="notacom">' + esc(nota) + '</div>' : '') + '</td>');
       puntos.forEach(function(p){
         if(!(p in it.por)){ h.push('<td></td>'); return; }
         var v = it.por[p];
@@ -1416,6 +1633,11 @@
              'data-cod="' + esc(clave(it.cod)) + '" data-total="' + it.total + '" ' +
              'aria-label="Conteo real de ' + esc(it.nombre) + '" value="' + esc(val) + '"></td>');
       if(verdif) h.push('<td class="dif" data-dif="' + esc(clave(it.cod)) + '">' + textoDif(val, it.total) + '</td>');
+      if(pc){
+        var dcl = difCasaLC(it, pc);
+        h.push('<td class="casalc dif">' + (dcl ? '<span class="' + (dcl < 0 ? 'menos' : 'mas') + '">' +
+               (dcl > 0 ? '+' : '\u2212') + fmt(Math.abs(dcl)) + '</span>' : '<span class="ok">=</span>') + '</td>');
+      }
       granjas.forEach(function(p, n){
         var v = it.por[p], cls = 'granja' + (n ? '' : ' primera') + (v === 0 ? ' zero' : '');
         h.push('<td class="' + cls + '">' + (p in it.por ? fmt(v) : '') + '</td>');
@@ -1428,12 +1650,31 @@
     puntos.forEach(function(){ h.push('<td></td>'); });
     h.push('<td class="total"></td><td class="count"></td>');
     if(verdif) h.push('<td class="dif"></td>');
+    if(pc) h.push('<td class="casalc"></td>');
     granjas.forEach(function(p, n){ h.push('<td class="granja' + (n ? '' : ' primera') + '"></td>'); });
     h.push('</tr></tfoot></table>');
 
     $('tablehost').innerHTML = h.join('');
     actualizarMeta(items.length);
+    acomodarAncho();
   }
+
+  /* Con "Ver granjas" la planilla es más ancha que la página: antes se salía
+     del recuadro (G4 parecía partida en dos y GRANJA LA COLORADA quedaba
+     afuera). Ahora el recuadro crece con la planilla y queda centrado en la
+     pantalla; si ni así entra, la página se corre de costado. */
+  function acomodarAncho(){
+    var w = $('tablewrap'), t = w.querySelector('table');
+    w.style.width = ''; w.style.marginLeft = '';
+    if(!t || !w.classList.contains('on') || window.innerWidth <= 700) return;
+    var lugar = w.parentElement.clientWidth, hace = t.scrollWidth + 2;
+    if(hace <= lugar + 1) return;
+    var pantalla = document.documentElement.clientWidth;
+    var izq = Math.max(16, (pantalla - hace) / 2);
+    w.style.width = hace + 'px';
+    w.style.marginLeft = (izq - w.getBoundingClientRect().left) + 'px';
+  }
+  window.addEventListener('resize', function(){ if(DATA) acomodarAncho(); });
 
   function actualizarMeta(n){
     var total = DATA.insumos.length;
@@ -1446,6 +1687,8 @@
     var notas = [];
     if($('usarexcl').checked && excluidosPresentes()) notas.push('Sin los productos excluidos');
     if($('hidezero').checked) notas.push('Solo insumos con stock');
+    if($('difcasa').checked) notas.push(puntosCasaLC() ? 'Solo diferencias entre Oficina Casa y Oficina LC 50'
+                                                       : 'El archivo no trae Oficina Casa y Oficina LC 50');
     $('p-filtro').textContent = notas.join(' · ');
 
     var pres = excluidosPresentes();
@@ -1620,13 +1863,50 @@
 
   $('contado').addEventListener('click', function(e){
     if(e.target.id !== 'borrarconteo') return;
-    if(!confirm('¿Borrar los ' + cuantosContados() + ' valores cargados? Esto no se puede deshacer.')) return;
-    CONTEO = {};
-    guardarConteo();
+    if(!confirm('¿Borrar los ' + cuantosContados() + ' valores cargados, los comentarios y las observaciones? ' +
+                'Esto no se puede deshacer.')) return;
+    CONTEO = {}; NOTAS = {};
+    guardarConteo(); guardarNotas();
+    $('conteoobs').value = ''; escribirGuardado(CLAVE_OBS, ''); syncObs();
     render();
   });
 
   $('mostrardif').addEventListener('change', render);
+  $('difcasa').addEventListener('change', render);
+
+  // 💬: abre un recuadro para escribir abajo del nombre. Enter guarda,
+  // Escape deja como estaba; vacío, se borra el comentario.
+  $('tablehost').addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('.notabtn');
+    if(!b) return;
+    var td = b.parentNode, cod = b.getAttribute('data-nota');
+    if(td.querySelector('.notaedit')){ td.querySelector('.notaedit').focus(); return; }
+    var vieja = td.querySelector('.notacom');
+    if(vieja) vieja.style.display = 'none';
+    var ta = document.createElement('textarea');
+    ta.className = 'notaedit'; ta.rows = 2; ta.value = NOTAS[cod] || '';
+    ta.placeholder = 'Comentario (Enter guarda)';
+    var ayuda = document.createElement('div');
+    ayuda.className = 'notaayuda'; ayuda.textContent = 'Enter guarda · Escape cancela · vacío lo borra';
+    td.appendChild(ta); td.appendChild(ayuda);
+    ta.focus();
+    var listo = false;
+    function cerrar(guardar){
+      if(listo) return; listo = true;
+      if(guardar){
+        var t = ta.value.trim();
+        if(t) NOTAS[cod] = t.slice(0, 500); else delete NOTAS[cod];
+        guardarNotas();
+      }
+      render();
+    }
+    ta.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); cerrar(true); }
+      else if(ev.key === 'Escape'){ ev.preventDefault(); cerrar(false); }
+    });
+    ta.addEventListener('blur', function(){ cerrar(true); });
+  });
+  $('conteoobs').addEventListener('input', function(){ escribirGuardado(CLAVE_OBS, this.value); syncObs(); });
   $('excel').addEventListener('click', exportarExcel);
 
   $('q').addEventListener('input', render);
@@ -1659,11 +1939,6 @@
     setTimeout(function(){ $('exclaviso').textContent = ''; }, 3000);
   }
 
-  $('vermas').addEventListener('click', function(){
-    var abierto = $('excl').classList.toggle('on');
-    this.textContent = abierto ? 'cerrar lista' : 'editar lista';
-    if(abierto){ $('excltxt').scrollTop = 0; $('excltxt').focus(); }
-  });
 
   $('exclguardar').addEventListener('click', function(){
     guardarExcluidos($('excltxt').value);
@@ -2741,11 +3016,6 @@
     if(!esError) avisoDestTimer = setTimeout(function(){ e.innerHTML = ''; }, 3500);
   }
 
-  $('desver').addEventListener('click', function(){
-    var abierto = $('des').classList.toggle('on');
-    this.textContent = abierto ? 'cerrar' : 'editar destinos';
-    if(abierto){ $('destxt').scrollTop = 0; $('destxt').focus(); }
-  });
 
   $('desguardar').addEventListener('click', function(){
     var leidos = leerDestinos($('destxt').value);
@@ -2758,8 +3028,7 @@
           : '') +
         '<br>Una línea válida se ve así:<br>' +
         '<code>PRUEBA ; 2 ; 136 ; OficinaJM ; 130 ; PAB CEBIL</code><br>' +
-        'El archivo <code>numeros_de_albor.txt</code> es solo para consultar los números: ' +
-        'no se pega acá entero.', true);
+        'Los números los ves con "Traer de Albor", arriba.', true);
       return;
     }
 
@@ -2868,7 +3137,33 @@
     CUENTAS = leerCuentas(CUENTAS_TEXTO);
     if(!GRANJAS.length){ GRANJAS_TEXTO = GRANJAS_ORIGINAL; GRANJAS = leerGranjas(GRANJAS_TEXTO); }
     $('gnumero').value = n || '1111-42';
+    CAMPANIA_FIJA = campaniaCorta(leerGuardado(CLAVE_CAMPANIA) || '');
   }
+
+  /* La campaña del egreso (Feli, 2026-10-02): la del año de la fecha del
+     egreso, que cambia el 1 de enero (en 2026, 26/27); o la fija de Ajustes.
+     Se puede cambiar a mano antes de egresar; borrada, vuelve a la de siempre. */
+  var CAMPANIA_FIJA = '';
+  var CLAVE_CAMPANIA = 'programa-compras:campania';
+  /* "2026/2027", "26-27" o "26/27" -> "26/27"; lo demás, vacío. */
+  function campaniaCorta(t){
+    var m = /^\s*(\d{2}|\d{4})\s*[\/-]\s*(\d{2}|\d{4})\s*$/.exec(String(t == null ? '' : t));
+    return m ? m[1].slice(-2) + '/' + m[2].slice(-2) : '';
+  }
+  var CAMPANIA_A_MANO = false;
+  function campaniaAutomatica(){
+    var y = parseInt(String($('gfecha').value || '').slice(0, 4), 10) || new Date().getFullYear();
+    return ('0' + (y % 100)).slice(-2) + '/' + ('0' + ((y + 1) % 100)).slice(-2);
+  }
+  function campaniaEgreso(){
+    return ($('gcampania').value || '').trim() || CAMPANIA_FIJA || campaniaAutomatica();
+  }
+  function ponerCampaniaAuto(){
+    $('gcampania').placeholder = CAMPANIA_FIJA || campaniaAutomatica();
+    if(!CAMPANIA_A_MANO) $('gcampania').value = CAMPANIA_FIJA || campaniaAutomatica();
+  }
+  $('gcampania').addEventListener('input', function(){ CAMPANIA_A_MANO = !!this.value.trim(); });
+  $('gcampania').addEventListener('change', function(){ if(!this.value.trim()) ponerCampaniaAuto(); });
 
   /* "1111-42" -> "1111-43". Se incrementa lo que hay después del último guion. */
   function siguienteNumero(n){
@@ -2881,7 +3176,7 @@
     if(!DATA){ EGRESOS = null; pintarEgresos(); return; }
 
     var numero = ($('gnumero').value || '').trim() || '1111-1';
-    var comprobantes = [], sinCuenta = [], negativos = [], excluidos = [];
+    var comprobantes = [], sinCuenta = [], negativos = [], excluidos = [], deCuentasFuera = 0;
 
     GRANJAS.forEach(function(g){
       if(GRANJAS_FUERA[g.nombre]) return;      // destildada en la lista de arriba
@@ -2905,6 +3200,7 @@
           sinCuenta.push({granja:g.nombre, cod:it.cod, nombre:it.nombre, tipo:it.cat, cant:cant});
           return;
         }
+        if(CUENTAS_FUERA[cta]){ deCuentasFuera++; return; }   // cuenta destildada
 
         var b = porCuenta[cta];
         if(!b){ b = porCuenta[cta] = {granja:g, cuenta:cta, items:[]}; orden.push(b); }
@@ -2926,6 +3222,7 @@
       sinCuenta: sinCuenta,
       excluidos: excluidos,
       negativos: negativos,
+      deCuentasFuera: deCuentasFuera,
       ultimoNumero: numero,
       insumos: comprobantes.reduce(function(s,c){ return s + c.items.length; }, 0)
     };
@@ -2951,6 +3248,46 @@
     }).join('');
   }
 
+  /* Y qué cuentas (Feli, 2026-10-02): por ejemplo, Candelaria y El Cebil
+     solo con Productos veterinarios e Inmunocastración. Cada cuenta se
+     muestra con el nombre que trae Albor (lo aprende al cargar) o, si
+     todavía no lo sabe, con los tipos de insumo que van a ella. */
+  var CUENTAS_FUERA = {};
+  function cuentasDeLaLista(){
+    var por = {}, orden = [];
+    function sumar(cta, tipo){
+      if(!por[cta]){ por[cta] = []; orden.push(cta); }
+      if(tipo && por[cta].indexOf(tipo) < 0) por[cta].push(tipo);
+    }
+    Object.keys(CUENTAS.tipos).forEach(function(t){ sumar(CUENTAS.tipos[t], t); });
+    Object.keys(CUENTAS.cods).forEach(function(c){ sumar(CUENTAS.cods[c], ''); });
+    var nombres = {};
+    try{ nombres = JSON.parse(localStorage.getItem('programa-compras:nombres_cuentas') || '{}') || {}; }catch(e){}
+    return orden.map(function(cta){
+      var tipos = por[cta].map(function(t){ return t.charAt(0) + t.slice(1).toLowerCase(); });
+      return { cuenta: cta, tipos: tipos,
+               nombre: nombres[cta] ? String(nombres[cta]).replace(/^GAN-/, '')
+                     : tipos.length > 2 ? tipos[0] + ' y ' + (tipos.length - 1) + ' más'
+                     : (tipos.join(' y ') || 'cuenta ' + cta) };
+    });
+  }
+  function pintarChecksCuentas(){
+    var caja = $('gchecksc');
+    if(!DATA || !GRANJAS.length){ caja.innerHTML = ''; return; }
+    caja.innerHTML = '<span class="quien">Cuentas:</span>' + cuentasDeLaLista().map(function(c){
+      return '<label class="check' + (CUENTAS_FUERA[c.cuenta] ? ' apagada' : '') + '" title="' +
+             esc('Cuenta ' + c.cuenta + (c.tipos.length ? ': ' + c.tipos.join(', ') : '')) + '">' +
+             '<input type="checkbox" data-cuenta="' + esc(c.cuenta) + '"' + (CUENTAS_FUERA[c.cuenta] ? '' : ' checked') + '> ' +
+             esc(c.nombre) + '</label>';
+    }).join('');
+  }
+  $('gchecksc').addEventListener('change', function(e){
+    var c = e.target.getAttribute && e.target.getAttribute('data-cuenta');
+    if(!c) return;
+    if(e.target.checked) delete CUENTAS_FUERA[c]; else CUENTAS_FUERA[c] = true;
+    analizarEgresos();
+  });
+
   $('gchecks').addEventListener('change', function(e){
     var g = e.target.getAttribute && e.target.getAttribute('data-granja');
     if(!g) return;
@@ -2960,6 +3297,7 @@
 
   function pintarEgresos(){
     pintarChecksGranjas();
+    pintarChecksCuentas();
     var e = $('gexist');
     e.classList.remove('ok','falta','aviso');
     limpiarErrorG();
@@ -3024,6 +3362,9 @@
     if(EGRESOS.negativos.length){
       avisos.push('<b>' + EGRESOS.negativos.length + ' con existencia negativa</b>, se saltean.');
     }
+    if(EGRESOS.deCuentasFuera){
+      avisos.push('<b>' + EGRESOS.deCuentasFuera + ' de cuentas destildadas</b> no se egresan esta vez.');
+    }
     $('gaviso').innerHTML = avisos.join(' ');
 
     var h = [];
@@ -3080,6 +3421,7 @@
         empresa_id: c.granja.empresa, punto_id: c.granja.id, punto_nombre: c.granja.nombre,
         centro_costo: c.granja.centro, unidad_negocio: c.granja.negocio,
         tipo_comprobante: TIPO_COMPROBANTE, numero: c.numero, fecha: fecha, cuenta: c.cuenta,
+        campania: campaniaEgreso(),
         items: c.items.map(function(it){ return { codigo: it.cod, nombre: it.nombre, unidad: it.cant }; })
       };
     });
@@ -3181,11 +3523,6 @@
       clearTimeout(timer);
       if(!esError) timer = setTimeout(function(){ e.innerHTML = ''; }, 3500);
     }
-    $(verId).addEventListener('click', function(){
-      var abierto = $(panelId).classList.toggle('on');
-      this.textContent = abierto ? 'cerrar' : ('editar ' + etiqueta);
-      if(abierto) $(txtId).focus();
-    });
     $(guardarId).addEventListener('click', function(){
       var leidos = leer($(txtId).value);
       var cuantos = leidos.length !== undefined
@@ -3213,10 +3550,417 @@
   panelConfig('gcuentasver','gcuentas','gcuentastxt','gcuentasguardar','gcuentasreset','gcuentasaviso',
               leerCuentas, guardarCuentas, function(){ return CUENTAS_ORIGINAL; }, 'cuentas');
 
-  $('gfecha').addEventListener('input', pintarEgresos);
+  $('gfecha').addEventListener('input', function(){ ponerCampaniaAuto(); pintarEgresos(); });
   $('gnumero').addEventListener('input', analizarEgresos);
   $('gcarga').addEventListener('click', function(){ motor() ? cargarEgresosEnAlbor() : exportarEgresos(); });
   $('gprint').addEventListener('click', function(){ window.print(); });
+
+
+  /* ==================================================================
+     HISTORIAL (Feli, 2026-10-02)
+     Conteos de stock, armado de pedido (los pedidos de las granjas),
+     transferencias y egresos. Se busca por producto, fecha y granja; cada
+     uno se abre para ver el detalle. Solo admins.
+     ================================================================== */
+
+  var HIST = { cual: 'conteos', resultados: [], abierto: null };
+
+  function errorH(msg){ var e = $('herror'); e.textContent = msg; e.classList.toggle('on', !!msg); }
+
+  function llenarGranjasHistorial(){
+    var nombres = [];
+    function sumar(n){ if(n && nombres.indexOf(n) < 0) nombres.push(n); }
+    DESTINOS.forEach(function(d){ sumar(granjaDeEnvio(d)); });
+    GRANJAS.forEach(function(g){ sumar(g.nombre); });
+    var antes = $('hgranja').value;
+    $('hgranja').innerHTML = '<option value="">Todas</option>' + nombres.map(function(n){
+      return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
+    }).join('');
+    if(nombres.indexOf(antes) >= 0) $('hgranja').value = antes;
+  }
+
+  function fechaCorta(iso){
+    if(!iso) return '';
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : iso;
+  }
+
+  async function buscarHistorial(){
+    errorH('');
+    var conGranja = HIST.cual !== 'conteos';
+    $('hgranjalbl').hidden = !conGranja;
+    $('hnota').textContent = {
+      conteos: 'Los conteos guardados con "Guardar en el historial", con sus comentarios y observaciones.',
+      pedidos: 'Los pedidos que mandaron las granjas desde Armar pedido, y en qué quedaron.',
+      transferencias: 'Las transferencias cargadas en Albor desde acá (desde el 2 de octubre de 2026).',
+      egresos: 'Los egresos cargados en Albor desde acá (desde el 2 de octubre de 2026).'
+    }[HIST.cual];
+    $('hresultado').innerHTML = '<div class="cuenta">Buscando…</div>';
+    var f = { producto: $('hproducto').value.trim(), desde: $('hdesde').value, hasta: $('hhasta').value,
+              granja: conGranja ? $('hgranja').value : '' };
+    var cual = HIST.cual;
+    var r = await api('buscarHistorialTransf', cual, f);
+    if(cual !== HIST.cual) return;            // cambiaron de historial mientras buscaba
+    if(!r.ok){
+      $('hresultado').innerHTML = '';
+      errorH(r.sinConexion ? 'Hace falta señal para ver el historial.' : 'No se pudo: ' + (r.error || ''));
+      return;
+    }
+    HIST.resultados = r.resultados || [];
+    HIST.abierto = null;
+    pintarHistorial(r.total);
+  }
+
+  function coinciden(x){
+    if(!x.coinciden || !x.coinciden.length) return '';
+    return '<div class="coinciden">' + x.coinciden.map(function(c){
+      return esc(c.nombre) + ' × ' + esc(c.cant === '' || c.cant === null ? 'sin contar' : fmt(Number(c.cant))) +
+             (c.sistema !== undefined ? ' (sistema ' + fmt(c.sistema) + ')' : '');
+    }).join(' · ') + '</div>';
+  }
+
+  var COLS_HIST = {
+    conteos: ['Fecha', 'Responsable', 'Existencias al', 'Insumos', 'Con diferencia', 'Comentarios'],
+    pedidos: ['Fecha', 'Granja', 'Quién lo armó', 'Estado', 'Insumos'],
+    transferencias: ['Fecha', 'Comprobante', 'Sale de', 'Va a', 'Insumos', 'Unidades'],
+    egresos: ['Fecha', 'Comprobante', 'Granja', 'Cuenta', 'Centro', 'Insumos', 'Unidades']
+  };
+
+  function filaHistorial(x){
+    var c = HIST.cual;
+    if(c === 'conteos')
+      return ['<td>' + fechaCorta(x.dia) + coinciden(x) + '</td>', '<td>' + esc(x.responsable || x.quien) + '</td>',
+              '<td>' + esc(x.hasta) + '</td>', '<td class="num">' + x.insumos + '</td>',
+              '<td class="num">' + x.conDiferencia + '</td>', '<td class="num">' + (x.comentarios || '') + (x.observaciones ? ' 📝' : '') + '</td>'];
+    if(c === 'pedidos')
+      return ['<td>' + fechaCorta(x.dia) + coinciden(x) + '</td>', '<td>' + esc(x.granja) + '</td>', '<td>' + esc(x.quien) + '</td>',
+              '<td' + (/Cancelado|descartados/.test(x.estado) ? ' class="estado-c"' : '') + '>' + esc(x.estado) +
+              (x.quedan && x.estado === 'Transferido' ? ' · ' + x.quedan + ' pendiente' + (x.quedan === 1 ? '' : 's') : '') + '</td>',
+              '<td class="num">' + x.renglones + '</td>'];
+    if(c === 'transferencias')
+      return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + '</td>', '<td>' + esc(x.comprobante || 'sin número') + '</td>',
+              '<td>' + esc(x.origen) + '</td>', '<td>' + esc(x.destino) + '</td>',
+              '<td class="num">' + x.insumos + '</td>', '<td class="num">' + fmt(x.unidades) + '</td>'];
+    return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + '</td>', '<td>' + esc(x.comprobante) + '</td>',
+            '<td>' + esc(x.granja) + '</td>', '<td>' + esc(x.cuenta) + '</td>', '<td>' + esc(x.centro) + '</td>',
+            '<td class="num">' + x.insumos + '</td>', '<td class="num">' + fmt(x.unidades) + '</td>'];
+  }
+
+  function pintarHistorial(total){
+    var L = HIST.resultados, cols = COLS_HIST[HIST.cual];
+    if(!L.length){ $('hresultado').innerHTML = '<div class="empty">No hay nada con esos filtros.</div>'; return; }
+    var h = ['<div class="cuenta">' + (total > L.length ? 'Los ' + L.length + ' más nuevos de ' + total : L.length) +
+             ' · tocá uno para ver el detalle</div><table><thead><tr>'];
+    cols.forEach(function(c){ h.push('<th class="name">' + esc(c) + '</th>'); });
+    h.push('</tr></thead><tbody>');
+    L.forEach(function(x, i){
+      h.push('<tr class="uno' + (HIST.abierto === i ? ' abierto' : '') + '" data-h="' + i + '">' + filaHistorial(x).join('') + '</tr>');
+      if(HIST.abierto === i) h.push('<tr class="det"><td colspan="' + cols.length + '" id="hdet">Abriendo…</td></tr>');
+    });
+    h.push('</tbody></table>');
+    $('hresultado').innerHTML = h.join('');
+  }
+
+  async function abrirHistorial(i){
+    if(HIST.abierto === i){ HIST.abierto = null; pintarHistorial(); return; }
+    HIST.abierto = i;
+    pintarHistorial();
+    var x = HIST.resultados[i], cual = HIST.cual;
+    var r = await api('verHistorialTransf', cual, x.id);
+    if(HIST.abierto !== i || cual !== HIST.cual || !$('hdet')) return;
+    if(!r.ok){ $('hdet').textContent = r.sinConexion ? 'Hace falta señal.' : 'No se pudo: ' + (r.error || ''); return; }
+    $('hdet').innerHTML = detalleHistorial(cual, x, r);
+  }
+
+  function tablaSimple(cab, filas){
+    return '<table><thead><tr>' + cab.map(function(c, n){ return '<th class="' + (n ? '' : 'name') + '">' + esc(c) + '</th>'; }).join('') +
+           '</tr></thead><tbody>' + filas.map(function(f){
+             return '<tr>' + f.map(function(v, n){ return '<td class="' + (n ? 'num' : '') + '">' + v + '</td>'; }).join('') + '</tr>';
+           }).join('') + '</tbody></table>';
+  }
+
+  function detalleHistorial(cual, x, r){
+    var h = [];
+    if(cual === 'conteos'){
+      h.push('<b>Planilla de conteo de stock</b> · ' + fechaCorta(x.dia) + ' · responsable ' + esc(r.conteo.responsable || '—') +
+             (r.conteo.hasta ? ' · existencias al ' + esc(r.conteo.hasta) : '') + ' · guardó ' + esc(r.conteo.quien));
+      h.push(tablaSimple(['Insumo', 'Sistema', 'Conteo real', 'Diferencia'], r.filas.map(function(f){
+        return [esc(f.nombre) + (f.comentario ? '<div class="notacom">' + esc(f.comentario) + '</div>' : ''), fmt(f.sistema),
+                f.conteo === null ? '' : fmt(f.conteo), f.diferencia === null ? '' : textoDif(String(f.conteo).replace('.', ','), f.sistema)];
+      })));
+      if(r.conteo.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(r.conteo.observaciones) + '</div>');
+    }else if(cual === 'pedidos'){
+      var p = r.pedido;
+      h.push('<b>' + esc(p.granja) + '</b> · armado por ' + esc(p.quien) + ' para el ' + fechaCorta(p.fechaPedido) +
+             ' · ' + esc(p.estado) + (p.comprobantes ? ' · comprobantes ' + esc(p.comprobantes) : '') +
+             (p.proceso ? ' · ' + esc(p.proceso) : ''));
+      if(p.motivo) h.push('<div class="obs"><b>Motivo:</b> ' + esc(p.motivo) + '</div>');
+      if(p.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(p.observaciones) + '</div>');
+      h.push(tablaSimple(['Insumo', 'Pedido', 'Transferido', 'Pendiente', 'Falta'], r.items.map(function(i){
+        return [esc(i.nombre) + ' <small style="color:var(--ink-faint)">' + esc(i.cod) + '</small>', fmt(i.cantidad),
+                i.transferido ? fmt(i.transferido) : '', i.pendiente ? fmt(i.pendiente) : '', i.queda ? fmt(i.queda) : ''];
+      })));
+    }else{
+      h.push('<b>Comprobante ' + esc(x.comprobante || 'sin número') + '</b> · ' + esc(x.fechaComprobante) + ' · empresa ' + esc(x.empresa) +
+             (cual === 'egresos' ? ' · ' + esc(x.granja) + ' · ' + esc(x.cuenta) + (x.centro ? ' · centro ' + esc(x.centro) : '')
+                                 : ' · ' + esc(x.origen) + ' → ' + esc(x.destino)) + ' · cargó ' + esc(x.quien));
+      h.push(tablaSimple(['Insumo', 'Cantidad'], r.filas.map(function(f){
+        return [esc(f.nombre) + ' <small style="color:var(--ink-faint)">' + esc(f.cod) + '</small>', fmt(f.cant)];
+      })));
+    }
+    h.push('<div class="acciones"><button class="btn" data-himprimir>Imprimir</button></div>');
+    return h.join('');
+  }
+
+  /* Imprime solo el detalle abierto, en una hoja blanca. */
+  function imprimirDetalle(){
+    var det = $('hdet');
+    if(!det) return;
+    var w = window.open('', '_blank');
+    if(!w){ errorH('El navegador no dejó abrir la hoja para imprimir.'); return; }
+    var copia = det.cloneNode(true);
+    [].forEach.call(copia.querySelectorAll('.acciones'), function(e){ e.remove(); });
+    w.document.write('<!doctype html><meta charset="utf-8"><title>' + esc(document.title) + '</title><style>' +
+      'body{font:11pt -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#000;margin:12mm}' +
+      'table{border-collapse:collapse;width:100%;margin-top:8px;font-size:9.5pt}th,td{border:.5px solid #999;padding:4px 6px;text-align:right}' +
+      'th:first-child,td:first-child{text-align:left}th{background:#eee}.notacom{font-style:italic;font-size:8.5pt}' +
+      '.obs{margin-top:8px;white-space:pre-wrap}.menos,.mas{font-weight:700}.ok{color:#777}</style>' + copia.innerHTML);
+    w.document.close();
+    w.focus();
+    w.print();
+  }
+
+  [].forEach.call(document.querySelectorAll('.hb'), function(b){
+    b.addEventListener('click', function(){
+      [].forEach.call(document.querySelectorAll('.hb'), function(x){ x.classList.toggle('on', x === b); });
+      HIST.cual = b.getAttribute('data-hist');
+      buscarHistorial();
+    });
+  });
+  $('hbuscar').addEventListener('click', buscarHistorial);
+  $('hproducto').addEventListener('keydown', function(e){ if(e.key === 'Enter') buscarHistorial(); });
+  $('hlimpiar').addEventListener('click', function(){
+    $('hproducto').value = ''; $('hdesde').value = ''; $('hhasta').value = ''; $('hgranja').value = '';
+    buscarHistorial();
+  });
+  $('hresultado').addEventListener('click', function(e){
+    if(e.target.closest('[data-himprimir]')){ imprimirDetalle(); return; }
+    var tr = e.target.closest('tr.uno');
+    if(tr) abrirHistorial(Number(tr.getAttribute('data-h')));
+  });
+
+  /* ==================================================================
+     AJUSTES (Feli, 2026-10-02)
+     Todo lo que se configura, en un solo lugar: las listas (envíos,
+     granjas, cuentas, excluidos), el número de egreso, la campaña y el
+     catálogo. Se guarda en la planilla y vale para todos los admins.
+     "Traer de Albor" muestra los números que hacen falta y deja agregar
+     una granja o un envío eligiendo de una lista.
+     ================================================================== */
+
+  // Los "editar …" de cada pestaña llevan a su lista, acá.
+  document.addEventListener('click', function(e){
+    var b = e.target.closest && e.target.closest('[data-ajuste]');
+    if(!b) return;
+    irA('panel-ajustes');
+    var el = $(b.getAttribute('data-ajuste'));
+    el.scrollIntoView({ block: 'start' });
+    var ta = el.querySelector('textarea');
+    if(ta){ ta.scrollTop = 0; ta.focus({ preventScroll: true }); }
+  });
+
+  var CLAVE_LISTAS_ALBOR = 'programa-compras:albor_listas';
+  function listasAlbor(){
+    try{ return JSON.parse(localStorage.getItem(CLAVE_LISTAS_ALBOR) || 'null'); }catch(e){ return null; }
+  }
+  function avisarAjuste(id, msg, esError){
+    var e = $(id);
+    e.innerHTML = msg;
+    e.style.color = esError ? '#b3261e' : '';
+  }
+
+  function pintarAjustes(){
+    $('jnumero').value = $('gnumero').value;
+    $('jcampaniamodo').value = CAMPANIA_FIJA ? 'fija' : '';
+    $('jcampania').hidden = !CAMPANIA_FIJA;
+    $('jcampania').value = CAMPANIA_FIJA;
+    $('jcampania').placeholder = campaniaAutomatica();
+    var c = TR.catalogo || {}, n = (c.insumos || []).length, e = $('jcatalogo');
+    e.classList.remove('ok', 'falta');
+    e.classList.add(n ? 'ok' : 'falta');
+    $('jcatalogotxt').textContent = n ? n + ' insumos · publicado el ' + (c.actualizado || '') : 'Todavía no hay catálogo publicado.';
+    pintarListasAlbor();
+  }
+
+  $('jcampaniamodo').addEventListener('change', function(){
+    $('jcampania').hidden = this.value !== 'fija';
+    if(this.value === 'fija'){ $('jcampania').value = $('jcampania').value || campaniaAutomatica(); $('jcampania').focus(); }
+  });
+  $('jegresosguardar').addEventListener('click', function(){
+    var nro = $('jnumero').value.trim();
+    if(!nro){ avisarAjuste('jegresosaviso', 'Falta el próximo número de egreso.', true); return; }
+    var fija = '';
+    if($('jcampaniamodo').value === 'fija'){
+      fija = campaniaCorta($('jcampania').value);
+      if(!fija){ avisarAjuste('jegresosaviso', 'La campaña se escribe así: 26/27.', true); return; }
+    }
+    if(nro !== $('gnumero').value){ escribirGuardado(CLAVE_NROEGR, nro); $('gnumero').value = nro; }
+    if(fija !== CAMPANIA_FIJA){ escribirGuardado(CLAVE_CAMPANIA, fija); CAMPANIA_FIJA = fija; }
+    CAMPANIA_A_MANO = false;
+    ponerCampaniaAuto();
+    analizarEgresos();
+    avisarAjuste('jegresosaviso', 'Guardado. Próximo egreso: ' + esc(nro) + ' · campaña ' +
+                 esc(fija || 'automática (hoy ' + campaniaAutomatica() + ')') + '.');
+  });
+
+  $('jcatalogopublicar').addEventListener('click', async function(){
+    await publicarCatalogo(function(msg, esError){ avisarAjuste('jcatalogoaviso', esc(msg), esError); });
+    pintarAjustes();
+  });
+
+  /* ---------- Traer de Albor ---------- */
+
+  function empresasEnUso(){
+    var l = [];
+    function sumar(e){ e = String(e == null ? '' : e).trim(); if(e && e !== '?' && l.indexOf(e) < 0) l.push(e); }
+    GRANJAS.forEach(function(g){ sumar(g.empresa); });
+    DESTINOS.forEach(function(d){ d.bloques.forEach(function(b){ sumar(b.empresa); }); });
+    return l;
+  }
+
+  $('jtraer').addEventListener('click', async function(){
+    if(CARGANDO || bajando) return;
+    if(!motor() || !motor().leer_albor){
+      avisarAjuste('jtraeraviso', 'Hace falta la extensión de Albor en este Chrome (y la página actualizada).', true);
+      return;
+    }
+    avisarAjuste('jtraeraviso', '');
+    abrirAlbor('Traer de Albor');
+    alborLog('Abriendo Albor…');
+    var r;
+    try{ r = await motor().leer_albor(empresasEnUso()); }
+    catch(e){ r = { ok: false, motivo: 'Falló la conexión con Albor: ' + e }; }
+    var lineas = [];
+    if(r && r.ok){
+      try{ localStorage.setItem(CLAVE_LISTAS_ALBOR, JSON.stringify(r)); }catch(e){}
+      Object.keys(r.por).forEach(function(emp){
+        var L = r.por[emp];
+        lineas.push('<li>Empresa ' + esc(emp) + ': ' + L.origen.length + ' puntos de stock, ' + L.unidades.length +
+                    ' unidades de negocio, ' + L.centros.length + ' centros de costos, ' + L.campanias.length + ' campañas.</li>');
+      });
+    }
+    terminarAlbor(r, lineas);
+    pintarAjustes();
+  });
+
+  function nombreEmpresa(L, emp){
+    var e = ((L && L.empresas) || []).filter(function(x){ return x[0] === emp; })[0];
+    return e && e[1] && e[1] !== emp ? emp + ' · ' + e[1] : 'Empresa ' + emp;
+  }
+  function cajaLista(titulo, filas){
+    return '<div class="lista"><b>' + esc(titulo) + '</b><span class="scroll">' + (filas.length ? filas.map(function(f){
+      return '<div><span>' + esc(f[0]) + '</span><span>' + esc(f[1]) + (f[2] ? ' <small style="color:var(--ink-faint)">· unidad ' + esc(f[2]) + '</small>' : '') + '</span></div>';
+    }).join('') : '<div><span></span><span>(ninguno)</span></div>') + '</span></div>';
+  }
+  function pintarListasAlbor(){
+    var L = listasAlbor();
+    if(!L || !L.por){
+      $('jlistas').innerHTML = '';
+      $('jagregar').hidden = true;
+      return;
+    }
+    var h = ['<div class="lista" style="grid-column:1/-1"><b>Leído de Albor el ' +
+             esc(new Date(L.fecha).toLocaleString('es-AR').slice(0, 16)) + '</b>' +
+             esc((L.empresas || []).map(function(e){ return e[0] + ' ' + e[1]; }).join(' · ')) + '</div>'];
+    Object.keys(L.por).forEach(function(emp){
+      var x = L.por[emp], titulo = nombreEmpresa(L, emp);
+      var puntos = x.origen.slice();
+      x.destino.concat(x.egreso || []).forEach(function(o){ if(!puntos.some(function(p){ return p[0] === o[0]; })) puntos.push(o); });
+      h.push(cajaLista(titulo + ' · Puntos de stock', puntos));
+      h.push(cajaLista(titulo + ' · Centros de costos', x.centros));
+      h.push(cajaLista(titulo + ' · Unidades de negocio', x.unidades));
+      h.push(cajaLista(titulo + ' · Campañas', x.campanias.map(function(c){ return ['', c]; })));
+    });
+    $('jlistas').innerHTML = h.join('');
+    $('jagregar').hidden = false;
+    var emps = Object.keys(L.por).map(function(emp){ return [emp, nombreEmpresa(L, emp)]; });
+    llenarSelect('jgempresa', emps, $('jgempresa').value);
+    llenarSelect('jeempresa', emps, $('jeempresa').value);
+    llenarAgregarGranja();
+    llenarAgregarEnvio();
+  }
+  function llenarSelect(id, ops, valor){
+    var sel = $(id);
+    sel.innerHTML = ops.map(function(o){ return '<option value="' + esc(o[0]) + '">' + esc(o[1]) + '</option>'; }).join('');
+    if(valor && ops.some(function(o){ return o[0] === valor; })) sel.value = valor;
+  }
+  function conNumero(ops){ return ops.map(function(o){ return [o[0], o[1] + ' (' + o[0] + ')']; }); }
+  function llenarAgregarGranja(){
+    var L = listasAlbor(), x = L && L.por[$('jgempresa').value];
+    if(!x) return;
+    // Las oficinas no se egresan nunca: no se ofrecen.
+    var puntos = (x.egreso && x.egreso.length ? x.egreso : x.origen).filter(function(o){ return !/^OFICINA/i.test(o[1]); });
+    llenarSelect('jgpunto', conNumero(puntos), $('jgpunto').value);
+    llenarSelect('jgunidad', conNumero(x.unidades), $('jgunidad').value || UNIDAD_NEGOCIO);
+    llenarAgregarCentro();
+  }
+  function llenarAgregarCentro(){
+    var L = listasAlbor(), x = L && L.por[$('jgempresa').value];
+    if(!x) return;
+    var u = $('jgunidad').value;
+    var centros = x.centros.filter(function(c){ return !c[2] || c[2] === u; })
+                           .filter(function(c){ return !/AJUSTE|BIODIGESTOR/i.test(c[1]); });
+    // Propone el centro con el mismo nombre que el punto (G2 - CANDELARIA ENGORDE -> G2- CANDELARIA ENGORDE).
+    var punto = ($('jgpunto').selectedOptions[0] || {}).textContent || '';
+    var corto = function(t){ return String(t).toUpperCase().replace(/\s*\(\d+\)\s*$/, '').replace(/[^A-Z0-9]/g, '').replace(/^(G\d+|GRANJA)/, ''); };
+    var igual = centros.filter(function(c){ return corto(c[1]) === corto(punto); })[0];
+    llenarSelect('jgcentro', conNumero(centros), igual ? igual[0] : $('jgcentro').value);
+  }
+  function llenarAgregarEnvio(){
+    var L = listasAlbor(), x = L && L.por[$('jeempresa').value];
+    if(!x) return;
+    llenarSelect('jeorigen', conNumero(x.origen.filter(function(o){ return /^OFICINA/i.test(o[1]); }).concat(
+                                       x.origen.filter(function(o){ return !/^OFICINA/i.test(o[1]); }))), $('jeorigen').value);
+    llenarSelect('jedestino', conNumero(x.destino), $('jedestino').value);
+  }
+  $('jgempresa').addEventListener('change', llenarAgregarGranja);
+  $('jgunidad').addEventListener('change', llenarAgregarCentro);
+  $('jgpunto').addEventListener('change', llenarAgregarCentro);
+  $('jeempresa').addEventListener('change', llenarAgregarEnvio);
+  $('jedestino').addEventListener('change', function(){
+    if(!$('jenombre').value.trim()) $('jenombre').value = textoSinNumero('jedestino');
+  });
+  function textoSinNumero(id){
+    var o = $(id).selectedOptions[0];
+    return o ? o.textContent.replace(/\s*\(\d+\)\s*$/, '').trim() : '';
+  }
+
+  $('jgagregar').addEventListener('click', function(){
+    var emp = $('jgempresa').value, punto = $('jgpunto').value, centro = $('jgcentro').value, unidad = $('jgunidad').value;
+    var nombre = textoSinNumero('jgpunto');
+    if(!punto || !nombre){ avisarAjuste('jagregaraviso', 'Elegí el punto de stock.', true); return; }
+    if(GRANJAS.some(function(g){ return g.empresa === emp && g.id === punto; })){
+      avisarAjuste('jagregaraviso', esc(nombre) + ' ya está en la lista de granjas.', true); return;
+    }
+    var linea = nombre + ' ; ' + emp + ' ; ' + punto + ' ; ' + (centro || '?') + (unidad ? ' ; ' + unidad : '');
+    guardarGranjas(GRANJAS_TEXTO.replace(/\s*$/, '') + '\n' + linea);
+    $('ggranjastxt').value = GRANJAS_TEXTO;
+    analizarEgresos();
+    avisarAjuste('jagregaraviso', 'Agregada a la lista de granjas: <code>' + esc(linea) + '</code>');
+  });
+
+  $('jeagregar').addEventListener('click', function(){
+    var nombre = $('jenombre').value.trim() || textoSinNumero('jedestino');
+    var emp = $('jeempresa').value, o = $('jeorigen').value, d = $('jedestino').value;
+    if(!o || !d){ avisarAjuste('jagregaraviso', 'Elegí de dónde sale y adónde va.', true); return; }
+    if(/[;#]/.test(nombre)){ avisarAjuste('jagregaraviso', 'El nombre no puede tener ";" ni "#".', true); return; }
+    var linea = nombre + ' ; ' + emp + ' ; ' + o + ' ; ' + textoSinNumero('jeorigen') + ' ; ' + d + ' ; ' + textoSinNumero('jedestino');
+    guardarDestinos(DESTINOS_TEXTO.replace(/\s*$/, '') + '\n' + linea);
+    $('destxt').value = DESTINOS_TEXTO;
+    llenarSelectDestinos();
+    analizar();
+    avisarAjuste('jagregaraviso', 'Agregado a la lista de envíos: <code>' + esc(linea) + '</code>');
+  });
 
 
   /* ==================================================================
@@ -3269,7 +4013,8 @@
     cargar_egresos: conRegistro(window.AlborExt.api.cargar_egresos, function(t){ alborLog(t); }),
     responder_carga: window.AlborExt.api.responder_carga,
     cerrar_albor: window.AlborExt.api.cerrar_albor,
-    abrir_carpeta: window.AlborExt.api.abrir_carpeta
+    abrir_carpeta: window.AlborExt.api.abrir_carpeta,
+    leer_albor: window.AlborExt.api.leer_albor && conRegistro(window.AlborExt.api.leer_albor, function(t){ alborLog(t); })
   } : null;
 
   function motor(){ return MOTOR.vivo ? MOTOR_API : null; }
@@ -3810,6 +4555,9 @@
       h.push('<span class="granja">' + esc(p.granja || '') + '</span>');
       h.push('<span class="cuando">' + esc(p.fecha || '') + '</span>');
       h.push('<span class="cuanto">' + p.renglones + (p.modo ? ' pendiente' + (p.renglones === 1 ? '' : 's') : ' insumos') + '</span>');
+      h.push('<button type="button" class="linkbtn sacar" data-sacar="' + esc(p.ruta) + '" title="' +
+             (p.modo ? 'Ya no se van a mandar: sale de la lista' : 'No se va a transferir: sale de la lista') + '">' +
+             (p.modo ? 'Descartar pendientes' : 'Cancelar pedido') + '</button>');
       h.push('</div>');
       if(elegido && p.modo && p.pendientes){
         h.push('<div class="obs"><b>Pendientes:</b> ' + esc(p.pendientes) + '</div>');
@@ -3961,9 +4709,36 @@
   $('aenviar').addEventListener('click', enviarPedido);
 
   $('precibidos').addEventListener('click', function(e){
+    var sacar = e.target.closest ? e.target.closest('[data-sacar]') : null;
+    if(sacar){ sacarRecibido(sacar.getAttribute('data-sacar')); return; }
     var uno = e.target.closest ? e.target.closest('.uno') : null;
     if(uno) usarPedidoRecibido(uno.getAttribute('data-ruta'));
   });
+
+  /* Cancelar un pedido que no se va a transferir, o descartar los pendientes
+     de uno transferido (Feli, 2026-10-02): sale de la lista. En la planilla
+     queda "Cancelado" o "Pendientes descartados", con el motivo; no se borra. */
+  async function sacarRecibido(ruta){
+    var p = RECIBIDOS.filter(function(x){ return x.ruta === ruta; })[0];
+    if(!p) return;
+    var que = p.modo ? 'descartar los pendientes de' : 'cancelar';
+    var motivo = prompt('¿Seguro que querés ' + que + ' el pedido de ' + (p.granja || '') + ' (' + (p.quien || 'sin nombre') +
+                        ', ' + (p.fecha || '') + ')?\n\nSale de la lista y en la planilla queda ' +
+                        (p.modo ? '"Pendientes descartados"' : '"Cancelado"') + '. Si querés, escribí por qué:', '');
+    if(motivo === null) return;
+    var r = await api(p.modo ? 'descartarPendientes' : 'cancelarPedidoGranja', p.id, motivo.trim());
+    if(!r.ok){ errorP(r.sinConexion ? 'Hace falta señal para ' + que + ' el pedido.' : 'No se pudo: ' + (r.error || '')); return; }
+    if(PEDIDO_ELEGIDO && PEDIDO_ELEGIDO.ruta === ruta){
+      // Era el que estaba cargado: se saca, así no se transfiere por error.
+      PEDIDO_ELEGIDO = null; PEDIDO = null;
+      $('ppedido').classList.remove('ok'); $('ppedido').classList.add('falta');
+      $('ppedidotxt').textContent = 'Ningún pedido cargado';
+      analizar();
+    }
+    RECIBIDOS = RECIBIDOS.filter(function(x){ return x.ruta !== ruta; });
+    pintarRecibidos();
+    actualizarBadge();
+  }
 
   $('acatalogopublicar').addEventListener('click', function(){ publicarCatalogo(avisarEnArmar); });
 
@@ -4210,6 +4985,29 @@
 
   function archivoParaPython(l){ return l ? { nombre: l.nombre, base64: aBase64(l.datos) } : null; }
 
+  /* Lo que quedó guardado en Albor va a la planilla, para el Historial (Feli,
+     2026-10-02). Cada comprobante guardado ("hechos", en orden) con sus
+     insumos, menos los que no entraron. Va por la bandeja: sin señal, se manda
+     solo después; el número de lote evita que se anote dos veces. */
+  function anotarMovimientos(tipo, lista, hechos, pedido){
+    if(!hechos.length) return;
+    var comps = hechos.map(function(x, i){
+      var c = lista[i] || {}, fuera = {};
+      (x.fallados || []).forEach(function(f){ fuera[clave(f.codigo)] = true; });
+      var items = (c.items || []).filter(function(it){ return !fuera[clave(it.codigo)]; }).map(function(it){
+        return { cod: it.codigo, nombre: it.nombre,
+                 cant: typeof it.unidad === 'number' ? it.unidad : (numEscrito(it.unidad) || 0) };
+      });
+      return tipo === 'Egreso'
+        ? { numero: x.numero, fecha: c.fecha, empresa: c.empresa_id, granja: c.punto_nombre,
+            cuenta: x.cuenta_nombre || ('cuenta ' + c.cuenta), centro: x.centro || '', items: items }
+        : { numero: x.comprobante, fecha: c.fecha, empresa: c.empresa_id, origen: c.origen_nombre,
+            destino: c.destino_nombre, granja: c.destino_nombre, pedido: pedido ? pedido.id : '', items: items };
+    });
+    bandeja.agregar('registrarMovimientos', [{ lote: 'V' + nuevoId().slice(1), tipo: tipo, comprobantes: comps }],
+                    'anotar en el historial ' + (tipo === 'Egreso' ? 'los egresos' : 'la transferencia'));
+  }
+
   async function cargarTransferenciaEnAlbor(){
     if(CARGANDO || bajando) return;
     if(!ANALISIS || !ANALISIS.hay){ errorP('No hay nada para transferir todavía.'); return; }
@@ -4241,6 +5039,7 @@
 
     var hechos = (r && r.hechos) || [];
     if(hechos.length){ TRANSFERIDO_CON = { data: DATA, envio: dest.nombre }; recordarExistencias({ transferido: dest.nombre }); }
+    anotarMovimientos('Transferencia', bloques, hechos, pedido);
     var lineas = hechos.map(function(x){
       return '<li>' + esc(x.origen) + ' → ' + esc(x.destino) + ': comprobante <b>' +
              esc(x.comprobante || 'sin número') + '</b> · ' + x.cargados + ' de ' + x.total +
@@ -4313,6 +5112,7 @@
     }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
 
     var hechos = (r && r.hechos) || [];
+    anotarMovimientos('Egreso', comps, hechos, null);
     var lineas = hechos.map(function(x){
       return '<li>N° <b>' + esc(x.numero) + '</b> · ' + esc(x.punto) + ' · ' + esc(x.cuenta_nombre || x.cuenta) +
              (x.centro ? ' · centro ' + esc(x.centro) : ' · <span style="color:#b3261e">sin centro de costo</span>') +
@@ -4354,6 +5154,8 @@
       limpiarErrorA(); cargarCatalogo(); refrescarBorradores(); pintarEnviados();
     }
     if(idPanel === 'panel-pedido'){ refrescarRecibidos(); }
+    if(idPanel === 'panel-ajustes'){ pintarAjustes(); }
+    if(idPanel === 'panel-historial'){ llenarGranjasHistorial(); buscarHistorial(); }
   }
   [].forEach.call(document.querySelectorAll('.tab'), function(b){
     b.addEventListener('click', function(){ irA(this.getAttribute('data-panel')); });
@@ -4369,16 +5171,19 @@
     var aviso = $('conteoaviso');
     if(!DATA){ aviso.textContent = 'Primero cargá las existencias.'; return; }
     var filas = DATA.insumos.map(function(it){
-      var v = numEscrito(CONTEO[clave(it.cod)]);
-      return v === null ? null : { cod: it.cod, nombre: it.nombre, cat: it.cat, sistema: it.total, conteo: v };
+      var v = numEscrito(CONTEO[clave(it.cod)]), nota = NOTAS[clave(it.cod)] || '';
+      return v === null && !nota ? null
+        : { cod: it.cod, nombre: it.nombre, cat: it.cat, sistema: it.total, conteo: v, nota: nota };
     }).filter(Boolean);
     if(!filas.length){ aviso.textContent = 'Todavía no cargaste ningún conteo real.'; return; }
     if(!confirm('¿Guardar en el historial el conteo de ' + filas.length + ' insumos?\n\n' +
-                'Queda en la planilla 2 meses. En esta computadora sigue como está.')) return;
+                'Queda en la planilla para siempre, con los comentarios y las observaciones. ' +
+                'En esta computadora sigue como está.')) return;
     var b = $('conteoguardar');
     b.disabled = true; aviso.textContent = 'Guardando…';
     var r = await api('guardarConteo', { id: 'Q' + nuevoId().slice(1), responsable: $('resp').value.trim(),
-                                         hasta: DATA.hasta || '', filas: filas });
+                                         hasta: DATA.hasta || '', filas: filas,
+                                         observaciones: $('conteoobs').value.trim() });
     b.disabled = false;
     aviso.textContent = r.ok ? 'Guardado en el historial: ' + r.n + ' insumos.'
                              : (r.sinConexion ? 'Hace falta señal para guardarlo. Probá de nuevo en un rato.' : 'No se pudo: ' + (r.error || ''));
@@ -4408,6 +5213,7 @@
 
     $('pfecha').value = $('fecha').value;
     $('gfecha').value = $('fecha').value;
+    ponerCampaniaAuto();
     if(!$('bajarhasta').value) $('bajarhasta').value = unMesAdelante();
     arrancarPedidos();
   }

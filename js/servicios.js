@@ -66,7 +66,7 @@ $('sv-todos').addEventListener('click', function () { SV.filtros.mios = false; p
 const CTX_SERVICIOS = { tb: function () { return $('servicios-tablero'); }, mover: function (r, d, a) { moverServicioA(r, d, a); }, repintar: function () { pintarServicios(); } };
 
 function htmlServicio(t) {
-  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : esVerde(t.urgencia) ? ' verde' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     '<div class="sobre">🔧 Servicio</div>' +
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +

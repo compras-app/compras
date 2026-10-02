@@ -136,10 +136,12 @@ body[data-pantalla="tablero"] .contenido,body[data-pantalla="tareas"] .contenido
 .tarjeta{flex:none;background:var(--tj);border:0;border-radius:10px;padding:10px 12px;cursor:pointer;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;box-shadow:var(--tj-sombra)}
 .tarjeta:hover{background:var(--tj-hover)}
-/* Urgencia más alta (🔴): la tarjeta entera en rojo (pedido de Feli, 2026-09-30) */
-.tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg)}
-.tarjeta.urgente:hover{background:var(--tj-roja-hover)}
-.tarjeta.urgente .pie{color:var(--tj-roja-fg);opacity:.85}
+/* Urgencia: una franja de color arriba, como la raya de las columnas en "Liso oscuro" (Feli, 2026-10-02;
+   antes la 🔴 se pintaba entera): roja la más urgente (🔴), verde la menos (🟢) */
+.tarjeta.urgente,.tarjeta.verde{position:relative;overflow:hidden}
+.tarjeta.urgente::before,.tarjeta.verde::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:#e5484d;pointer-events:none}
+.tarjeta.verde::before{background:#30a46c}
+.tarjeta .sobre.fuera-padron{color:#e8b25a}
 .tarjeta .t{font-weight:600;font-size:15px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .tarjeta .pie{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--muted);min-height:24px}
 .tarjeta .pie .sitio{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -366,7 +368,6 @@ html,body{touch-action:pan-x pan-y}
 .bu-estado{margin:10px 0 8px;min-height:1.3em}
 .bu-resultados{display:flex;flex-direction:column;gap:8px}
 .tarjeta.resultado{width:100%;text-align:left;font:inherit;color:var(--fg)}
-.tarjeta.resultado.urgente{color:var(--tj-roja-fg)}
 .tarjeta.resultado.terminado{opacity:.8}
 .tarjeta .bu-col{flex:none;font-size:12px;font-weight:600;color:var(--fg);background:var(--col);border-radius:999px;padding:1px 8px;white-space:nowrap}
 .tarjeta .bu-col.fin{color:var(--muted);text-decoration:none;border:1px dashed var(--line);background:transparent}
@@ -456,8 +457,6 @@ label.check input{width:22px;height:22px;min-height:0;flex:none;margin:1px 0 0;a
 :root[data-estilo="vidrio"] .tablero .col{background:rgba(0,0,0,.32);box-shadow:0 0 0 1px rgba(255,255,255,.08)}
 :root[data-estilo="vidrio"] .tablero .tarjeta{background:rgba(20,22,26,.85);box-shadow:0 3px 10px rgba(0,0,0,.35)}
 :root[data-estilo="vidrio"] .tablero .tarjeta:hover{background:rgba(34,37,43,.92)}
-.tablero .tarjeta.urgente,:root[data-estilo] .tablero .tarjeta.urgente{background:var(--tj-roja)}
-.tablero .tarjeta.urgente:hover,:root[data-estilo] .tablero .tarjeta.urgente:hover{background:var(--tj-roja-hover)}
 /* Tu cuenta: elegir el estilo y el color */
 .asp-t{font-size:14px;margin:14px 0 8px}
 .asp-estilos{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
@@ -518,8 +517,6 @@ html[data-estilo="aurora"] .tablero{background:radial-gradient(70% 60% at 12% -8
 html[data-estilo="aurora"] .tablero .col{background:rgba(18,18,20,.55);border:1px solid rgba(255,255,255,.07);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 html[data-estilo="aurora"] .tablero .tarjeta{background:rgba(38,38,44,.94);color:var(--fg);border:1px solid rgba(255,255,255,.06);border-radius:9px;box-shadow:0 2px 6px rgba(0,0,0,.35)}
 html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96);border-color:var(--accent)}
-html[data-aspecto="programa"] .tablero .tarjeta.urgente{background:var(--tj-roja);color:var(--tj-roja-fg);border-color:#7a2a34}
-html[data-aspecto="programa"] .tablero .tarjeta.urgente:hover{background:var(--tj-roja-hover)}
 
 /* Pedir cotización (Fase 3, Paso 2) */
 .tarjeta button.marca-cot{display:block;width:100%;margin-top:8px;text-align:center;min-height:36px;font-size:13px}
@@ -549,3 +546,10 @@ html[data-aspecto="programa"] .tablero .tarjeta.urgente:hover{background:var(--t
 #s-ajustes .campo input,#s-ajustes .campo textarea{width:100%;box-sizing:border-box;font:inherit;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;min-height:48px}
 #s-ajustes .campo textarea{resize:vertical;line-height:1.4}
 #s-ajustes .campo .nota{margin:0}
+
+/* Pasos 3 y 4 de la Fase 3 */
+.tanda-aviso{font-size:12px;color:#e8b25a;margin-top:4px}
+.producto .manual-av{color:#e8b25a;font-weight:600}
+.cotizar .cot-tarjeta{margin:16px 0 4px;font-size:15px}
+.cotizar .cot-tarjeta:first-of-type{margin-top:6px}
+.cotizar .cot-tarjeta small{color:var(--muted);font-weight:500}

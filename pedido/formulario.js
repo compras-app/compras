@@ -128,9 +128,19 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- choices ---------- */
+/* Qué significa cada urgencia (Feli, 2026-10-02), por su emoji; si cambian, por su lugar en la lista */
+const URG_AYUDA={'🔴':'La granja no funciona sin esto','🟠':'Medianamente urgente','🟢':'Se gestiona como siempre'};
+function ayudaUrgencia(o,i,n){
+  const e=String(o).trim().split(' ')[0];
+  if(URG_AYUDA[e]) return URG_AYUDA[e];
+  return n===3?['La granja no funciona sin esto','Medianamente urgente','Se gestiona como siempre'][i]:'';
+}
 function choices(name,opts){
   const box=document.querySelector(`.choices[data-name="${name}"]`);
-  box.innerHTML=opts.map((o,i)=>`<button type="button" class="choice" role="radio" id="${name}-${i}" aria-checked="${S[name]===o}" data-v="${esc(o)}"><span class="k">${String.fromCharCode(65+i)}</span><span>${esc(o)}</span></button>`).join('');
+  box.innerHTML=opts.map((o,i)=>{
+    const ayuda=name==='urgencia'?ayudaUrgencia(o,i,opts.length):'';
+    return `<button type="button" class="choice" role="radio" id="${name}-${i}" aria-checked="${S[name]===o}" data-v="${esc(o)}"><span class="k">${String.fromCharCode(65+i)}</span><span>${esc(o)}${ayuda?`<small class="ayuda">${esc(ayuda)}</small>`:''}</span></button>`;
+  }).join('');
   box.onclick=e=>{const b=e.target.closest('.choice'); if(!b) return; S[name]=b.dataset.v;
     box.querySelectorAll('.choice').forEach(x=>x.setAttribute('aria-checked',x===b)); limpiarErr('q-'+name); guardar();};
 }

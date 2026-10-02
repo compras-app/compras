@@ -120,3 +120,6 @@ html,body{touch-action:pan-x pan-y}
 .thumb .pdf{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:26px;background:var(--soft)}
 .thumb .pdf small{font-size:10px;max-width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .choices.tipo{grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* Lo que significa cada urgencia (Fase 3, Pasos 3 y 4) */
+.choice .ayuda{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;font-weight:400}

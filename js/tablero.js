@@ -231,11 +231,15 @@ function pintarTablero() {
     const ts = ordenarPorFecha(porCol[c.columna], orden);
     // Paso 2-bis: "📤 Mandar a Por cotizar" arriba de la Tanda verde (solo admins)
     const tanda = admin && c.columna === colTanda() && ts.some(function (t) { return !t.trabajo; });
+    const recordar = tanda ? avisoTanda(ts) : '';
     html.push('<div class="col" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
       '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
       '<button type="button" class="col-orden" data-orden-col="' + esc(c.columna) + '" aria-label="Ordenar la columna" title="Ordenar: a mano, más nuevos o más viejos primero (solo en este dispositivo)">' + ORDEN_TEXTO[orden] + '</button>' +
-      (tanda ? '<button type="button" class="btn-chico si tanda-cot" id="tb-tanda-cot">📤 Mandar a ' + esc(colPorCotizar()) + '</button>' : '') + '</div>' +
+      // Paso 4: sin el 📤, para no confundirlo con "📤 Pedir cotización" (Feli)
+      (tanda ? '<button type="button" class="btn-chico si tanda-cot" id="tb-tanda-cot"' + (juntandoTanda() ? ' disabled' : '') + '>' +
+        (juntandoTanda() ? 'Juntando la tanda…' : 'Mandar a ' + esc(colPorCotizar())) + '</button>' : '') +
+      (recordar ? '<div class="tanda-aviso">' + esc(recordar) + '</div>' : '') + '</div>' +
       '<div class="lista" data-columna="' + esc(c.columna) + '">' +
       (ts.length ? ts.map(function (t) { return htmlTarjeta(t, c.columna === colPorRecibir()); }).join('')
                  : '<div class="vacia">Sin pedidos</div>') +
@@ -269,23 +273,63 @@ function pintarTablero() {
   pintarHace();
 }
 
-/* ---------- "📤 Mandar a Por cotizar" (Paso 2-bis): toda la Tanda verde, enteros ---------- */
+/* ---------- "Mandar a Por cotizar" de la Tanda verde (Paso 4) ----------
+   Junta los productos de todos los pedidos de la tanda en tarjetas de
+   seguimiento por rubro, en Por cotizar (mandarTanda, por la bandeja). Los
+   originales quedan en Procesando; lo que no se junta (fuera del padrón,
+   OTROS, Sin rubro) pasa a Por cotizar en su pedido. No manda nada: al
+   terminar, propone pedir la cotización de toda la tanda en una ventana. */
 async function mandarTandaACotizar() {
   const tanda = colTanda(), destino = colPorCotizar();
   const ts = vista().filter(function (t) { return t.columna === tanda && !t.trabajo; });
-  if (!ts.length) return;
+  if (!ts.length || juntandoTanda()) return;
   const si = await dialogo({
-    titulo: '📤 Mandar a ' + destino,
-    texto: '¿Pasar ' + (ts.length === 1 ? 'el pedido' : 'los ' + ts.length + ' pedidos') + ' de la ' + tanda + ' a ' + destino + '? No se les manda nada a los proveedores: después se pide cotización desde cada tarjeta.',
-    botones: [{ texto: 'Sí, pasarlos', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }]
+    titulo: 'Mandar a ' + destino,
+    texto: '¿Juntar ' + (ts.length === 1 ? 'el pedido' : 'los ' + ts.length + ' pedidos') + ' de la ' + tanda + ' en una tarjeta por rubro, en ' + destino +
+      '? Los pedidos originales quedan en Procesando. Todavía no se les manda nada a los proveedores.',
+    botones: [{ texto: 'Sí, juntarlos', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }]
   });
   if (!si) return;
-  ts.forEach(function (t) {
-    bandeja.agregar('moverTarjeta', [t.ref, { columna: destino, despuesDe: '*', desde: t.columna }], 'mover "' + t.titulo + '" a ' + destino);
-  });
+  bandeja.agregar('mandarTanda', [], 'juntar la ' + tanda + ' y mandarla a ' + destino);
   pintarTablero();
-  aviso('📤 ' + (ts.length === 1 ? 'Pasó 1 pedido' : 'Pasaron ' + ts.length + ' pedidos') + ' a ' + destino + '.');
+  aviso(APP.enLinea ? 'Juntando la tanda…' : '📶 Poca señal: la tanda se junta sola cuando vuelva.');
 }
+
+/** ¿Espera en la bandeja juntar la tanda? */
+function juntandoTanda() { return bandeja.lista().some(function (m) { return m.fn === 'mandarTanda'; }); }
+
+/** "⏰ Hace 15 días de la última tanda": cuando ya pasaron los días de Ajustes (dias_tanda). */
+function avisoTanda(ts) {
+  const t = TB.datos && TB.datos.tanda;
+  if (!t || !t.cada) return '';
+  let dias = t.dias;
+  if (dias === null || dias === undefined) {           // nunca se mandó: desde el pedido más viejo de la tanda
+    const viejo = ts.reduce(function (m, x) { const f = new Date(x.fecha).getTime(); return isNaN(f) ? m : Math.min(m, f); }, Date.now());
+    dias = Math.floor((Date.now() - viejo) / 86400000);
+  }
+  return dias >= t.cada ? '⏰ Hace ' + dias + ' días' + (t.dias === null || t.dias === undefined ? ' que espera el pedido más viejo' : ' de la última tanda') : '';
+}
+
+// Cuando la tanda se juntó: propone pedir la cotización de todas sus tarjetas juntas (Feli)
+(function () {
+  const antes = bandeja.alTerminar;
+  bandeja.alTerminar = function (m, r) {
+    if (antes) antes(m, r);
+    if (m.fn !== 'mandarTanda') return;
+    cargarTablero();
+    if (!r.ok || document.hidden) return;
+    const n = (r.tarjetas || []).length, p = (r.pedidos || []).length;
+    if (!n) return aviso(p ? 'Ningún producto se pudo juntar por rubro: ' + (p === 1 ? 'el pedido pasó' : 'los ' + p + ' pedidos pasaron') + ' a ' + colPorCotizar() + '.' : 'La tanda ya estaba vacía.');
+    if (!APP.yo.admin) return;
+    dialogo({
+      titulo: '¿Pedir cotización ahora?',
+      texto: 'La tanda quedó en ' + (n === 1 ? '1 tarjeta' : n + ' tarjetas') + ' por rubro, en ' + colPorCotizar() + '.' +
+        (p ? ' ' + (p === 1 ? 'Un pedido pasó' : p + ' pedidos pasaron') + ' con lo que no se pudo juntar (fuera del padrón, OTROS o Sin rubro).' : '') +
+        ' Si no, queda el botón "📤 Pedir cotización" en cada tarjeta.',
+      botones: [{ texto: 'Sí, pedir ahora', clase: 'btn', valor: true }, { texto: 'Después', valor: null }]
+    }).then(function (ya) { if (ya) abrirPedirCotizacion(r.tarjetas); });
+  };
+})();
 
 /* ---------- Stand by (Paso 2-ter): plegada, abajo del tablero ----------
    Los pedidos que llevaron 10 días hábiles en Entrantes (o que un admin mandó). */
@@ -324,10 +368,10 @@ function pintarProcesando() {
   const abierto = guardado.leer(K_PROCESANDO) === '1';
   cont.innerHTML = '<button type="button" class="proc-h" id="tb-proc-h" aria-expanded="' + abierto + '">' + (abierto ? '▾' : '▸') +
     ' 📦 Procesando <span class="n">(' + lista.length + ')</span></button>' +
-    (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">Todavía no hay ninguno. Acá aparecen los pedidos cuyos productos ya están todos en tarjetas de seguimiento (las que se arman en la Decisión y en la Tanda verde).</p>' : '') +
+    (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">Todavía no hay ninguno. Acá aparecen los pedidos que tienen alguna tarjeta de seguimiento (las que se arman en la Decisión y en la Tanda verde). Si les falta decidir algo, siguen además en su columna.</p>' : '') +
     (abierto && lista.length ? '<div class="proc-l">' + lista.map(function (x) {
       return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
-        '<small>' + esc(x.resumen || '') + '</small></button>';
+        '<small>' + (x.columna ? '📍 El pedido sigue en ' + esc(x.columna) + ' con lo que falta · ' : '') + esc(x.resumen || '') + '</small></button>';
     }).join('') + '</div>' : '');
   $('tb-proc-h').addEventListener('click', function () {
     guardado.guardar(K_PROCESANDO, abierto ? '' : '1');
@@ -336,12 +380,15 @@ function pintarProcesando() {
   cont.querySelectorAll('.proc-i').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
 }
 
-/** La urgencia más alta (la primera de App_Config, ej. 🔴): la tarjeta se pinta de rojo (pedido de Feli). */
+/** La urgencia más alta (la primera de App_Config, ej. 🔴): franja roja arriba de la tarjeta (Feli). */
 function esUrgente(u) { const l = (APP.config && APP.config.urgencias) || []; return !!u && u === l[0]; }
+/** La menos urgente (la última, ej. 🟢): franja verde (Pasos 3 y 4, Feli). */
+function esVerde(u) { const l = (APP.config && APP.config.urgencias) || []; return !!u && l.length > 1 && u === l[l.length - 1]; }
 
 function htmlTarjeta(t, enPorRecibir) {
-  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : esVerde(t.urgencia) ? ' verde' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
+    (t.fueraPadron ? '<div class="sobre fuera-padron">✋ Contiene productos fuera del padrón</div>' : '') +   // Pasos 3 y 4
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
@@ -396,7 +443,7 @@ async function cargarTablero() {
   TB.cargando = false;
   if (r.ok) {
     TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, procesando: r.procesando || [], porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado,
-                 standby: r.standby || 'Stand by' };
+                 standby: r.standby || 'Stand by', tanda: r.tanda || null };
     if (typeof notifSinLeer === 'function' && r.sinLeer !== undefined) notifSinLeer(r.sinLeer);   // notificaciones.js
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
@@ -948,7 +995,15 @@ function pintarEnlaces(d, trabajo) {
       (detalle ? '<small style="display:block">' + esc(detalle) + '</small>' : '') + '</span>›</button>';
   };
   let html = '';
-  if (trabajo && d && d.trabajo && d.trabajo.pedidos.length) {
+  if (trabajo && d && d.trabajo && d.trabajo.tanda && d.trabajo.pedidos.length) {
+    // Paso 4: una mini tarjeta por pedido de la tanda, con sus productos; abre el pedido original completo
+    html = '<small>Pedidos de esta tanda (' + d.trabajo.pedidos.length + ')</small>' +
+      d.trabajo.pedidos.map(function (x) {
+        const prods = (d.lineas || []).filter(function (l) { return l.ref === x.ref && vigente(l); })
+          .map(function (l) { return l.cantidad + 'x ' + nombreProducto(l); }).join(', ');
+        return ir(x.ref, x.solicitante + ' · ' + x.sitio, prods);
+      }).join('');
+  } else if (trabajo && d && d.trabajo && d.trabajo.pedidos.length) {
     html = '<small>Esta tarjeta es una tarjeta de seguimiento ' + (d.trabajo.pedidos.length === 1 ? 'del pedido:' : 'de los pedidos:') + '</small>' +
       d.trabajo.pedidos.map(function (x) { return ir(x.ref, '📦 ' + (x.titulo || x.ref), x.sitio + ' · ' + x.solicitante); }).join('');
   } else if (!trabajo && d && d.tarjetas && d.tarjetas.length) {
@@ -1429,6 +1484,8 @@ function htmlProducto(l, admin, mio, extra) {
   if (provs.length) sub.push('<span class="prov">🎯 Va solo a ' + esc(provs.map(function (x) { return x.nombre; }).join(', ')) + '</span>');
   else if (l.canal) sub.push(esc('Rubro: ' + l.canal));
   else sub.push(esc('Sin rubro'));
+  // Pasos 3 y 4: OTROS y Sin rubro no tienen proveedores sugeridos
+  if (!provs.length && (!l.canal || l.canal === 'OTROS') && l.estado !== 'Quitado') sub.push('<span class="manual-av">✋ Este producto debe ser gestionado manualmente</span>');
   if (l.descripcion) sub.push(esc(l.descripcion));
   const fotos = (l.fotos || []).map(function (u) {
     const id = idDrive(u);

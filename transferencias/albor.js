@@ -39,6 +39,7 @@ var EMPRESAS = ['1', '5'];                     // La Quimera, Consultores Asocia
 var CATEGORIA_GANADEROS = '66';
 var BTN_MAS = '.fa-plus, i.fa-plus, span.fa-plus, a:has(.fa-plus), button:has(.fa-plus)';
 var TIPO_TRANSFERENCIA = '3';      // Transferencia de Mercadería
+var TIPO_EGRESO = '180';            // Egreso de Mercadería
 var PERSONAL_CODIGO = '7';
 // Los que ya se conocen. El resto se lee de Albor la primera vez que se usa.
 var NOMBRES_CUENTAS = { '510201003': 'GAN-Productos Veterinarios' };
@@ -1404,12 +1405,171 @@ async function saldosNegativos(pg){
   });
 }
 
-function textoNegativos(lineas, que){
-  return 'Albor NO ' + que + ': estos insumos quedarían con stock negativo en ' +
-         (que === 'aplicó' ? 'la oficina' : 'la granja') + '.\n\n' +
-         (lineas.join('\n') || '   (sin detalle)') + '\n\n' +
-         'Cuando dice «por el comprobante …», hay un movimiento con fecha posterior que ya ' +
-         'usa ese stock. Corregí las cantidades en la grilla (o sacá esos renglones) y tocá el botón.';
+/* ---------- La tarjeta roja de Albor y el guardado (Feli, 2026-10-02) ----------
+   Al aplicar o guardar, Albor tarda unos segundos y puede mostrar un recuadro
+   rojo ARRIBA DE TODO, encima de la cabecera: saldos negativos, o algo de la
+   cabecera que no anda (lo que dice cambia). Mientras está, el comprobante NO
+   se guardó, y salir de esa pantalla lo pierde. Por eso, después de tocar el
+   botón se espera a que Albor conteste, y nunca se pasa al siguiente
+   comprobante sin ver que quedó guardado. */
+
+// El texto de los recuadros rojos (borde, fondo o letra roja) que están más
+// arriba que la cabecera. null si no hay ninguno o no está el formulario.
+// Con {marcar: true} anota los que hay como "ya vistos": uno que queda a la
+// vista después de que la persona lo resolvió no cuenta como nuevo; sí uno
+// que Albor vuelve a dibujar o que cambia de texto.
+var JS_ADVERTENCIA = String(function(o){
+  o = o || {};
+  function rojo(c){
+    var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/.exec(c || '');
+    if(!m || (m[4] !== undefined && +m[4] === 0)) return 0;
+    var r = +m[1], g = +m[2], b = +m[3];
+    if(r >= 140 && r - g >= 60 && r - b >= 60) return 2;          // rojo
+    if(r >= 235 && r - g >= 12 && r - b >= 12 && g < 245) return 1; // rosado clarito (el fondo)
+    return 0;
+  }
+  function borde(s, lado){ return parseFloat(s['border' + lado + 'Width']) > 0 ? rojo(s['border' + lado + 'Color']) : 0; }
+  var ref = document.querySelector('#ID_Tipo_Comprobante');
+  if(!ref) return null;
+  var tope = ref.getBoundingClientRect().top, hallados = [];
+  var todos = document.body ? document.body.querySelectorAll('div, ul, ol, p, span, table, section, fieldset, form > *') : [];
+  for(var i = 0; i < todos.length; i++){
+    var e = todos[i];
+    if(e.id === '__pc_cartel' || hallados.some(function(h){ return h.contains(e); })) continue;
+    var r = e.getBoundingClientRect();
+    if(r.width < 40 || r.height < 10 || r.top >= tope) continue;
+    var t = (e.innerText || '').trim();
+    if(t.length < 12) continue;
+    var st = getComputedStyle(e);
+    if(st.visibility === 'hidden' || st.display === 'none' || +st.opacity === 0) continue;
+    var marca = borde(st, 'Top') || borde(st, 'Left') || rojo(st.backgroundColor) || rojo(st.color) === 2 ||
+                /(^|\s)(alert-danger|validation-summary-errors|field-validation-error|error|errores|msgError)(\s|$)/i.test(String(e.className || ''));
+    if(marca) hallados.push(e);
+  }
+  var nuevos = hallados.filter(function(h){ return h.__pcVisto !== h.innerText.trim(); });
+  if(o.marcar) hallados.forEach(function(h){ h.__pcVisto = h.innerText.trim(); });
+  if(!nuevos.length) return null;
+  return nuevos.map(function(h){ return h.innerText.trim(); }).join('\n').slice(0, 3000);
+});
+
+/* Lo rojo que hay ahora en Albor queda como "ya visto". */
+async function marcarVistas(pg){
+  try{ await pg.evaluar(JS_ADVERTENCIA, { marcar: true }); }
+  catch(e){ if(e instanceof Cortado) throw e; }
+  return JSON.stringify(await saldosNegativos(pg));
+}
+
+/* Una advertencia NUEVA de Albor, o null. `negVistos`: los saldos negativos
+   que ya estaban (por si el recuadro no se viera rojo). */
+async function advertenciaAlbor(pg, negVistos){
+  var t = null;
+  try{ t = await pg.evaluar(JS_ADVERTENCIA); }
+  catch(e){ if(e instanceof Cortado) throw e; }
+  var neg = await saldosNegativos(pg);
+  if(neg && JSON.stringify(neg) === negVistos && !t) neg = null;
+  if(!t && !neg) return null;
+  if(t && !/saldos negativos/i.test(t)) neg = null;
+  return { texto: t || 'Los siguientes Insumos generan saldos negativos', negativos: neg };
+}
+
+function textoAdvertencia(adv, que){
+  var detalle = adv.negativos && adv.negativos.length
+    ? 'Estos insumos quedarían con stock negativo:\n' + adv.negativos.join('\n') +
+      '\n\nCuando dice «por el comprobante …», hay un movimiento con fecha posterior que ya usa ese stock.'
+    : 'Albor dice:\n' + String(adv.texto).split('\n').map(function(l){ return l.trim(); })
+                         .filter(Boolean).slice(0, 30).map(function(l){ return '   ' + l; }).join('\n');
+  return 'Hay advertencias de Albor que no permiten ' + que + ' → gestionalo a mano en Albor. ' +
+         'No cierres el recuadro rojo ni salgas de esa pantalla.\n\n' + detalle +
+         '\n\nCuando termines, tocá Seguir. Si todavía no está guardado, lo guardo yo.';
+}
+
+/* La "huella" del comprobante abierto: si cambió alguno de estos campos (o ya
+   no está el formulario), Albor lo guardó y abrió uno nuevo. Un error de
+   Albor vuelve a dibujar la pantalla, pero con los mismos valores. */
+var HUELLA = ['#Numero_Comprobante', '#ID_Punto_Stock_Destino', '#ID_Cta_Contable_Debito_codigo', '#Nro'];
+var JS_HUELLA = "sels => { if (!document.querySelector('#ID_Tipo_Comprobante')) return null;\n" +
+"    return sels.map(s => { const e = document.querySelector(s); return e ? String(e.value || '').trim() : ''; }); }";
+
+async function huella(pg){
+  try{ return await pg.evaluar(JS_HUELLA, HUELLA); }
+  catch(e){ if(e instanceof Cortado) throw e; return undefined; }   // cambiando de página: no se sabe
+}
+
+function sigueAbierto(antes, ahora){
+  if(ahora === null) return false;                    // ya no está el formulario
+  if(!ahora || !antes) return true;                   // no se pudo leer: se da por abierto
+  return antes.every(function(v, i){ return !v || ahora[i] === v; });
+}
+
+/* Toca un botón de Albor y espera su respuesta. `listo()` dice si ya hizo lo
+   suyo. {ok}, {advertencia}, {nada} (no contestó) o {noToco}. */
+async function tocarYEsperar(pg, selector, listo, limite){
+  var negVistos = await marcarVistas(pg);
+  try{ await pg.loc(selector).click({ timeout: 20000 }); }
+  catch(e){ if(e instanceof Cortado) throw e; return { noToco: primeraLinea(e) }; }
+  var fin = Date.now() + (limite || 90000);
+  await pg.esperar(1500);
+  while(Date.now() < fin){
+    await esperar(pg, 20000);
+    var adv = await advertenciaAlbor(pg, negVistos);
+    if(adv) return { advertencia: adv };
+    if(await listo()){
+      // El recuadro rojo puede llegar un poco después: se mira de nuevo.
+      await pg.esperar(1500);
+      await esperar(pg, 20000);
+      adv = await advertenciaAlbor(pg, negVistos);
+      if(adv) return { advertencia: adv };
+      if(await listo()) return { ok: true };
+    }
+    await pg.esperar(1000);
+  }
+  return { nada: true };
+}
+
+/* Aplica (transferencias) y guarda con "Guardar y crear otro", y no sale de
+   ahí hasta ver que Albor lo guardó. Si Albor muestra una advertencia, frena
+   para que la persona la resuelva a mano. Devuelve el número del comprobante. */
+async function guardarComprobante(pg, charla, aplicar){
+  var numero = '', antes = await huella(pg);
+  for(var vuelta = 1; vuelta <= 8; vuelta++){
+    var ahora = await huella(pg);
+    if(!sigueAbierto(antes, ahora)){ charla.decir('   guardado.'); return numero; }
+    if(ahora && ahora[3]){
+      if(!numero) numero = await leerNumero(pg);
+      if(antes && !antes[3]) antes = ahora;            // ya aplicado: el número también es huella
+    }
+    var porAplicar = aplicar && !(ahora && ahora[3]);
+    var que = porAplicar ? 'aplicar' : 'guardar';
+    charla.decir(porAplicar ? 'Aplicando…' : "Guardando ('Guardar y crear otro')…");
+    var r = await tocarYEsperar(pg, porAplicar ? '#btAplicar' : '#btGuardarYOtro', async function(){
+      var h = await huella(pg);
+      return porAplicar ? (h === null || !!(h && h[3])) : !sigueAbierto(antes, h);
+    });
+    if(r.ok){
+      if(porAplicar){
+        numero = await leerNumero(pg);
+        charla.decir('   comprobante ' + (numero || 'sin número todavía'));
+        antes = await huella(pg) || antes;
+        continue;
+      }
+      charla.decir('   guardado.');
+      return numero;
+    }
+    if(r.advertencia){
+      charla.decir('   [!] Albor no dejó ' + que + ': hay una advertencia arriba de la cabecera.');
+      await charla.pausa(textoAdvertencia(r.advertencia, que), 'Seguir');
+    }else if(r.noToco){
+      await charla.pausa('No pude tocar ' + (porAplicar ? 'Aplicar' : 'Guardar') + ' (' + r.noToco + ').\n' +
+                         'Hacelo a mano en Albor y tocá Seguir.', 'Seguir');
+    }else{
+      await charla.pausa('Albor no terminó de ' + que + ' (pasó un minuto y medio).\nFijate en Albor: si ' +
+                         'hay un recuadro rojo arriba, resolvelo. Después tocá Seguir: si todavía no está ' +
+                         'guardado, lo guardo yo.', 'Seguir');
+    }
+  }
+  await charla.pausa('No puedo confirmar que Albor haya guardado este comprobante.\nGuardalo a mano en Albor ' +
+                     'y tocá «Ya está guardado».', 'Ya está guardado');
+  return numero;
 }
 
 function textoFallados(fallados){
@@ -1451,38 +1611,24 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total){
     .map(function(x){ return x[0]; });
   var grilla = await esperarGrilla(pg);
 
-  var aviso = 'Revisá la cabecera en Albor:\n' +
-              '   Origen:  ' + b.origen_nombre + '\n   Destino: ' + b.destino_nombre + '\n   Fecha:   ' + b.fecha;
-  if(aMano.length) aviso += '\n\nElegí a mano ' + aMano.join(' y ') + '.';
-  if(!grilla) aviso += "\n\nLa grilla de ítems no apareció: completá la cabecera hasta que se " +
-                       "vea la tabla con el botón '+'.";
-  await charla.pausa(aviso, 'Cargar los ' + b.items.length + ' insumos');
+  var cabecera = '   Origen:  ' + b.origen_nombre + '\n   Destino: ' + b.destino_nombre + '\n   Fecha:   ' + b.fecha;
+  // Un solo control, después de cargar todo (Feli, 2026-10-02). Antes de
+  // cargar solo frena si hay algo que el programa no pudo completar.
+  if(aMano.length || !grilla){
+    var falta = 'Antes de cargar los insumos, completá a mano en Albor:';
+    if(aMano.length) falta += '\n   ' + aMano.join(' y ');
+    if(!grilla) falta += "\n   la cabecera, hasta que se vea la tabla con el botón '+'";
+    await charla.pausa(falta + '\n\n' + cabecera, 'Cargar los ' + b.items.length + ' insumos');
+  }
 
   var r = await cargarItems(pg, b.items, charla);
 
-  aviso = 'Entraron ' + r.cargados.length + ' de ' + b.items.length + ' insumos.';
-  if(r.fallados.length) aviso += '\n\nNO entraron (cargalos a mano antes de aplicar):\n' + textoFallados(r.fallados);
-  await charla.pausa(aviso + '\n\nRevisá la grilla en Albor.', 'Aplicar');
+  var aviso = 'Entraron ' + r.cargados.length + ' de ' + b.items.length + ' insumos.';
+  if(r.fallados.length) aviso += '\n\nNO entraron (cargalos a mano antes de seguir):\n' + textoFallados(r.fallados);
+  await charla.pausa(aviso + '\n\nRevisá en Albor la cabecera y la grilla:\n' + cabecera +
+                     '\n\nCon este botón aplico y guardo solo.', 'Aplicar y guardar');
 
-  // Si Albor no aplica por saldos negativos, se muestra por qué y se deja
-  // corregir la grilla ahí mismo: antes seguía de largo sin número.
-  for(var vuelta = 1; vuelta < 8; vuelta++){
-    charla.decir('Aplicando…');
-    try{ await pg.loc('#btAplicar').click({ timeout: 20000 }); }
-    catch(e){
-      if(e instanceof Cortado) throw e;
-      charla.decir('   [!] No pude tocar Aplicar (' + primeraLinea(e) + '). Tocalo a mano.');
-    }
-    await esperar(pg, 60000);
-    var negativos = await saldosNegativos(pg);
-    if(negativos == null) break;
-    charla.decir('   [!] Albor no aplicó: ' + negativos.length + ' insumos quedarían en negativo.');
-    await charla.pausa(textoNegativos(negativos, 'aplicó'), 'Aplicar de nuevo');
-  }
-  var numero = await leerNumero(pg);
-  charla.decir('   comprobante ' + (numero || 'sin número todavía'));
-
-  await charla.pausa('Comprobante ' + (numero || '(sin número)') + '.\n\nRevisalo y GUARDALO en Albor.', 'Ya lo guardé');
+  var numero = await guardarComprobante(pg, charla, true);
 
   return { empresa: empresaActual, hecho: {
     origen: b.origen_nombre, destino: b.destino_nombre,
@@ -1521,10 +1667,27 @@ function sinPrefijo(nombre){
    de la lista de granjas (981, 983…); si Albor no tiene esa opción o la
    lista no dice ninguno, se busca por nombre: 'G2 - CANDELARIA ENGORDE' ->
    'G2- CANDELARIA ENGORDE'. */
-async function centroDeLaGranja(pg, c){
-  var opciones = [];
-  try{ opciones = (await pg.evaluar(JS_OPCIONES, CENTRO)) || []; }
-  catch(e){ if(e instanceof Cortado) throw e; }
+async function centroDeLaGranja(pg, c, charla){
+  // Albor llena la lista después de elegir la unidad de negocio: se espera
+  // a que aparezca (antes se leía enseguida y quedaba sin elegir).
+  var fin = Date.now() + 15000, opciones = [];
+  for(;;){
+    try{ opciones = (await pg.evaluar(JS_OPCIONES, CENTRO)) || []; }
+    catch(e){ if(e instanceof Cortado) throw e; }
+    var v = buscarCentro(opciones, c);
+    if(v || Date.now() > fin) break;
+    await pg.esperar(1000);
+    await esperar(pg, 10000);
+  }
+  if(!v) charla.decir('   centros de costos que ofrece Albor: ' +
+                      (opciones.map(function(o){ return o[1]; }).filter(Boolean).join(', ') || 'ninguno (no encontré la lista)'));
+  return v;
+}
+
+/* Primero el número de la lista de granjas; si no, por el nombre. "Ajuste
+   stock inicial" y Biodigestor no se eligen nunca. */
+function buscarCentro(opciones, c){
+  opciones = opciones.filter(function(o){ return o[0] && !/AJUSTE|BIODIGESTOR/i.test(o[1]); });
   var valores = opciones.map(function(o){ return o[0]; });
   var pedido = String(c.centro_costo == null ? '' : c.centro_costo).trim();
   if(pedido && pedido !== '?' && valores.indexOf(pedido) >= 0) return pedido;
@@ -1557,6 +1720,63 @@ async function asegurarCentro(pg, valor, charla){
     await elegirOpcion(pg, CENTRO, valor, 'Centro de costos', charla);
   }
   return await centroPuesto(pg);
+}
+
+/* ---------- Campaña (Feli, 2026-10-02) ----------
+   Albor la deja en la que tenga por defecto (25/26). La pantalla manda la
+   que va (la del año de la fecha del egreso, o la de Ajustes). Se busca el
+   desplegable por su rótulo "Campaña", y la opción por su texto: "26/27" y
+   "2026/2027" son la misma. */
+function campaniaCorta(t){
+  var m = /(\d{2,4})\s*\/\s*(\d{2,4})/.exec(String(t == null ? '' : t));
+  return m ? m[1].slice(-2) + '/' + m[2].slice(-2) : String(t == null ? '' : t).replace(/\s+/g, '');
+}
+
+var JS_CAMPANIA = String(function(){
+  function limpio(s){ return String(s || '').replace(/\s+/g, ' ').trim(); }
+  var sel = [].slice.call(document.querySelectorAll('select'))
+    .filter(function(x){ return /campa/i.test((x.id || '') + ' ' + (x.name || '')); })[0] || null;
+  if(!sel){
+    var rotulos = [].slice.call(document.querySelectorAll('label, td, th, span, div, b, strong, dt'))
+      .filter(function(e){ return !e.children.length && /^campa(ñ|n)a\s*:?$/i.test(limpio(e.textContent)); });
+    for(var i = 0; i < rotulos.length && !sel; i++){
+      var r = rotulos[i];
+      if(r.htmlFor){ var s0 = document.getElementById(r.htmlFor); if(s0 && s0.tagName === 'SELECT') sel = s0; }
+      for(var p = r.parentElement, k = 0; p && k < 4 && !sel; p = p.parentElement, k++){
+        sel = [].slice.call(p.querySelectorAll('select')).filter(function(x){
+          return r.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING; })[0] || null;
+      }
+    }
+  }
+  if(!sel) return null;
+  sel.setAttribute('data-pc', 'campania');
+  var o = sel.options[sel.selectedIndex];
+  return { ops: [].slice.call(sel.options).map(function(x){ return [x.value, limpio(x.textContent)]; }),
+           puesto: [sel.value || '', o ? limpio(o.textContent) : ''] };
+});
+
+/* La elige y devuelve cómo quedó, para mostrarlo en el control. */
+async function ponerCampania(pg, campania, charla){
+  if(!campania) return '';
+  var quiero = campaniaCorta(campania);
+  for(var i = 0; i < 3; i++){
+    var d = null;
+    try{ d = await pg.evaluar(JS_CAMPANIA); }
+    catch(e){ if(e instanceof Cortado) throw e; }
+    if(!d){
+      charla.decir('   [!] No encontré la Campaña en Albor. Elegila a mano: ' + quiero + '.');
+      return 'SIN ELEGIR: elegí a mano la ' + quiero;
+    }
+    if(campaniaCorta(d.puesto[1]) === quiero) return d.puesto[1];
+    var op = d.ops.filter(function(o){ return o[0] && campaniaCorta(o[1]) === quiero; })[0];
+    if(!op){
+      charla.decir('   [!] Albor no tiene la campaña ' + quiero + ' (tiene: ' +
+                   d.ops.map(function(o){ return o[1]; }).filter(Boolean).join(', ') + '). Elegila a mano.');
+      return 'SIN ELEGIR: Albor no tiene la ' + quiero;
+    }
+    await elegirOpcion(pg, "select[data-pc='campania']", op[0], 'Campaña', charla);
+  }
+  return 'SIN ELEGIR: elegí a mano la ' + quiero;
 }
 
 /* Un comprobante de egreso: una granja, una cuenta contable. `cuentas` es
@@ -1606,44 +1826,43 @@ async function egresarComprobante(pg, c, empresaActual, charla, n, total, primer
 
   // La unidad de negocio va antes: el centro de costo puede depender de ella.
   await elegirOpcion(pg, '#ID_IT_Dimension_3', c.unidad_negocio, 'Unidad de negocio', charla);
-  var centro = await centroDeLaGranja(pg, c);
-  if(!centro) charla.decir('   [!] No encontré en Albor el centro de costo de ' + c.punto_nombre + '. Elegilo a mano.');
+  var centro = await centroDeLaGranja(pg, c, charla);
+  if(!centro) charla.decir('   [!] No encontré en Albor el centro de costos de ' + c.punto_nombre + '. Elegilo a mano.');
   await asegurarCentro(pg, centro, charla);
   await ponerFecha(pg, c.fecha, charla);
+  var campania = await ponerCampania(pg, c.campania, charla);
   var grilla = await esperarGrilla(pg);
   var puesto = await asegurarCentro(pg, centro, charla);
   var quedo = puesto[0], textoCentro = puesto[1];
 
-  var lineaCentro = (centro && quedo === centro)
-    ? (textoCentro || quedo) + ' (' + quedo + ')'
-    : 'SIN ELEGIR: elegí a mano el de ' + c.punto_nombre;
-  var aviso = 'Revisá la cabecera en Albor:\n' +
-              '   Punto:   ' + c.punto_nombre + '\n   Cuenta:  ' + cuenta() + '\n   Centro:  ' + lineaCentro +
-              '\n   N°:      ' + c.numero + '\n   Fecha:   ' + c.fecha;
-  if(!grilla) aviso += "\n\nLa grilla de ítems no apareció: completá la cabecera hasta que se " +
-                       "vea la tabla con el botón '+'.";
-  await charla.pausa(aviso, 'Cargar los ' + c.items.length + ' insumos');
+  function cabecera(){
+    var lineaCentro = (centro && quedo === centro)
+      ? (textoCentro || quedo) + ' (' + quedo + ')'
+      : 'SIN ELEGIR: elegí a mano el de ' + c.punto_nombre;
+    return '   Punto:    ' + c.punto_nombre + '\n   Cuenta:   ' + cuenta() + '\n   Centro:   ' + lineaCentro +
+           (c.campania ? '\n   Campaña:  ' + campania : '') +
+           '\n   N°:       ' + c.numero + '\n   Fecha:    ' + c.fecha;
+  }
+  // Un solo control, después de cargar todo (Feli, 2026-10-02). Antes de
+  // cargar solo frena si el programa no pudo completar algo de la cabecera.
+  if(!(centro && quedo === centro) || !grilla){
+    var falta = 'Antes de cargar los insumos, completá a mano en Albor:';
+    if(!(centro && quedo === centro)) falta += '\n   el centro de costos de ' + c.punto_nombre;
+    if(!grilla) falta += "\n   la cabecera, hasta que se vea la tabla con el botón '+'";
+    await charla.pausa(falta + '\n\n' + cabecera(), 'Cargar los ' + c.items.length + ' insumos');
+  }
 
   var r = await cargarItems(pg, c.items, charla);
 
-  aviso = 'Entraron ' + r.cargados.length + ' de ' + c.items.length + ' insumos.';
+  puesto = await centroPuesto(pg);
+  quedo = puesto[0]; textoCentro = puesto[1];
+  if(c.campania) campania = await ponerCampania(pg, c.campania, charla);
+  var aviso = 'Entraron ' + r.cargados.length + ' de ' + c.items.length + ' insumos.';
   if(r.fallados.length) aviso += '\n\nNO entraron (cargalos a mano antes de guardar):\n' + textoFallados(r.fallados);
-  await charla.pausa(aviso + '\n\nRevisá la grilla en Albor.', 'Guardar');
+  await charla.pausa(aviso + '\n\nRevisá en Albor la cabecera y la grilla:\n' + cabecera() +
+                     '\n\nCon este botón guardo solo.', 'Guardar');
 
-  for(var vuelta = 1; vuelta < 8; vuelta++){
-    charla.decir("Guardando ('Guardar y crear otro')…");
-    try{ await pg.loc('#btGuardarYOtro').click({ timeout: 20000 }); }
-    catch(e){
-      if(e instanceof Cortado) throw e;
-      await charla.pausa('No pude tocar Guardar (' + primeraLinea(e) + ').\nGuardalo a mano en Albor y tocá Seguir.');
-      break;
-    }
-    await esperar(pg, 60000);
-    var negativos = await saldosNegativos(pg);
-    if(negativos == null) break;
-    charla.decir('   [!] Albor no guardó: ' + negativos.length + ' insumos quedarían en negativo.');
-    await charla.pausa(textoNegativos(negativos, 'guardó'), 'Guardar de nuevo');
-  }
+  await guardarComprobante(pg, charla, false);
 
   return { empresa: empresaActual, hecho: {
     punto: c.punto_nombre, cuenta: c.cuenta, numero: c.numero,
@@ -1663,6 +1882,143 @@ async function egresar(pg, comprobantes, charla, hechos, cuentas){
     hechos.push(r.hecho);
   }
   return hechos;
+}
+
+/* ==================================================================
+   Las listas de Albor y el control antes de empezar (Ajustes, Feli 2026-10-02)
+   ================================================================== */
+
+// Las empresas de la pantalla de selección: [[número, nombre]].
+var JS_EMPRESAS = String(function(){
+  return [].slice.call(document.querySelectorAll('input[id^="cboEmpresa_chk_"]')).map(function(i){
+    var l = i.closest('label') || document.querySelector('label[for="' + i.id + '"]');
+    var t = l ? l.innerText : '';
+    if(!t || !t.replace(/\d/g, '').trim()){ var f = i.closest('tr, li'); if(f) t = f.innerText; }
+    return [i.id.replace('cboEmpresa_chk_', ''), String(t || '').replace(/\s+/g, ' ').trim()];
+  });
+});
+
+async function opcionesDe(pg, sel){
+  var ops = [];
+  try{ ops = (await pg.evaluar(JS_OPCIONES, sel)) || []; }
+  catch(e){ if(e instanceof Cortado) throw e; }
+  return ops.filter(function(o){ return o[0] && o[1] && !/^-*\s*selecc?ione/i.test(o[1]); });
+}
+
+/* Los centros de costos de una unidad de negocio: Albor los llena después de elegirla. */
+async function centrosDeUnidad(pg, unidad, charla){
+  await elegirOpcion(pg, '#ID_IT_Dimension_3', unidad, 'Unidad de negocio', charla);
+  var fin = Date.now() + 10000, ops = [];
+  for(;;){
+    ops = await opcionesDe(pg, CENTRO);
+    if(ops.some(function(o){ return !/AJUSTE/i.test(o[1]); }) || Date.now() > fin) break;
+    await pg.esperar(800);
+    await esperar(pg, 10000);
+  }
+  return ops;
+}
+
+/* Lo que ofrece Albor en un comprobante nuevo de esa empresa. */
+async function listasDeEmpresa(pg, empresa, actual, charla, unidades){
+  actual = await irAEmpresa(pg, empresa, actual, charla);
+  await nuevoComprobante(pg);
+  await elegirOpcion(pg, '#ID_Tipo_Comprobante', TIPO_TRANSFERENCIA, 'Tipo de comprobante', charla);
+  var r = { origen: await opcionesDe(pg, '#ID_Punto_Stock_Origen'), destino: await opcionesDe(pg, '#ID_Punto_Stock_Destino') };
+  await elegirOpcion(pg, '#ID_Tipo_Comprobante', TIPO_EGRESO, 'Tipo de comprobante', charla);
+  r.egreso = await opcionesDe(pg, '#ID_Punto_Stock_Origen');
+  r.unidades = await opcionesDe(pg, '#ID_IT_Dimension_3');
+  r.centros = [];
+  var vistos = {};
+  var cuales = unidades || r.unidades.map(function(u){ return u[0]; });
+  for(var i = 0; i < cuales.length; i++){
+    var ops = await centrosDeUnidad(pg, cuales[i], charla);
+    ops.forEach(function(o){ if(!vistos[o[0]]){ vistos[o[0]] = true; r.centros.push([o[0], o[1], cuales[i]]); } });
+  }
+  var camp = null;
+  try{ camp = await pg.evaluar(JS_CAMPANIA); }catch(e){ if(e instanceof Cortado) throw e; }
+  r.campanias = camp ? camp.ops.filter(function(o){ return o[0] && o[1]; }).map(function(o){ return o[1]; }) : [];
+  return { actual: actual, listas: r };
+}
+
+/* "Traer de Albor": las empresas y, de las que se usan, sus puntos de
+   stock, unidades de negocio, centros de costos y campañas. */
+function leer_albor(empresas){
+  return trabajo('__alborLog', async function(){
+    M.cancelar = false;
+    var charla = new Charla(function(t){ anotar(t); avisar(t); }, preguntar, function(){ return M.cancelar; });
+    try{
+      var a = await alborConSesion(), pg = a.pg;
+      var actual = await empresaEnUrl(pg);
+      charla.decir('Leyendo las empresas…');
+      await pg.ir(C.BASE + '/' + (actual || '1') + '/Empresas/SeleccionEmpresa');
+      await esperar(pg, 30000);
+      var lista = [];
+      try{ lista = (await pg.evaluar(JS_EMPRESAS)) || []; }catch(e){ if(e instanceof Cortado) throw e; }
+      charla.decir('   ' + (lista.length ? lista.map(function(e){ return e.join(' '); }).join(' · ') : 'no encontré la lista'));
+      var pedir = [];
+      (empresas || []).concat(EMPRESAS).forEach(function(e){ e = String(e).trim(); if(e && e !== '?' && pedir.indexOf(e) < 0) pedir.push(e); });
+      var por = {};
+      for(var i = 0; i < pedir.length; i++){
+        charla.decir('Empresa ' + pedir[i] + ': puntos de stock, unidades, centros y campañas…');
+        var r = await listasDeEmpresa(pg, pedir[i], actual, charla);
+        actual = r.actual;
+        por[pedir[i]] = r.listas;
+        charla.decir('   ' + r.listas.origen.length + ' puntos · ' + r.listas.unidades.length + ' unidades · ' +
+                     r.listas.centros.length + ' centros · ' + r.listas.campanias.length + ' campañas');
+      }
+      await a.cerrar();
+      M.albor = null;
+      charla.decir('Albor cerrado.');
+      return { ok: true, empresas: lista, por: por, fecha: new Date().toISOString() };
+    }catch(e){
+      if(e instanceof Cancelado) return { ok: false, cancelado: true, motivo: 'Cancelaste.' };
+      throw e;
+    }finally{ M.esperando = null; }
+  });
+}
+
+/* Antes de cargar nada, se fija que cada punto de stock y cada centro de
+   costos de la carga exista en Albor (Feli, 2026-10-02): si falta alguno,
+   avisa al principio, no a la mitad. Se puede cancelar y corregir en Ajustes,
+   o seguir y elegirlo a mano. */
+async function revisarAntes(pg, lista, egreso, charla){
+  var porEmpresa = {}, orden = [];
+  lista.forEach(function(c){
+    var e = String(c.empresa_id == null ? '' : c.empresa_id).trim();
+    if(!e || e === '?') return;
+    if(!porEmpresa[e]){ porEmpresa[e] = []; orden.push(e); }
+    porEmpresa[e].push(c);
+  });
+  if(!orden.length) return;
+  charla.decir('Antes de empezar: me fijo que Albor tenga todo lo de la lista…');
+  var actual = await empresaEnUrl(pg), faltan = [];
+  function hay(ops, v){ v = String(v == null ? '' : v).trim(); return !v || v === '?' || ops.some(function(o){ return o[0] === v; }); }
+  for(var i = 0; i < orden.length; i++){
+    var cs = porEmpresa[orden[i]], unidades = [];
+    if(egreso) cs.forEach(function(c){ var u = String(c.unidad_negocio || '').trim(); if(u && unidades.indexOf(u) < 0) unidades.push(u); });
+    var r = await listasDeEmpresa(pg, orden[i], actual, charla, egreso ? unidades : []);
+    actual = r.actual;
+    var L = r.listas;
+    cs.forEach(function(c){
+      if(egreso){
+        if(!hay(L.egreso, c.punto_id)) faltan.push('el punto de stock de ' + c.punto_nombre + ' (' + c.punto_id + ', empresa ' + orden[i] + ')');
+        if(c.unidad_negocio && !hay(L.unidades, c.unidad_negocio)) faltan.push('la unidad de negocio ' + c.unidad_negocio + ' (empresa ' + orden[i] + ')');
+        if(!buscarCentro(L.centros.filter(function(o){ return !c.unidad_negocio || o[2] === String(c.unidad_negocio).trim(); }), c))
+          faltan.push('el centro de costos de ' + c.punto_nombre + ' (' + (c.centro_costo || 'sin número') + ', empresa ' + orden[i] + ')');
+      }else{
+        if(!hay(L.origen, c.origen_id)) faltan.push('el punto de stock ' + c.origen_nombre + ' (' + c.origen_id + ', empresa ' + orden[i] + ')');
+        if(!hay(L.destino, c.destino_id)) faltan.push('el punto de stock ' + c.destino_nombre + ' (' + c.destino_id + ', empresa ' + orden[i] + ')');
+      }
+    });
+  }
+  faltan = faltan.filter(function(f, n){ return faltan.indexOf(f) === n; });
+  if(!faltan.length){ charla.decir('   está todo.'); return; }
+  charla.decir('   [!] falta: ' + faltan.join('; '));
+  await charla.pausa('Antes de empezar revisé Albor y no encuentro:\n' +
+                     faltan.map(function(f){ return '   ' + f; }).join('\n') +
+                     '\n\nNo cargué nada todavía. Podés cancelar y corregirlo en Ajustes ' +
+                     '("Traer de Albor" te muestra lo que hay), o seguir igual y elegirlo a mano en cada comprobante.',
+                     'Seguir igual');
 }
 
 /* ==================================================================
@@ -1778,34 +2134,46 @@ function bajar_existencias(puntos, hasta){
 /* El cartel de la pausa ADENTRO de la pestaña de Albor (Feli, 2026-10-01):
    se revisa Albor y se toca el botón ahí mismo, sin ir y venir a la app. Se
    pregunta cada medio segundo si lo tocaron. Mientras está el cartel no se
-   toca nada de Albor (es una pausa); se saca antes de seguir. */
+   toca nada de Albor (es una pausa); se saca antes de seguir. Va en una
+   "cajita aislada" (shadow DOM): los estilos de Albor no lo alcanzan. Antes
+   pintaban los botones de blanco y no se leían (Feli, 2026-10-02). */
 var JS_CARTEL = String(function(o){
   var r = window.__pcResp;
   if(r){ window.__pcResp = null; var v = document.getElementById('__pc_cartel'); if(v) v.remove(); return r; }
-  var c = document.getElementById('__pc_cartel');
-  if(!c){
+  var host = document.getElementById('__pc_cartel');
+  if(!host){
     window.__pcResp = null;
-    c = document.createElement('div');
-    c.id = '__pc_cartel';
-    c.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:2147483647;width:min(440px,calc(100vw - 36px));' +
-      'background:#1d1d20;color:#eceae5;border:1px solid #33333a;border-left:5px solid ' + o.color + ';border-radius:10px;' +
-      'padding:14px 16px;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;' +
-      'box-shadow:0 12px 36px rgba(0,0,0,.45);text-align:left';
-    var b = 'font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;border-radius:6px;padding:9px 14px;cursor:pointer;';
-    c.innerHTML = '<div style="font-weight:700;margin-bottom:6px;color:' + o.color + '">Programa de Compras</div>' +
-      '<div class="t" style="white-space:pre-wrap;max-height:50vh;overflow:auto"></div>' +
-      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
-      '<button type="button" class="s" style="' + b + 'background:' + o.color + ';color:#1a1013;border:0"></button>' +
-      '<button type="button" class="x" style="' + b + 'background:none;color:#a3a099;border:1px solid #33333a">Cancelar la carga</button></div>';
-    c.querySelector('.s').onclick = function(){ window.__pcResp = 'seguir'; c.remove(); };
-    c.querySelector('.x').onclick = function(){
-      if(this.dataset.seguro){ window.__pcResp = 'cancelar'; c.remove(); }
-      else{ this.dataset.seguro = '1'; this.textContent = '¿Seguro? Tocá de nuevo para cancelar'; this.style.color = '#f08b84'; }
+    host = document.createElement('div');
+    host.id = '__pc_cartel';
+    host.setAttribute('style', 'all:initial !important;position:fixed !important;right:18px !important;' +
+      'bottom:18px !important;z-index:2147483647 !important;display:block !important');
+    var raiz = host.attachShadow({ mode: 'open' });
+    var letra = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif';
+    raiz.innerHTML = '<style>' +
+      ':host{all:initial}' +
+      '.c{box-sizing:border-box;width:min(440px,calc(100vw - 36px));background:#1d1d20;color:#eceae5;' +
+      'border:1px solid #33333a;border-left:5px solid ' + o.color + ';border-radius:10px;padding:14px 16px;' +
+      'font:14px/1.45 ' + letra + ';box-shadow:0 12px 36px rgba(0,0,0,.45);text-align:left}' +
+      '.h{font-weight:700;margin-bottom:6px;color:' + o.color + '}' +
+      '.t{white-space:pre-wrap;max-height:50vh;overflow:auto}' +
+      '.b{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}' +
+      'button{all:initial;box-sizing:border-box;display:inline-block;font:600 14px/1.2 ' + letra + ';' +
+      'border-radius:6px;padding:9px 14px;cursor:pointer}' +
+      '.s{background:' + o.color + ';color:#1a1013}' +
+      '.x{background:transparent;color:#cfccc5;border:1px solid #55555e}' +
+      '.x.seguro{color:#f08b84;border-color:#f08b84}' +
+      '</style><div class="c"><div class="h">Programa de Compras</div><div class="t"></div>' +
+      '<div class="b"><button type="button" class="s"></button>' +
+      '<button type="button" class="x">Cancelar la carga</button></div></div>';
+    raiz.querySelector('.s').onclick = function(){ window.__pcResp = 'seguir'; host.remove(); };
+    raiz.querySelector('.x').onclick = function(){
+      if(this.dataset.seguro){ window.__pcResp = 'cancelar'; host.remove(); }
+      else{ this.dataset.seguro = '1'; this.textContent = '¿Seguro? Tocá de nuevo para cancelar'; this.className = 'x seguro'; }
     };
-    (document.body || document.documentElement).appendChild(c);
+    (document.body || document.documentElement).appendChild(host);
   }
-  c.querySelector('.t').textContent = o.texto;
-  c.querySelector('.s').textContent = o.boton;
+  host.shadowRoot.querySelector('.t').textContent = o.texto;
+  host.shadowRoot.querySelector('.s').textContent = o.boton;
   return null;
 });
 var JS_SACAR_CARTEL = "() => { const c = document.getElementById('__pc_cartel'); if (c) c.remove(); window.__pcResp = null; }";
@@ -1849,11 +2217,11 @@ function pedirPermisoAvisos(){
   }catch(e){}
 }
 
-function tituloDePausa(boton){
-  if(/de nuevo$/.test(boton)) return 'Albor no pudo: hay saldos negativos para corregir';
-  if(/^Cargar los/.test(boton)) return 'Revisá la cabecera en Albor';
-  if(/^(Aplicar|Guardar)$/.test(boton)) return 'Terminó de cargar los insumos: revisá la grilla';
-  if(boton === 'Ya lo guardé') return 'Comprobante aplicado: revisalo y guardalo en Albor';
+function tituloDePausa(boton, texto){
+  if(/^Hay advertencias de Albor/.test(texto)) return 'Albor no guardó: hay una advertencia para resolver';
+  if(/^Cargar los/.test(boton)) return 'Completá la cabecera en Albor';
+  if(/^(Aplicar y guardar|Guardar)$/.test(boton)) return 'Terminó de cargar: revisá antes de guardar';
+  if(boton === 'Ya está guardado') return 'Guardá el comprobante en Albor';
   return 'Falta que revises algo en Albor';
 }
 
@@ -1889,7 +2257,7 @@ function preguntar(texto, boton){
     M.esperando = pausa;
     anotar('PAUSA [' + boton + '] ' + String(texto).replace(/\n/g, ' | ').slice(0, 200));
     if(window.__alborPausa) window.__alborPausa(String(texto), String(boton));
-    avisarCompu(tituloDePausa(String(boton)),
+    avisarCompu(tituloDePausa(String(boton), String(texto)),
                 String(texto).split('\n').filter(Boolean).slice(0, 3).join(' · ') + '\n→ ' + boton, true);
     cartelEnAlbor(pausa);
   }).then(async function(r){
@@ -1970,8 +2338,10 @@ function items(lista){
 function cargar_transferencia(bloques, archivos, etiqueta){
   bloques = (bloques || []).map(function(b){ return Object.assign({}, b, { items: items(b.items) }); });
   if(!bloques.length) return Promise.resolve({ ok: false, motivo: 'No hay nada para transferir.' });
-  return cargar(function(pg, charla, hechos){ return transferir(pg, bloques, charla, hechos); },
-                'Transferencias', etiqueta, archivos);
+  return cargar(async function(pg, charla, hechos){
+    await revisarAntes(pg, bloques, false, charla);
+    return transferir(pg, bloques, charla, hechos);
+  }, 'Transferencias', etiqueta, archivos);
 }
 
 function cargar_egresos(comprobantes, archivos, etiqueta){
@@ -1988,8 +2358,10 @@ function cargar_egresos(comprobantes, archivos, etiqueta){
   // guardan, así la próxima vez el avance los dice desde el principio.
   var cuentas = Object.assign({}, NOMBRES_CUENTAS);
   try{ Object.assign(cuentas, JSON.parse(localStorage.getItem(CLAVE_CUENTAS) || '{}') || {}); }catch(e){}
-  return cargar(function(pg, charla, hechos){ return egresar(pg, comprobantes, charla, hechos, cuentas); },
-                'Egresos', etiqueta, archivos).then(function(r){
+  return cargar(async function(pg, charla, hechos){
+    await revisarAntes(pg, comprobantes, true, charla);
+    return egresar(pg, comprobantes, charla, hechos, cuentas);
+  }, 'Egresos', etiqueta, archivos).then(function(r){
     try{ localStorage.setItem(CLAVE_CUENTAS, JSON.stringify(cuentas)); }catch(e){}
     return r;
   });
@@ -2024,7 +2396,8 @@ window.AlborExt = {
     cargar_egresos: cargar_egresos,
     responder_carga: responder_carga,
     cerrar_albor: cerrar_albor,
-    abrir_carpeta: abrir_carpeta
+    abrir_carpeta: abrir_carpeta,
+    leer_albor: leer_albor
   }
 };
 

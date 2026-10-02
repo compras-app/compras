@@ -333,7 +333,6 @@ function pintarAjustes() {
     $('aj-numero').value = a.cotizar.numeroPrueba || '';
     $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';
     $('aj-msj-conf').value = a.cotizar.msjConfirmar || '';
-    $('aj-msj-gracias').value = a.cotizar.msjGracias || '';
   }
 }
 
@@ -399,7 +398,7 @@ async function sacarGranja(nombre) {
 $('aj-cot-ok').addEventListener('click', async function () {
   const r = await api('guardarAjustesCotizar', {
     numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
-    msjConfirmar: $('aj-msj-conf').value, msjGracias: $('aj-msj-gracias').value
+    msjConfirmar: $('aj-msj-conf').value
   });
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   AD.ajustes.cotizar = r.cotizar;
