@@ -90,6 +90,7 @@
     </button>
     <h1 id="b-titulo">Compras</h1>
     <nav class="apartados" id="b-apartados" aria-label="Apartados" hidden></nav>
+    <button id="b-notif" class="b-notif" type="button" aria-label="Notificaciones" hidden>🔔<span class="badge" id="b-notif-n" hidden></span></button>
     <button id="b-cuenta" type="button" aria-label="Tu cuenta">
       <span class="yo" id="b-nombre"></span><span class="inicial" id="b-inicial" aria-hidden="true"></span>
     </button>
@@ -103,6 +104,10 @@
     <button class="tab" type="button" data-tab="tareas" id="t-tareas" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 12l3 3 5-6"/></svg>
       Tareas
+    </button>
+    <button class="tab" type="button" data-tab="servicios" id="t-servicios">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8V20h3.2l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.3-.6-.6-2.3z"/></svg>
+      Servicios
     </button>
     <button class="tab" type="button" data-tab="buscar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
@@ -137,6 +142,23 @@
       <!-- Procesando (Fase 3): pedidos cuyos productos ya están todos en tarjetas de trabajo. Plegada, arriba de la Tanda verde -->
       <div class="procesando" id="tb-procesando" hidden></div>
       <div class="tablero" id="tablero" aria-label="Tablero de pedidos"></div>
+      <!-- Stand by (Paso 2-ter): los que llevan muchos días en Entrantes. Plegada, abajo del tablero -->
+      <div class="procesando standby" id="tb-standby" hidden></div>
+    </section>
+
+    <!-- Servicios (Paso 2-ter): otro tablero, para lo que hay que mandar a arreglar -->
+    <section id="s-servicios" class="pantalla-tablero" hidden>
+      <div class="herramientas">
+        <div class="filtros">
+          <div class="seg" role="group" aria-label="Qué servicios ver" id="sv-filtro">
+            <button type="button" id="sv-mios" aria-pressed="false">Mis servicios</button>
+            <button type="button" id="sv-todos" aria-pressed="true">Todos</button>
+          </div>
+          <a class="btn-chico si" id="sv-nuevo">＋ Pedir un servicio</a>
+          <button type="button" class="refrescar" id="sv-refrescar" aria-label="Actualizar los servicios"><span class="ic">↻</span> <span id="sv-hace"></span></button>
+        </div>
+      </div>
+      <div class="tablero" id="servicios-tablero" aria-label="Tablero de servicios"></div>
     </section>
 
     <section id="s-tareas" class="pantalla-tablero" hidden>
@@ -162,6 +184,11 @@
           <button type="button" data-estado="todos" aria-pressed="true">Todos</button>
           <button type="button" data-estado="curso" aria-pressed="false">En curso</button>
           <button type="button" data-estado="terminados" aria-pressed="false">Terminados</button>
+        </div>
+        <div class="seg" role="group" aria-label="Pedidos o servicios" id="bu-tipo">
+          <button type="button" data-tipo="" aria-pressed="true">Todo</button>
+          <button type="button" data-tipo="pedidos" aria-pressed="false">Pedidos</button>
+          <button type="button" data-tipo="servicios" aria-pressed="false">Servicios</button>
         </div>
         <div class="seg" role="group" aria-label="De quién">
           <button type="button" id="bu-mios" aria-pressed="false">Mis pedidos</button>
@@ -227,7 +254,7 @@
         <label class="aj-prueba"><input type="checkbox" id="aj-prueba"> <span><b>🧪 Modo prueba</b><br><small>Todos los pedidos de cotización le llegan al número de prueba, no a los proveedores. Se apaga cuando la app entra en uso.</small></span></label>
         <div class="campo"><label for="aj-numero">Número de prueba</label><input type="tel" id="aj-numero" inputmode="numeric" placeholder="Solo los números, con 549 adelante"></div>
         <div class="campo"><label for="aj-msj-cot">Pedido de cotización</label><textarea id="aj-msj-cot" rows="7"></textarea>
-          <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto.</small></div>
+          <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto. {contacto}: el nombre del contacto del proveedor (si no tiene, se saltea).</small></div>
         <div class="campo"><label for="aj-msj-conf">Confirmación al ganador</label><textarea id="aj-msj-conf" rows="4"></textarea></div>
         <div class="campo"><label for="aj-msj-gracias">A los que no ganaron</label><input type="text" id="aj-msj-gracias"></div>
         <button type="button" class="btn2" id="aj-cot-ok">Guardar</button>
@@ -312,7 +339,7 @@
           <div class="enlaces" id="tj-enlaces" hidden></div>
           <button type="button" class="btn2 tj-reabrir" id="tj-reabrir" hidden>↩️ Reabrir el pedido</button>
           <div class="bloque" id="tj-desc-b" hidden>
-            <div class="act-h"><h3>Descripción</h3><button type="button" class="btn-chico" id="tj-desc-editar" hidden>✏️ Editar</button></div>
+            <div class="act-h"><h3 id="tj-desc-t">Descripción</h3><button type="button" class="btn-chico" id="tj-desc-editar" hidden>✏️ Editar</button></div>
             <p class="texto" id="tj-desc"></p>
           </div>
           <div class="bloque" id="tj-razon-b"><h3>Razón del pedido</h3><p class="texto" id="tj-razon"></p></div>
@@ -396,6 +423,8 @@
 <script src="js/tablero.js"></script>
 <script src="js/cotizar.js"></script>
 <script src="js/tareas.js"></script>
+<script src="js/servicios.js"></script>
+<script src="js/notificaciones.js"></script>
 <script src="js/buscar.js"></script>
 <script src="js/admin.js"></script>
 <script src="js/pantallas.js"></script>

@@ -52,7 +52,29 @@ function colCancelado() {
   return c.length ? c[0].columna : 'Cancelado';
 }
 function colPorRecibir() { return (TB.datos && TB.datos.porRecibir) || 'Por recibir'; }
-function enTablero(columna) { return columnasTb().some(function (c) { return c.columna === columna; }); }
+/** Stand by (Paso 2-ter): una columna más, que se ve como franja abajo del tablero. */
+function colStandby() { return (TB.datos && TB.datos.standby) || 'Stand by'; }
+function enTablero(columna) { return columna === colStandby() || columnasTb().some(function (c) { return c.columna === columna; }); }
+function colEntrantes() { const c = columnasTb().filter(function (x) { return x.seccion === 'Cotización'; }); return (c[0] || {}).columna || 'Entrantes'; }
+function colTanda() { const c = columnasTb().filter(function (x) { return x.seccion === 'Tanda verde'; }); return (c[0] || {}).columna || ''; }
+
+/* Ordenar cada columna (Paso 2-bis): a mano (el de todos), más nuevo o más viejo primero. Solo en este dispositivo */
+const K_ORDEN_COLS = 'compras_orden_columnas';
+const ORDEN_TEXTO = { '': '↕ A mano', nuevo: '↓ Más nuevos', viejo: '↑ Más viejos' };
+function ordenDe(columna) { return guardado.leerJSON(K_ORDEN_COLS, {})[columna] || ''; }
+function cambiarOrden(columna) {
+  const o = guardado.leerJSON(K_ORDEN_COLS, {});
+  o[columna] = !o[columna] ? 'nuevo' : o[columna] === 'nuevo' ? 'viejo' : '';
+  if (!o[columna]) delete o[columna];
+  guardado.guardarJSON(K_ORDEN_COLS, o);
+}
+function ordenarPorFecha(ts, orden) {
+  if (!orden) return ts;
+  return ts.slice().sort(function (a, b) {
+    const d = new Date(a.fecha || 0) - new Date(b.fecha || 0);
+    return orden === 'nuevo' ? -d : d;
+  });
+}
 
 /* ---------- Lo que se ve: lo del servidor + lo que espera en la bandeja ---------- */
 function insertarEn(lista, t, despuesDe) {
@@ -205,10 +227,15 @@ function pintarTablero() {
   cols.forEach(function (c) {
     const primera = c.seccion !== seccionAnterior;
     seccionAnterior = c.seccion;
-    const ts = porCol[c.columna];
+    const orden = ordenDe(c.columna);
+    const ts = ordenarPorFecha(porCol[c.columna], orden);
+    // Paso 2-bis: "📤 Mandar a Por cotizar" arriba de la Tanda verde (solo admins)
+    const tanda = admin && c.columna === colTanda() && ts.some(function (t) { return !t.trabajo; });
     html.push('<div class="col" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
-      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span></div>' +
+      '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
+      '<button type="button" class="col-orden" data-orden-col="' + esc(c.columna) + '" aria-label="Ordenar la columna" title="Ordenar: a mano, más nuevos o más viejos primero (solo en este dispositivo)">' + ORDEN_TEXTO[orden] + '</button>' +
+      (tanda ? '<button type="button" class="btn-chico si tanda-cot" id="tb-tanda-cot">📤 Mandar a ' + esc(colPorCotizar()) + '</button>' : '') + '</div>' +
       '<div class="lista" data-columna="' + esc(c.columna) + '">' +
       (ts.length ? ts.map(function (t) { return htmlTarjeta(t, c.columna === colPorRecibir()); }).join('')
                  : '<div class="vacia">Sin pedidos</div>') +
@@ -220,6 +247,11 @@ function pintarTablero() {
   cont.querySelectorAll('[data-cotizar]').forEach(function (b) {
     b.addEventListener('click', function (e) { e.stopPropagation(); if (!TB.recienArrastrada) abrirPedirCotizacion(b.dataset.cotizar); });
   });
+  cont.querySelectorAll('[data-orden-col]').forEach(function (b) {
+    b.addEventListener('click', function () { cambiarOrden(b.dataset.ordenCol); pintarTablero(); });
+  });
+  const bt = $('tb-tanda-cot');
+  if (bt) bt.addEventListener('click', mandarTandaACotizar);
   cont.querySelectorAll('.tarjeta').forEach(function (el) {
     const ref = el.dataset.ref;
     el.addEventListener('click', function (e) {
@@ -232,8 +264,51 @@ function pintarTablero() {
     }
   });
   pintarProcesando();
+  pintarStandby();
   pintarSecciones();
   pintarHace();
+}
+
+/* ---------- "📤 Mandar a Por cotizar" (Paso 2-bis): toda la Tanda verde, enteros ---------- */
+async function mandarTandaACotizar() {
+  const tanda = colTanda(), destino = colPorCotizar();
+  const ts = vista().filter(function (t) { return t.columna === tanda && !t.trabajo; });
+  if (!ts.length) return;
+  const si = await dialogo({
+    titulo: '📤 Mandar a ' + destino,
+    texto: '¿Pasar ' + (ts.length === 1 ? 'el pedido' : 'los ' + ts.length + ' pedidos') + ' de la ' + tanda + ' a ' + destino + '? No se les manda nada a los proveedores: después se pide cotización desde cada tarjeta.',
+    botones: [{ texto: 'Sí, pasarlos', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }]
+  });
+  if (!si) return;
+  ts.forEach(function (t) {
+    bandeja.agregar('moverTarjeta', [t.ref, { columna: destino, despuesDe: '*', desde: t.columna }], 'mover "' + t.titulo + '" a ' + destino);
+  });
+  pintarTablero();
+  aviso('📤 ' + (ts.length === 1 ? 'Pasó 1 pedido' : 'Pasaron ' + ts.length + ' pedidos') + ' a ' + destino + '.');
+}
+
+/* ---------- Stand by (Paso 2-ter): plegada, abajo del tablero ----------
+   Los pedidos que llevaron 10 días hábiles en Entrantes (o que un admin mandó). */
+const K_STANDBY = 'compras_standby_abierto';
+function pintarStandby() {
+  const cont = $('tb-standby');
+  if (!cont) return;
+  cont.hidden = !TB.datos;
+  if (!TB.datos) { cont.innerHTML = ''; return; }
+  const lista = vista().filter(function (t) { return t.columna === colStandby() && seVe(t); });
+  const abierto = guardado.leer(K_STANDBY) === '1';
+  cont.innerHTML = '<button type="button" class="proc-h" id="tb-sb-h" aria-expanded="' + abierto + '">' + (abierto ? '▾' : '▸') +
+    ' 💤 ' + esc(colStandby()) + ' <span class="n">(' + lista.length + ')</span></button>' +
+    (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">No hay ninguno. Acá pasan solos los pedidos que llevan 10 días hábiles en ' + esc(colEntrantes()) + '. Se sacan con "Mover a…".</p>' : '') +
+    (abierto && lista.length ? '<div class="proc-l">' + lista.map(function (x) {
+      return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
+        '<small>' + esc(x.solicitante ? 'Pidió ' + x.solicitante : '') + (x.fecha ? ' · cargado el ' + esc(fechaLinda(x.fecha)) : '') + '</small></button>';
+    }).join('') + '</div>' : '');
+  $('tb-sb-h').addEventListener('click', function () {
+    guardado.guardar(K_STANDBY, abierto ? '' : '1');
+    pintarStandby();
+  });
+  cont.querySelectorAll('.proc-i').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
 }
 
 /* ---------- Procesando (Fase 3): plegada, arriba de la Tanda verde ----------
@@ -273,7 +348,8 @@ function htmlTarjeta(t, enPorRecibir) {
     (enPorRecibir && t.entrega ? '<span class="entrega">' + esc(ENTREGA_CORTO[t.entrega] || t.entrega) + '</span>' : '') +
     (t.paraAprobar && APP.yo && APP.yo.admin ? '<span class="aprobar" title="Cambios para aprobar">⏳ ' + t.paraAprobar + '</span>' : '') +
     (t.responsable ? '<span class="resp" title="Responsable: ' + esc(t.responsable) + '">' + esc(inicial(t.responsable)) + '</span>' : '') +
-    '</div>' + htmlMarcaCotizar(t) + '</div>';                                     // Fase 3: "📤 Pedir cotización" (cotizar.js)
+    '</div>' + (t.standbyEn ? '<div class="sb-aviso">⏰ Pasa a stand by en ' + t.standbyEn + (t.standbyEn === 1 ? ' día' : ' días') + '</div>' : '') +   // Paso 2-ter
+    htmlMarcaCotizar(t) + '</div>';                                                // Fase 3: "📤 Pedir cotización" (cotizar.js)
 }
 
 /* ---------- Secciones: saltar al principio de cada una ---------- */
@@ -319,7 +395,9 @@ async function cargarTablero() {
   const r = await api('getTablero');
   TB.cargando = false;
   if (r.ok) {
-    TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, procesando: r.procesando || [], porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado };
+    TB.datos = { columnas: r.columnas, tarjetas: r.tarjetas, procesando: r.procesando || [], porRecibir: r.porRecibir, version: r.version, actualizado: r.actualizado,
+                 standby: r.standby || 'Stand by' };
+    if (typeof notifSinLeer === 'function' && r.sinLeer !== undefined) notifSinLeer(r.sinLeer);   // notificaciones.js
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
     if (TB.abierta && TB.tipo !== 'tarea') { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
@@ -353,6 +431,11 @@ window.addEventListener('online', function () { if (tableroALaVista()) cargarTab
 async function moverA(ref, destino, despuesDe) {
   const t = buscarEnVista(ref) || TB.reabiertos[ref];
   if (!t) return pintarTablero();
+  // Una columna ordenada por fecha (Paso 2-bis): dentro de ella no se cambia el orden a mano
+  if (destino === t.columna && ordenDe(destino)) {
+    aviso('"' + destino + '" está ordenada por fecha: para cambiar el orden a mano, tocá "' + ORDEN_TEXTO[ordenDe(destino)] + '" arriba de la columna hasta que diga "' + ORDEN_TEXTO[''] + '".');
+    return pintarTablero();
+  }
   const op = { columna: destino, despuesDe: despuesDe, desde: t.columna };
   if (destino !== t.columna && destino === colPorRecibir()) {
     const e = await preguntarEntrega(t.entrega);
@@ -727,12 +810,21 @@ function idDrive(url) { const m = /[?&]id=([\w-]+)/.exec(url) || /\/d\/([\w-]+)/
 
 /** Una tarjeta de trabajo (Fase 3): productos de uno o varios pedidos, que se mueve por su lado. */
 function esTrabajo(ref) { return /^W/.test(ref || ''); }
+/** ¿La tarjeta abierta es un servicio (Paso 2-ter)? Lo dice el servidor, o el tablero de Servicios si todavía no llegó. */
+function esServicioAbierto() {
+  const d = TB.detalle;
+  if (d && d.pedido) return !!d.pedido.servicio;
+  return typeof buscarServicio === 'function' && !!buscarServicio(TB.abierta);
+}
 
 function pintarTarjeta() {
   const ref = TB.abierta;
   if (!ref) return;
   bloquesDeTarea(TB.tipo === 'tarea');
   if (TB.tipo === 'tarea') return pintarTareaAbierta();      // tareas.js
+  $('tj-prod-b').hidden = false;
+  $('tj-desc-t').textContent = 'Descripción';
+  if (esServicioAbierto()) return pintarServicioAbierto();   // servicios.js (Paso 2-ter)
   const t = buscarEnVista(ref);
   const d = TB.detalle, p = d ? d.pedido : null;
   const admin = APP.yo.admin;
@@ -902,11 +994,16 @@ function htmlPorRubro(lineas, admin, mio, tarjetas) {
 
 $('tj-columna').addEventListener('click', async function () {
   const ref = TB.abierta;
-  if (!ref || !APP.yo.admin) return;
+  if (!ref) return;
+  if (esServicioAbierto()) return moverServicioUI(ref);          // servicios.js: también quien lo pidió
+  if (!APP.yo.admin) return;
   if (TB.tipo === 'tarea') return moverTareaUI(ref);
   const t = buscarEnVista(ref);
   if (!t) return;
-  const destino = await moverADialogo(esTrabajo(ref) ? 'Mover la tarjeta a…' : 'Mover el pedido a…', t.columna, '');
+  // Paso 2-ter: un pedido también va a Stand by (y de ahí vuelve a Entrantes)
+  const cols = esTrabajo(ref) ? null : columnasTb().concat([{ columna: colStandby(), seccion: 'Stand by' }]);
+  const destino = await moverADialogo(esTrabajo(ref) ? 'Mover la tarjeta a…' : 'Mover el pedido a…', t.columna, '', cols,
+                                      t.columna === colStandby() ? colEntrantes() : '');
   if (!destino || destino === t.columna) return;
   moverA(ref, destino, '');
 });

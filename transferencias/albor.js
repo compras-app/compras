@@ -1832,6 +1832,55 @@ async function cartelEnAlbor(pausa){
   }
 }
 
+/* ---------- Avisos de la compu (Feli, 2026-10-02) ----------
+   Cada vez que hace falta que una persona controle (cada pausa: revisar la
+   cabecera, la grilla, guardar el comprobante, saldos negativos) y cuando la
+   carga termina, sale una notificación de Chrome en la compu (Mac o
+   Windows), aunque se esté en otra pestaña o programa. Tocarla trae la
+   pestaña de Albor (o la app, si ya terminó). El permiso se pide al tocar
+   "Cargar en Albor"; si se niega, quedan los carteles de siempre. Mientras
+   espera, el título de la pestaña de la app empieza con 🔔. */
+var AVISO = { ultimo: null, titulo: null };
+
+function pedirPermisoAvisos(){
+  try{
+    var N = window.Notification;
+    if(N && N.permission === 'default') N.requestPermission();
+  }catch(e){}
+}
+
+function tituloDePausa(boton){
+  if(/de nuevo$/.test(boton)) return 'Albor no pudo: hay saldos negativos para corregir';
+  if(/^Cargar los/.test(boton)) return 'Revisá la cabecera en Albor';
+  if(/^(Aplicar|Guardar)$/.test(boton)) return 'Terminó de cargar los insumos: revisá la grilla';
+  if(boton === 'Ya lo guardé') return 'Comprobante aplicado: revisalo y guardalo en Albor';
+  return 'Falta que revises algo en Albor';
+}
+
+function avisarCompu(titulo, cuerpo, aAlbor){
+  sacarAviso();
+  if(!AVISO.titulo) AVISO.titulo = document.title;
+  document.title = '🔔 ' + AVISO.titulo;
+  try{
+    var N = window.Notification;
+    if(!N || N.permission !== 'granted') return;
+    var n = new N(titulo, { body: String(cuerpo || '').slice(0, 240), tag: 'programa-compras-albor',
+                            requireInteraction: true });
+    n.onclick = function(){
+      try{ window.focus(); }catch(e){}
+      if(aAlbor && M.albor) M.albor.pg.traer();
+      else Mano.pedirSeguro('volver', {}, 15000).catch(function(){});
+      n.close();
+    };
+    AVISO.ultimo = n;
+  }catch(e){}
+}
+
+function sacarAviso(){
+  if(AVISO.ultimo){ try{ AVISO.ultimo.close(); }catch(e){} AVISO.ultimo = null; }
+  if(AVISO.titulo){ document.title = AVISO.titulo; AVISO.titulo = null; }
+}
+
 /* Una pausa en la pantalla y en Albor; espera el botón (responder_carga). */
 function preguntar(texto, boton){
   if(M.cancelar) return Promise.resolve(false);
@@ -1840,9 +1889,12 @@ function preguntar(texto, boton){
     M.esperando = pausa;
     anotar('PAUSA [' + boton + '] ' + String(texto).replace(/\n/g, ' | ').slice(0, 200));
     if(window.__alborPausa) window.__alborPausa(String(texto), String(boton));
+    avisarCompu(tituloDePausa(String(boton)),
+                String(texto).split('\n').filter(Boolean).slice(0, 3).join(' · ') + '\n→ ' + boton, true);
     cartelEnAlbor(pausa);
   }).then(async function(r){
     M.esperando = null;
+    sacarAviso();
     // Antes de seguir: sin cartel encima, y Albor a la vista mientras trabaja.
     var pg = M.albor && M.albor.pg;
     if(pg){
@@ -1865,6 +1917,7 @@ function hora(){ var d = new Date(); return ('0' + d.getHours()).slice(-2) + 'h'
 /* Lo común a transferencias y egresos: las planillas de la operación (en
    Descargas, "Programa de Compras/…"), la sesión y la carga. */
 function cargar(hacer, base, etiqueta, archivos){
+  pedirPermisoAvisos();        // todavía dentro del toque en "Cargar en Albor"
   return trabajo('__alborLog', async function(){
     var carpeta = null;
     var nombreCarpeta = 'Programa de Compras/' + base + '/' + (etiqueta || 'sin nombre') + ' (' + hora() + ')';
@@ -1890,12 +1943,15 @@ function cargar(hacer, base, etiqueta, archivos){
       await a2.cerrar();
       M.albor = null;
       charla.decir('Albor cerrado.');
+      avisarCompu('Listo: terminó la carga en Albor', hechos.length + ' comprobante' + (hechos.length === 1 ? '' : 's') +
+                  '. Mirá el resumen en la app.', false);
       return { ok: true, hechos: hechos, carpeta: carpeta };
     }catch(e){
       if(e instanceof Cancelado)
         return { ok: false, cancelado: true, hechos: hechos, carpeta: carpeta,
                  motivo: 'Cancelaste la carga. Lo que ya estaba en Albor quedó cargado.' };
       anotar('ERROR: ' + String((e && e.stack) || e).slice(0, 600));
+      avisarCompu('La carga en Albor no terminó', motivoDe(e), false);
       return { ok: false, hechos: hechos, carpeta: carpeta, motivo: motivoDe(e) };
     }finally{
       M.esperando = null;
@@ -1961,6 +2017,7 @@ function buscar(){
 window.AlborExt = {
   buscar: buscar,
   registro: function(){ return REGISTRO.slice(); },
+  avisoVisto: function(){ if(!M.esperando) sacarAviso(); },
   api: {
     bajar_existencias: bajar_existencias,
     cargar_transferencia: cargar_transferencia,

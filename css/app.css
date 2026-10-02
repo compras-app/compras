@@ -310,6 +310,23 @@ html,body{touch-action:pan-x pan-y}
 .procesando .proc-i{display:block;width:100%;text-align:left;border:1.5px solid var(--line);border-radius:10px;background:var(--soft);color:var(--fg);font:inherit;padding:8px 10px;cursor:pointer}
 .procesando .proc-i b{font-size:14px}
 .procesando .proc-i small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+/* Stand by (Paso 2-ter): la misma franja que Procesando, abajo del tablero */
+.procesando.standby{border-bottom:0;border-top:1.5px solid var(--line)}
+.tarjeta .sb-aviso{margin-top:6px;font-size:13px;font-weight:600;color:var(--warn,#e0a040)}
+/* Ordenar cada columna y "Mandar a Por cotizar" (Paso 2-bis) */
+.col-h .col-orden{float:right;border:0;background:none;color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer;padding:2px 4px;border-radius:6px;min-height:28px}
+.col-h .col-orden:hover{color:var(--fg);background:var(--soft)}
+.col-h .tanda-cot{display:block;margin-top:8px;width:100%}
+/* Notificaciones (Paso 2-ter) */
+.barra .b-notif{position:relative;font-size:19px;padding:0 8px}
+.barra .b-notif .badge{position:absolute;top:6px;right:2px;min-width:18px;height:18px;border-radius:9px;background:#d9534f;color:#fff;font-size:11px;font-weight:700;line-height:18px;padding:0 5px;text-align:center}
+.notif-h{display:flex;justify-content:flex-end;margin-bottom:6px}
+.notif-l{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow-y:auto}
+.notif-i{display:block;width:100%;text-align:left;border:1.5px solid var(--accent);border-radius:10px;background:var(--soft);color:var(--fg);font:inherit;padding:9px 11px;cursor:pointer}
+.notif-i.leida{border-color:var(--line);opacity:.7}
+.notif-i .txt{display:block;font-size:14.5px}
+.notif-i small{display:block;color:var(--muted);font-size:12.5px;margin-top:3px}
+#sv-nuevo{text-decoration:none;display:inline-flex;align-items:center}
 /* Enlaces de ida y vuelta entre un pedido y sus tarjetas de trabajo */
 .enlaces{display:flex;flex-direction:column;gap:6px;margin:4px 0 12px}
 .enlaces small{color:var(--muted);font-size:13px}

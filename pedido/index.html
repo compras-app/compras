@@ -42,6 +42,15 @@
   </div>
 
   <form id="form" novalidate hidden>
+    <!-- Paso 2-ter: pedir productos o un servicio (ej. llevar a arreglar la motoguadaña) -->
+    <div class="q" id="q-tipo">
+      <span class="qt" id="l-tipo">¿Qué necesitás?</span>
+      <div class="choices tipo" role="radiogroup" aria-labelledby="l-tipo" id="tipo">
+        <button type="button" class="choice" role="radio" data-tipo="productos" aria-checked="true"><span class="k">📦</span><span>Productos</span></button>
+        <button type="button" class="choice" role="radio" data-tipo="servicio" aria-checked="false"><span class="k">🔧</span><span>Un servicio</span></button>
+      </div>
+    </div>
+
     <div class="q" id="q-sitio">
       <span class="qt" id="l-sitio">Sitio<span class="req">*</span></span>
       <div class="choices" role="radiogroup" aria-labelledby="l-sitio" data-name="sitio"></div>
@@ -62,9 +71,31 @@
       <textarea id="razon" placeholder="Para qué se necesita, qué se rompió, en qué galpón…"></textarea>
     </div>
 
-    <div class="sec"><h2>Productos</h2><span id="count"></span></div>
-    <div id="prods"></div>
-    <button type="button" class="btn2 add" id="addProd">+ Agregar otro producto</button>
+    <div id="blk-prods">
+      <div class="sec"><h2>Productos</h2><span id="count"></span></div>
+      <div id="prods"></div>
+      <button type="button" class="btn2 add" id="addProd">+ Agregar otro producto</button>
+    </div>
+
+    <div id="blk-serv" hidden>
+      <div class="sec"><h2>Servicio</h2></div>
+      <div class="q" id="q-servicio">
+        <label for="servicio">Servicio<span class="req">*</span></label>
+        <input type="text" id="servicio" maxlength="200" autocomplete="off" placeholder="Ej: Llevar a arreglar la motoguadaña">
+      </div>
+      <div class="q" id="q-obs">
+        <label for="obs">Observaciones <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+        <textarea id="obs" maxlength="3000" placeholder="Qué le pasa, marca, modelo, dónde está, a quién llevarlo…"></textarea>
+      </div>
+      <div class="q">
+        <span style="font-weight:700;font-size:15px">Adjuntos <span style="font-weight:400;color:var(--muted)">(opcional: fotos o PDF)</span></span>
+        <div class="drop">
+          <label class="btn2" for="adj-f">📎 Adjuntar archivos</label>
+          <input class="vh" type="file" id="adj-f" accept="image/*,application/pdf" multiple>
+          <div class="thumbs" id="adj-thumbs"></div>
+        </div>
+      </div>
+    </div>
 
     <div class="foot">
       <div class="estado" id="estado" role="status" aria-live="polite" hidden></div>

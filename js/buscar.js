@@ -18,6 +18,7 @@
 
 const BU = {
   estado: 'todos',
+  tipo: '',           // Paso 2-ter: '' (todo), 'pedidos' o 'servicios'
   sitio: '',
   periodo: '',
   resultados: [],
@@ -45,6 +46,7 @@ function pintarFiltrosBuscar() {
   document.querySelectorAll('#s-buscar [data-estado]').forEach(function (b) {
     b.setAttribute('aria-pressed', String(b.dataset.estado === BU.estado));
   });
+  document.querySelectorAll('#bu-tipo [data-tipo]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.tipo === BU.tipo)); });
   $('bu-mios').setAttribute('aria-pressed', String(!!TB.filtros.mios));
   $('bu-todos').setAttribute('aria-pressed', String(!TB.filtros.mios));
   $('bu-sitio').value = BU.sitio;
@@ -52,7 +54,7 @@ function pintarFiltrosBuscar() {
 }
 
 function filtrosBuscar(desde) {
-  return { q: $('bu-q').value.trim(), estado: BU.estado, mios: !!TB.filtros.mios, sitio: BU.sitio, periodo: BU.periodo, desde: desde || 0 };
+  return { q: $('bu-q').value.trim(), estado: BU.estado, tipo: BU.tipo, mios: !!TB.filtros.mios, sitio: BU.sitio, periodo: BU.periodo, desde: desde || 0 };
 }
 
 /** Busca de nuevo (mas = "Ver más": suma los siguientes). */
@@ -85,7 +87,7 @@ async function buscarPedidos(mas) {
 
 /** Con poca señal: lo que está en el tablero guardado (solo en curso; no tiene los productos). */
 function buscarEnTablero(f) {
-  if (f.estado === 'terminados') return [];
+  if (f.estado === 'terminados' || f.tipo === 'servicios') return [];
   const palabras = sinTildes(f.q).split(/[^a-z0-9ñ]+/).filter(String);
   return vista().filter(function (t) {
     if (f.mios && !esMio(t)) return false;
@@ -124,9 +126,9 @@ function pintarResultados() {
   const terminadas = [colCancelado(), colEntregado()];
   cont.innerHTML = BU.resultados.map(function (x) {
     const col = columnaConCambios(x);
-    const fin = terminadas.indexOf(col) !== -1;
+    const fin = x.servicio ? col === colFinalizadosServ() : terminadas.indexOf(col) !== -1;
     return '<button type="button" class="tarjeta resultado' + (esUrgente(x.urgencia) && !fin ? ' urgente' : '') + (fin ? ' terminado' : '') + '" data-ref="' + esc(x.ref) + '">' +
-      '<div class="t">' + esc(x.titulo || x.ref) + '</div>' +
+      '<div class="t">' + (x.servicio ? '🔧 ' : '') + esc(x.titulo || x.ref) + '</div>' +
       '<div class="pie"><span aria-label="' + esc(x.urgencia) + '">' + esc(emojiUrgencia(x.urgencia)) + '</span>' +
       '<span class="sitio">' + esc(x.sitio) + '</span>' +
       '<span class="bu-col' + (fin ? ' fin' : '') + '">' + esc(col) + '</span>' +
@@ -168,6 +170,9 @@ document.querySelectorAll('#s-buscar [data-estado]').forEach(function (b) {
   b.addEventListener('click', function () { BU.estado = b.dataset.estado; pintarFiltrosBuscar(); buscarPedidos(); });
 });
 // El mismo "Mis pedidos" del tablero
+document.querySelectorAll('#bu-tipo [data-tipo]').forEach(function (b) {
+  b.addEventListener('click', function () { BU.tipo = b.dataset.tipo; pintarFiltrosBuscar(); buscarPedidos(); });
+});
 $('bu-mios').addEventListener('click', function () { TB.filtros.mios = true; pintarFiltros(); pintarFiltrosBuscar(); buscarPedidos(); });
 $('bu-todos').addEventListener('click', function () { TB.filtros.mios = false; pintarFiltros(); pintarFiltrosBuscar(); buscarPedidos(); });
 $('bu-sitio').addEventListener('change', function () { BU.sitio = this.value; buscarPedidos(); });

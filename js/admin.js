@@ -225,7 +225,7 @@ function pintarProveedores() {
   $('pv-lista').innerHTML = l.map(function (p) {
     return '<button type="button" class="ad-item ad-fila' + (p.activo ? '' : ' baja') + '" data-id="' + esc(p.id) + '">' +
       '<span class="ad-nom"><b>' + esc(p.nombre) + '</b>' +
-      '<small>' + (p.telefono ? esc(p.telefono) : '⚠️ Sin teléfono') + (p.activo ? '' : ' · Desactivado') + '</small>' +
+      '<small>' + (p.contacto ? esc(p.contacto) + ' · ' : '') + (p.telefono ? esc(p.telefono) : '⚠️ Sin teléfono') + (p.activo ? '' : ' · Desactivado') + '</small>' +
       (p.rubros.length ? '<span class="ad-chips">' + p.rubros.map(function (c) { return '<span class="chip">' + esc(c) + '</span>'; }).join('') + '</span>'
                        : '<small>Sin rubros</small>') + '</span><span class="ad-flecha" aria-hidden="true">›</span></button>';
   }).join('') || '<p class="nota">No hay proveedores con eso.</p>';
@@ -241,7 +241,7 @@ $('pv-nuevo').addEventListener('click', function () { if (AD.provs) editarProvee
 /** Alta (p = null) o cambio de un proveedor, con sus rubros. */
 async function editarProveedor(p, previo) {
   const v = previo || { nombre: p ? p.nombre : '', telefono: p ? p.telefono : '', email: p ? p.email : '', notas: p ? p.notas : '',
-                        activo: p ? p.activo : true, rubros: p ? p.rubros.slice() : [] };
+                        contacto: p ? (p.contacto || '') : '', activo: p ? p.activo : true, rubros: p ? p.rubros.slice() : [] };
   const elegidos = {};
   v.rubros.forEach(function (c) { elegidos[c] = true; });
   const max = AD.provs.maximo;
@@ -251,6 +251,7 @@ async function editarProveedor(p, previo) {
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = campoDlg('pr-nombre', 'Nombre', v.nombre, { max: 80 }) +
     campoDlg('pr-tel', 'Teléfono (WhatsApp)', v.telefono, { tipo: 'tel', max: 20, inputmode: 'tel', placeholder: '5493525415029', nota: NOTA_TELEFONO + ' Ahí le van a llegar los pedidos de cotización.' }) +
+    campoDlg('pr-contacto', 'Contacto (opcional)', v.contacto, { max: 60, placeholder: 'Ej: Juan', nota: 'La persona con la que se habla. El pedido de cotización la saluda: "Hola Juan,".' }) +
     campoDlg('pr-mail', 'Mail (opcional)', v.email, { tipo: 'email', max: 120 }) +
     campoDlg('pr-notas', 'Notas (opcional)', v.notas, { area: true, max: 1000 }) +
     '<div class="campo"><label>Rubros</label><p class="nota">A qué rubros se le pide cotización. Hasta ' + max + ' proveedores por rubro.</p>' +
@@ -260,7 +261,7 @@ async function editarProveedor(p, previo) {
     titulo: p ? p.nombre : 'Agregar proveedor', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
       return { id: p ? p.id : '', nombre: $('pr-nombre').value.trim(), telefono: $('pr-tel').value.trim(), email: $('pr-mail').value.trim(),
-               notas: $('pr-notas').value.trim(), activo: $('pr-activo').checked,
+               notas: $('pr-notas').value.trim(), contacto: $('pr-contacto').value.trim(), activo: $('pr-activo').checked,
                rubros: Object.keys(elegidos).filter(function (c) { return elegidos[c]; }).sort() };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {

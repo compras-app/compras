@@ -4203,7 +4203,10 @@
     alborLog('Cancelando…');
     motor().responder_carga('cancelar');
   });
-  $('alborcerrar').addEventListener('click', function(){ $('albor').classList.remove('on'); });
+  $('alborcerrar').addEventListener('click', function(){
+    $('albor').classList.remove('on');
+    if(window.AlborExt) window.AlborExt.avisoVisto();     // se va el 🔔 y el aviso de "terminó"
+  });
 
   function archivoParaPython(l){ return l ? { nombre: l.nombre, base64: aBase64(l.datos) } : null; }
 

@@ -88,7 +88,7 @@ const PedidosGuardados = (function () {
       if (!guardada) { f.perdida = true; continue; }      // no debería pasar: se manda sin esa foto
       let r;
       try {
-        r = await llamar('subirFoto', [{ idEnvio: e.ref, linea: f.linea, nombre: f.nombre, base64: await aBase64(guardada.blob) }],
+        r = await llamar('subirFoto', [{ idEnvio: e.ref, linea: f.linea, nombre: f.nombre, tipo: f.tipo === 'pdf' ? 'pdf' : '', base64: await aBase64(guardada.blob) }],
                          f.envio, { limiteMs: LIMITE_FOTO_MS });
       } catch (x) {
         if (x.sinRed) { e.progreso = ''; await poner('envios', e); return false; }
@@ -109,6 +109,11 @@ const PedidosGuardados = (function () {
         });
       })
     });
+    // Un servicio (Paso 2-ter): sus adjuntos, ya subidos, con su tipo (foto o pdf)
+    if (e.datos.adjuntos) datos.adjuntos = e.datos.adjuntos.map(function (id) {
+      const f = e.fotos[id];
+      return f && f.subida ? Object.assign({ tipo: f.tipo === 'pdf' ? 'pdf' : 'foto' }, f.subida) : null;
+    }).filter(Boolean);
     let r;
     try { r = await llamar('recibirFormulario', [datos], e.ref, { limiteMs: 60000 }); }
     catch (x) {

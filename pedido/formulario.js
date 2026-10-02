@@ -74,7 +74,8 @@ function resto(q,fi,ej){
 }
 
 /* ---------- estado ---------- */
-let S = {sitio:'',urgencia:'',pide:'',razon:'',prods:[]};
+let S = {tipo:'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[],servicio:'',obs:'',adj:[]};
+const ADJ_MAX = 10*1024*1024;    // un PDF del servicio: hasta 10 MB
 let nid=1;
 function nuevoProd(){return {id:nid++,texto:'',fi:null,libre:false,espec:'',cantidad:'',desc:'',fotos:[]};}
 
@@ -83,13 +84,14 @@ function guardar(){
     // se guarda el NOMBRE de la familia: si el padrón cambia, los índices se corren.
     // De las fotos, solo la referencia: la foto en sí está en PedidosGuardados.
     const lite={...S,prods:S.prods.map(p=>({...p,fam:p.fi!==null?FAM[p.fi][0]:'',pintarFotos:undefined,
-      fotos:p.fotos.map(f=>({id:f.id,nombre:f.nombre,bytes:f.bytes}))}))};
+      fotos:p.fotos.map(f=>({id:f.id,nombre:f.nombre,bytes:f.bytes}))})),
+      adj:(S.adj||[]).map(f=>({id:f.id,nombre:f.nombre,bytes:f.bytes,tipo:f.tipo}))};
     guardado.guardar(DRAFT,JSON.stringify(lite));
     $('#saved').textContent='Borrador guardado en este teléfono';
   }catch(e){}
 }
 function cargar(txt){
-  try{const d=JSON.parse(txt||'null'); if(d&&d.prods){S=d; S.prods.forEach(p=>{p.id=nid++;
+  try{const d=JSON.parse(txt||'null'); if(d&&d.prods){S=Object.assign({tipo:'productos',servicio:'',obs:'',adj:[]},d); S.adj=(S.adj||[]).filter(f=>f&&f.id); S.prods.forEach(p=>{p.id=nid++;
     // Borradores de la página vieja: sin fotos. Los nuevos: referencias a las fotos guardadas.
     p.fotos=(p.fotos||[]).filter(f=>f&&f.id);
     if(p.fi!==null){ const k=FAM.findIndex(f=>f[0]===p.fam); p.fi=k>=0?k:null; } delete p.fam;}); return true;}}catch(e){}
@@ -102,6 +104,24 @@ async function cargarFotos(){
     for(const f of p.fotos){ const g=await PedidosGuardados.leerFoto(f.id); if(g){ f.url=URL.createObjectURL(g.blob); quedan.push(f); } }
     p.fotos=quedan; if(p.pintarFotos) p.pintarFotos();
   }
+  const quedan=[];
+  for(const f of S.adj){ const g=await PedidosGuardados.leerFoto(f.id); if(g){ f.url=f.tipo==='pdf'?'':URL.createObjectURL(g.blob); quedan.push(f); } }
+  S.adj=quedan; pintarAdj();
+}
+
+/* ---------- Servicio (Paso 2-ter): qué servicio, observaciones y adjuntos ---------- */
+function pintarTipo(){
+  const serv=S.tipo==='servicio';
+  document.querySelectorAll('#tipo .choice').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.tipo===S.tipo)));
+  $('#blk-prods').hidden=serv; $('#blk-serv').hidden=!serv;
+  $('h1').textContent=serv?'Pedido de servicio':'Pedido de insumos';
+  $('.lead').textContent=serv?'Para algo que hay que mandar a arreglar o hacer afuera (ej.: llevar a arreglar la motoguadaña). Compras lo maneja a mano.'
+                             :'Cargá lo que necesita tu granja. Podés agregar todos los productos que quieras en un mismo pedido.';
+  $('#enviar').textContent=serv?'Pedir el servicio':'Enviar pedido';
+}
+function pintarAdj(){
+  const th=$('#adj-thumbs'); if(!th) return;
+  th.innerHTML=S.adj.map((f,k)=>`<div class="thumb">${f.tipo==='pdf'?`<div class="pdf">📄<small>${esc(f.nombre)}</small></div>`:`<img src="${f.url||''}" alt="Adjunto ${k+1}">`}<button type="button" aria-label="Quitar" data-k="${k}">×</button><span>${Math.round(f.bytes/1024)} KB</span></div>`).join('');
 }
 
 const $=s=>document.querySelector(s);
@@ -234,7 +254,8 @@ function validar(){
   if(!S.urgencia) errs.push([$('#q-urgencia'),'Elegí la urgencia.']);
   if(!S.pide) errs.push([$('#q-pide'),'Elegí quién hace el pedido.']);
   if(!S.razon.trim()) errs.push([$('#q-razon'),'Contá para qué es el pedido.']);
-  S.prods.forEach(p=>{
+  if(S.tipo==='servicio' && !S.servicio.trim()) errs.push([$('#q-servicio'),'Escribí qué servicio hace falta.']);
+  if(S.tipo!=='servicio') S.prods.forEach(p=>{
     const el=document.getElementById('prod-'+p.id);
     if(p.fi===null && !p.libre) errs.push([el.querySelector('[data-f="prod"]'), p.texto.trim()?'Elegí una opción de la lista o tocá “No está en la lista”.':'Escribí el producto.']);
     if(!p.espec.trim()) errs.push([el.querySelector('[data-f="espec"]'),'Poné la medida o especificación (ej: 3/4, 2,5 mm, talle 42).']);
@@ -258,6 +279,19 @@ async function enviar(){
   if(!validar()) return;
   const btn=$('#enviar'); if(btn.disabled) return; btn.disabled=true;
   try{
+    if(S.tipo==='servicio'){
+      const ref=nuevoIdEnvio(), fotos={};
+      S.adj.forEach(f=>{ fotos[f.id]={linea:0,nombre:f.nombre,tipo:f.tipo,envio:nuevoId(),subida:null}; });
+      const datos={ tipo:'servicio', sitio:S.sitio, urgencia:S.urgencia, solicitante:S.pide, razon:S.razon.trim(),
+                    servicio:S.servicio.trim(), observaciones:S.obs.trim(), productos:[], adjuntos:S.adj.map(f=>f.id) };
+      const borrador=guardado.leer(DRAFT);
+      await PedidosGuardados.agregar({ ref, datos, fotos, borrador, servicio:true, titulo:'🔧 '+S.servicio.trim(), nProductos:0, nFotos:S.adj.length });
+      guardado.borrar(DRAFT);
+      mirando=ref;
+      $('#form').hidden=true; $('#listo').hidden=false; window.scrollTo(0,0);
+      pintarListo();
+      return;
+    }
     const ref=nuevoIdEnvio(), fotos={};
     const productos=S.prods.map((p,i)=>{
       p.fotos.forEach(f=>{ fotos[f.id]={linea:i+1,nombre:f.nombre,envio:nuevoId(),subida:null}; });
@@ -284,13 +318,13 @@ async function enviar(){
 async function pintarListo(){
   if(!mirando) return;
   const e=await PedidosGuardados.traer(mirando); if(!e) return;
-  const nf=e.nFotos?' · '+(e.nFotos===1?'1 foto':e.nFotos+' fotos'):'';
+  const nf=e.nFotos?' · '+(e.nFotos===1?(e.servicio?'1 adjunto':'1 foto'):e.nFotos+(e.servicio?' adjuntos':' fotos')):'';
   $('#listoRef').textContent=e.ref;
-  $('#listoDet').textContent=(e.nProductos===1?'1 producto':e.nProductos+' productos')+nf;
+  $('#listoDet').textContent=(e.servicio?'Servicio':(e.nProductos===1?'1 producto':e.nProductos+' productos'))+nf;
   $('#listoPaso').hidden=true; $('#corregir').hidden=true; $('#listoRef').hidden=false;
   $('#listo').classList.remove('espera');
   if(e.estado==='enviado'){
-    $('#listoTit').textContent='✓ Pedido enviado';
+    $('#listoTit').textContent=e.servicio?'✓ Servicio pedido':'✓ Pedido enviado';
     $('#listoTxt').textContent='Compras ya lo recibió. Si te preguntan por este pedido, este es el número:';
     if(e.fotosPerdidas) $('#listoDet').textContent+=' ('+e.fotosPerdidas+' foto(s) no se pudieron subir)';
   } else if(e.estado==='rechazado'){
@@ -349,7 +383,8 @@ function estado(msg,tipo){ const e=$('#estado'); if(!msg){e.hidden=true;return;}
 
 function empezarDeCero(){
   S.prods.forEach(p=>p.fotos.forEach(f=>PedidosGuardados.borrarFoto(f.id)));
-  S={sitio:'',urgencia:'',pide:'',razon:'',prods:[nuevoProd()]};
+  (S.adj||[]).forEach(f=>PedidosGuardados.borrarFoto(f.id));
+  S={tipo:S.tipo||'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[nuevoProd()],servicio:'',obs:'',adj:[]};
   guardado.borrar(DRAFT);
   $('#saved').textContent=''; estado('');
   mirando=null; $('#form').hidden=false; $('#listo').hidden=true; init();
@@ -362,6 +397,25 @@ $('#corregir').onclick=()=>{ if(mirando) corregir(mirando); };
 $('#addProd').onclick=()=>{ S.prods.push(nuevoProd()); render(); guardar(); const last=S.prods[S.prods.length-1]; setTimeout(()=>document.getElementById('p'+last.id+'-t').focus(),30); };
 $('#pide').addEventListener('change',e=>{S.pide=e.target.value; limpiarErr('q-pide'); guardar();});
 $('#razon').addEventListener('input',e=>{S.razon=e.target.value; limpiarErr('q-razon'); guardar();});
+$('#tipo').addEventListener('click',e=>{const b=e.target.closest('.choice'); if(!b) return; S.tipo=b.dataset.tipo; pintarTipo(); guardar();});
+$('#servicio').addEventListener('input',e=>{S.servicio=e.target.value; limpiarErr('q-servicio'); guardar();});
+$('#obs').addEventListener('input',e=>{S.obs=e.target.value; guardar();});
+$('#adj-thumbs').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; const [f]=S.adj.splice(+b.dataset.k,1); if(f) PedidosGuardados.borrarFoto(f.id); pintarAdj(); guardar();});
+$('#adj-f').addEventListener('change',async e=>{
+  for(const file of e.target.files){ try{
+    const id=nuevoId();
+    if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){
+      if(file.size>ADJ_MAX){ estado('"'+file.name+'" pesa más de 10 MB: no se puede adjuntar.','bad'); continue; }
+      await PedidosGuardados.guardarFoto(id,file,file.name);
+      S.adj.push({id,nombre:file.name,bytes:file.size,tipo:'pdf',url:''});
+    } else {
+      const c=await comprimir(file);
+      await PedidosGuardados.guardarFoto(id,c.blob,c.nombre);
+      S.adj.push({id,nombre:c.nombre,bytes:c.bytes,tipo:'foto',url:c.url});
+    }
+  }catch(err){} }
+  e.target.value=''; pintarAdj(); guardar();
+});
 $('#reset').onclick=()=>{ if(confirm('¿Borrar todo lo cargado y empezar de cero?')) empezarDeCero(); };
 $('#reintentar').onclick=()=>arrancar();
 PedidosGuardados.alCambiar(()=>{ pintarGuardados(); pintarListo(); });
@@ -374,6 +428,7 @@ function init(){
   if(S.urgencia&&URG.indexOf(S.urgencia)<0) S.urgencia='';
   $('#pide').innerHTML='<option value="">Elegí tu nombre</option>'+SOLICITANTES.map(n=>`<option>${esc(n)}</option>`).join('');
   choices('sitio',SITIOS); choices('urgencia',URG); $('#razon').value=S.razon; $('#pide').value=S.pide||''; render();
+  $('#servicio').value=S.servicio||''; $('#obs').value=S.obs||''; pintarTipo(); pintarAdj();
 }
 
 let listo=false;
@@ -381,6 +436,8 @@ function mostrarFormulario(){
   if(listo) return; listo=true;
   cargar(guardado.leer(DRAFT));
   if(!S.prods.length) S.prods.push(nuevoProd());
+  // Desde "＋ Pedir un servicio" (el tablero de Servicios): arranca en Servicio
+  if(/[?&]servicio=1\b/.test(location.search)) S.tipo='servicio';
   $('#cargando').hidden=true; $('#sin-datos').hidden=true; $('#form').hidden=false;
   init(); cargarFotos();
 }
