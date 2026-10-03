@@ -21,7 +21,7 @@
 
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
 const K_TARJETAS = 'compras_tarjetas';    // tarjetas abiertas hace poco (para verlas sin señal)
-const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1 };
+const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1, cambiarManual: 1 };
 const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1, deshacerProducto: 1, agregarProducto: 1, quitarProducto: 1, resolverCambio: 1, reponerProducto: 1 };      // cambios de un producto (Paso 4)
 const ENTREGA_TEXTO = { Retirar: '🏃 Hay que ir a buscarlo', Envío: '🚚 Nos lo traen' };
 const ENTREGA_CORTO = { Retirar: '🏃 A buscar', Envío: '🚚 Nos lo traen' };
@@ -104,6 +104,7 @@ function aplicarOp(lista, fn, args) {
   } else if (i >= 0) {
     if (fn === 'asignarResponsable') lista[i] = Object.assign({}, lista[i], { responsable: args[1] || '' });
     else if (fn === 'marcarEntrega') lista[i] = Object.assign({}, lista[i], { entrega: args[1] || '' });
+    else if (fn === 'cambiarManual') lista[i] = Object.assign({}, lista[i], { manual: !!args[1] });     // Paso 5
     else if (fn === 'cancelarPedido') { TB.cancelados[ref] = lista[i]; lista.splice(i, 1); }
     else if (fn === 'editarPedido') {
       const c = args[1] || {}, t = Object.assign({}, lista[i]);
@@ -388,6 +389,7 @@ function esVerde(u) { const l = (APP.config && APP.config.urgencias) || []; retu
 function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : esVerde(t.urgencia) ? ' verde' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
+    (t.manual ? '<div class="sobre">✋ Gestión manual</div>' : '') +                                          // Paso 5
     (t.fueraPadron ? '<div class="sobre fuera-padron">✋ Contiene productos fuera del padrón</div>' : '') +   // Pasos 3 y 4
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
@@ -914,7 +916,7 @@ function pintarTarjeta() {
   const etiquetas = [];
   if (trabajo) etiquetas.push('📋 Tarjeta de seguimiento');
   if ((t && t.masivo) || (p && p.origen === 'masivo')) etiquetas.push('Pedido masivo');
-  if ((t && t.manual) || (p && p.manual)) etiquetas.push('✋ Gestión manual');
+  if (t ? t.manual : (p && p.manual)) etiquetas.push('✋ Gestión manual');
   if (!enTb && p && p.columna) etiquetas.push((p.columna === 'Procesando' ? '📦 ' : 'Finalizado: ') + p.columna);
   $('tj-etiquetas').innerHTML = etiquetas.map(function (e) { return '<span class="etiqueta">' + esc(e) + '</span>'; }).join('');
   pintarEnlaces(d, trabajo);
@@ -949,6 +951,10 @@ function pintarTarjeta() {
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
+  // Paso 5: pasar a gestión manual o volver a automática (no los masivos, que son siempre manuales)
+  const manual = t ? !!t.manual : !!(p && p.manual);
+  $('tj-manual').hidden = !(admin && enTb && p && !trabajo && p.origen !== 'masivo' && !p.servicio);
+  $('tj-manual').textContent = manual ? '🤖 Volver a automática' : '✋ Pasar a gestión manual';
   $('tj-cancelar').hidden = !(admin && enTb);
   $('tj-cancelar').textContent = trabajo ? 'Cancelar esta tarjeta' : 'Cancelar pedido';
   $('tj-reabrir').hidden = !(admin && !enTb && p && p.volverA);     // Paso 5
@@ -965,6 +971,16 @@ function pintarTarjeta() {
   });
   prods.querySelectorAll('[data-cambio]').forEach(function (b) {
     b.addEventListener('click', function () { cambioDeProducto(ref, b.dataset.id, b.dataset.cambio); });
+  });
+  prods.querySelectorAll('[data-ia]').forEach(function (b) {              // Paso 5
+    b.addEventListener('click', function () {
+      const l = lineaVista(ref, b.dataset.id);
+      if (!l || !l.ia) return;
+      if (b.dataset.ia === 'aprobar') return editarProducto(ref, l.id, { familia: l.ia.nombre, especificacion: l.ia.especificacion, canal: l.ia.rubro });
+      IA_DESCARTADAS[l.id] = true;
+      bandeja.agregar('descartarIA', [ref, l.id], 'descartar lo que propuso la IA para "' + nombreProducto(l) + '"');
+      pintarTarjeta();
+    });
   });
   prods.querySelectorAll('[data-foto]').forEach(function (a) {
     a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
@@ -1121,6 +1137,23 @@ $('tj-reabrir').addEventListener('click', async function () {
   if (typeof pintarResultados === 'function' && !$('s-buscar').hidden) pintarResultados();
 });
 
+/* Gestión manual (Paso 5): la tarjeta funciona como una de Trello */
+$('tj-manual').addEventListener('click', async function () {
+  const ref = TB.abierta, t = buscarEnVista(ref);
+  if (!t || !APP.yo.admin) return;
+  const aManual = !t.manual;
+  const si = await dialogo({
+    titulo: aManual ? '¿Pasar a gestión manual?' : '¿Volver a automática?',
+    texto: aManual ? '"' + t.titulo + '" va a funcionar como una tarjeta de Trello: sin "📤 Pedir cotización", no se junta en la Tanda verde, no pasa sola a Stand by y la IA no lo mira. Se mueve, se comenta y se tilda como siempre.'
+                   : '"' + t.titulo + '" vuelve a tener "📤 Pedir cotización", la Tanda verde, Stand by y la IA.',
+    botones: [{ texto: aManual ? 'Sí, pasar a manual' : 'Sí, volver a automática', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }]
+  });
+  if (!si) return;
+  bandeja.agregar('cambiarManual', [ref, aManual], (aManual ? 'pasar a gestión manual "' : 'volver a automática "') + t.titulo + '"');
+  pintarTablero();
+  pintarTarjeta();
+});
+
 $('tj-cancelar').addEventListener('click', async function () {
   const ref = TB.abierta, t = buscarEnVista(ref);
   if (!t) return;
@@ -1244,6 +1277,7 @@ function fraseEvento(e, d) {
       case 'Urgencia': return 'cambió la urgencia de ' + a + ' a ' + n;
       case 'Título': return 'cambió el título a "' + n + '"';
       case 'Razón': return 'cambió la razón del pedido';
+      case 'Automático': return String(n).toUpperCase() === 'NO' ? 'lo pasó a gestión manual' : 'lo volvió a automática';   // Paso 5
     }
   }
   if (e.entidad === 'linea') {
@@ -1475,6 +1509,21 @@ function pedidoConCambios(ref, p) {
 
 function vigente(l) { return !l.estado || l.estado === 'Para quitar'; }
 
+/**
+ * Paso 5: lo que propone la IA para un producto fuera del padrón (solo admins), con Aprobar (abre el ✏️
+ * ya completado) y Descartar. Se va solo cuando el producto tiene nombre.
+ */
+const IA_DESCARTADAS = {};
+function htmlIA(l, admin, activo) {
+  const ia = l.ia;
+  if (!admin || !ia || !activo || l.familia || l.nuevo || IA_DESCARTADAS[l.id]) return '';
+  const txt = ia.tipo === 'padron' ? '🤖 Es <b>' + esc(ia.nombre) + '</b> del padrón'
+    : '🤖 Producto nuevo: <b>' + esc(ia.nombre) + '</b>' + (ia.especificacion ? ' · ' + esc(ia.especificacion) : '') + (ia.rubro ? ' · Rubro: ' + esc(ia.rubro) : '');
+  return '<div class="ia-prop"><div>' + txt + '</div><div class="cambio-b">' +
+    '<button type="button" class="btn-chico si" data-ia="aprobar" data-id="' + esc(l.id) + '">Aprobar</button>' +
+    '<button type="button" class="btn-chico" data-ia="descartar" data-id="' + esc(l.id) + '">Descartar</button></div></div>';
+}
+
 /** extra: html al final del producto (Fase 3: en qué tarjeta de trabajo está). */
 function htmlProducto(l, admin, mio, extra) {
   const sub = [];
@@ -1522,7 +1571,7 @@ function htmlProducto(l, admin, mio, extra) {
     (nota ? '<div class="cambio">' + nota + '</div>' : '') +
     (e === 'Quitado' ? '' : sub.map(function (x) { return '<div class="sub">' + x + '</div>'; }).join('')) +
     (fotos && e !== 'Quitado' ? '<div class="fotos">' + fotos + '</div>' : '') +
-    (botones ? '<div class="cambio-b">' + botones + '</div>' : '') + (extra || '') + '</div>' +
+    (botones ? '<div class="cambio-b">' + botones + '</div>' : '') + htmlIA(l, admin, activo) + (extra || '') + '</div>' +
     (admin && activo && !l.nuevo ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" aria-label="Editar el producto" title="Editar">✏️</button>'
       : (!admin && mio && e === '' && !l.nuevo ? '<button type="button" class="editar-prod" data-id="' + esc(l.id) + '" data-cambio="quitar" aria-label="Pedir que lo quiten" title="Pedir que lo quiten">✕</button>' : '')) +
     '</div>';
@@ -1747,13 +1796,15 @@ function armarSelectorProv(o) {
   pintar();
 }
 
-async function editarProducto(ref, id) {
+/** pre (Paso 5, "Aprobar" de la IA): {familia, especificacion, canal} para dejar el ✏️ ya completado. */
+async function editarProducto(ref, id, pre) {
   const l = lineaVista(ref, id);
   if (!l || !APP.yo.admin) return;
   const datos = await datosProductos();
   const familias = datos ? datos.familias : [], proveedores = datos ? datos.proveedores.slice() : [];
   const canales = datos ? datos.canales.slice() : [];
   if (l.canal && canales.indexOf(l.canal) === -1) canales.push(l.canal);
+  if (pre && pre.canal && canales.indexOf(pre.canal) === -1) canales.push(pre.canal);
   const provs = (l.proveedores || []).map(function (x) { return { id: x.id, nombre: x.nombre }; });
   const u = l.deshacer;
 
@@ -1800,12 +1851,12 @@ async function editarProducto(ref, id) {
       { texto: 'Volver', valor: null }
     ],
     alAbrir: function () {
-      $('ep-nombre').value = inicial.familia;
-      $('ep-espec').value = inicial.especificacion;
+      $('ep-nombre').value = (pre && pre.familia) || inicial.familia;
+      $('ep-espec').value = pre && pre.especificacion ? pre.especificacion : inicial.especificacion;
       $('ep-cant').value = inicial.cantidad;
       const sel = $('ep-rubro');
       sel.innerHTML = '<option value="">Sin rubro</option>' + canales.map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('');
-      sel.value = inicial.canal;
+      sel.value = pre && pre.canal ? pre.canal : inicial.canal;
       const revisar = function () {
         const cant = Number($('ep-cant').value.trim().replace(',', '.'));
         const c = cambios(), nombre = $('ep-nombre').value.trim();
@@ -1830,6 +1881,7 @@ async function editarProducto(ref, id) {
       if (u) $('ep-deshacer').addEventListener('click', function () { if (cerrarDialogoActual) cerrarDialogoActual({ deshacer: true }); });
       $('ep-quitar').addEventListener('click', function () { if (cerrarDialogoActual) cerrarDialogoActual({ quitar: true }); });
       armarSelectorProv({ provs: provs, proveedores: proveedores, datos: datos, rubro: function () { return sel.value; }, alCambiar: revisar });
+      revisar();                       // con lo que propuso la IA ya se puede guardar
     }
   });
   if (!res) return;
@@ -2102,7 +2154,7 @@ function bloquesDeTarea(tarea) {
   ['tj-check-b', 'tj-rec-b'].forEach(function (id) { $(id).hidden = !tarea; });
   $('tj-borrar-tarea').hidden = !tarea;
   if (!tarea) $('tj-editar').textContent = '✏️ Editar pedido';
-  if (tarea) ['tj-cancelar', 'tj-reabrir', 'tj-enlaces', 'tj-cot-b'].forEach(function (id) { $(id).hidden = true; });
+  if (tarea) ['tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-enlaces', 'tj-cot-b'].forEach(function (id) { $(id).hidden = true; });
 }
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */

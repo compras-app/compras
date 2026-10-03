@@ -187,7 +187,7 @@ function pintarServicioAbierto() {
   dato('Responsable', resp ? '<span class="resp">' + esc(inicial(resp)) + '</span> ' + esc(resp) : 'Sin responsable');
   $('tj-datos').innerHTML = datos.join('');
   $('tj-etiquetas').innerHTML = '<span class="etiqueta">🔧 Servicio</span>';
-  ['tj-prod-b', 'tj-cot-b', 'tj-enlaces', 'tj-cancelar', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
+  ['tj-prod-b', 'tj-cot-b', 'tj-enlaces', 'tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
   $('tj-editar').hidden = !(APP.yo.admin && p);
   $('tj-editar').textContent = '✏️ Editar servicio';
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');

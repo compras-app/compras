@@ -553,3 +553,7 @@ html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96)
 .cotizar .cot-tarjeta{margin:16px 0 4px;font-size:15px}
 .cotizar .cot-tarjeta:first-of-type{margin-top:6px}
 .cotizar .cot-tarjeta small{color:var(--muted);font-weight:500}
+
+/* Paso 5: lo que propone la IA (solo admins) */
+.producto .ia-prop{margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(120,140,255,.10);border:1px solid rgba(120,140,255,.30);font-size:13.5px}
+.producto .ia-prop .cambio-b{margin-top:6px}
