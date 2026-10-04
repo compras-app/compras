@@ -571,8 +571,9 @@ html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96)
 /* ============================================================
    Paso 6 de la Fase 3: que se vean las tarjetas (Feli, 2026-10-04)
    ============================================================ */
-/* Separación entre secciones del tablero: una línea clara de arriba a abajo (no solo lo que mide la columna) */
-.tablero .sep-sec{flex:none;align-self:stretch;width:2px;margin:-10px 4px -12px;border-radius:1px;background:rgba(255,255,255,.28);pointer-events:none}
+/* Separación entre secciones del tablero: una línea del alto de la columna, con el color de las otras líneas */
+.tablero .col.nueva-sec{margin-left:12px;position:relative;overflow:visible}
+.tablero .col.nueva-sec::before{content:"";position:absolute;left:-12px;top:0;bottom:0;width:1px;background:var(--line);pointer-events:none}
 /* Herramientas del tablero: secciones, filtros y "recién" */
 .herramientas{padding:6px 12px;gap:6px}
 .herr-fila{display:flex;align-items:center;gap:6px;min-width:0}

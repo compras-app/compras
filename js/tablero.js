@@ -243,8 +243,7 @@ function pintarTablero() {
     // Paso 2-bis: "📤 Mandar a Por cotizar" arriba de la Tanda verde (solo admins)
     const tanda = admin && c.columna === colTanda() && ts.some(function (t) { return !t.trabajo; });
     const recordar = tanda ? avisoTanda(ts) : '';
-    // Paso 6: entre secciones, una línea de arriba a abajo del tablero (Feli: tan larga como la página)
-    if (primera && html.length) html.push('<div class="sep-sec" aria-hidden="true"></div>');
+    // Paso 6: entre secciones, una línea del alto de la columna, del color de las otras líneas (Feli, 2026-10-04)
     html.push('<div class="col' + (primera && html.length ? ' nueva-sec' : '') + '" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
       '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
