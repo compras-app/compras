@@ -115,7 +115,7 @@
     </button>
     <a class="tab" id="t-nuevo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
-      Nuevo pedido
+      <span class="t-largo">Nuevo pedido</span><span class="t-corto">Nuevo</span>
     </a>
     <button class="tab" type="button" data-tab="admin" id="t-admin" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -127,16 +127,20 @@
 
   <main class="contenido">
     <section id="s-tablero" class="pantalla-tablero">
-      <div class="herramientas">
-        <div class="secciones" id="tb-secciones" role="tablist" aria-label="Secciones del tablero"></div>
-        <div class="filtros">
+      <!-- Paso 6: en el celular, los filtros van en un bloque que se abre y se cierra (tb-filtros-b) -->
+      <div class="herramientas" id="tb-herramientas">
+        <div class="herr-fila">
+          <div class="secciones" id="tb-secciones" role="tablist" aria-label="Secciones del tablero"></div>
+          <button type="button" class="filtros-b" id="tb-filtros-b" aria-expanded="false" aria-controls="tb-filtros">⚙︎ Filtros</button>
+          <button type="button" class="refrescar" id="tb-refrescar" aria-label="Actualizar el tablero"><span class="ic">↻</span> <span id="tb-hace"></span></button>
+        </div>
+        <div class="filtros" id="tb-filtros">
           <div class="seg" role="group" aria-label="Qué pedidos ver">
             <button type="button" id="tb-mios" aria-pressed="false">Mis pedidos</button>
             <button type="button" id="tb-todos" aria-pressed="false">Todos</button>
           </div>
           <label class="filtro" id="tb-sitio-l" hidden><span>Granja</span><select id="tb-sitio"></select></label>
           <label class="filtro" id="tb-resp-l" hidden><span>Responsable</span><select id="tb-resp"></select></label>
-          <button type="button" class="refrescar" id="tb-refrescar" aria-label="Actualizar el tablero"><span class="ic">↻</span> <span id="tb-hace"></span></button>
         </div>
       </div>
       <!-- Procesando (Fase 3): pedidos cuyos productos ya están todos en tarjetas de trabajo. Plegada, arriba de la Tanda verde -->
@@ -210,7 +214,8 @@
         <button type="button" class="ad-op" data-ir="personas"><span class="ic" aria-hidden="true">👥</span><b>Personas y dispositivos</b><small>Altas, bajas, roles y dónde tiene abierta la app cada uno</small></button>
         <button type="button" class="ad-op" data-ir="proveedores"><span class="ic" aria-hidden="true">🏪</span><b>Proveedores</b><small>Teléfonos, rubros, activar o desactivar</small></button>
         <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Granjas y aviso de la Tanda verde</small></button>
-        <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Un pedido con título, descripción y PDF, para compartir con quien elijas</small></button>
+        <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Un pedido o un servicio con título, descripción y PDF, para compartir con quien elijas</small></button>
+        <button type="button" class="ad-op" data-ir="padron"><span class="ic" aria-hidden="true">🗂️</span><b>Padrón</b><small>Los productos, sus variantes, cuándo se pidieron y a quién se cotizó</small></button>
       </div>
     </section>
 
@@ -256,6 +261,8 @@
         <div class="campo"><label for="aj-msj-cot">Pedido de cotización</label><textarea id="aj-msj-cot" rows="7"></textarea>
           <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto. {contacto}: el nombre del contacto del proveedor (si no tiene, se saltea).</small></div>
         <div class="campo"><label for="aj-msj-conf">Confirmación al ganador</label><textarea id="aj-msj-conf" rows="4"></textarea></div>
+        <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>
+          <small class="nota">Le llega el WhatsApp de "📨 Mandar a aprobar" (en Decisión) y aprueba desde la tarjeta.</small></div>
         <button type="button" class="btn2" id="aj-cot-ok">Guardar</button>
       </div>
       <p class="nota ad-estado" id="aj-estado" role="status" aria-live="polite"></p>
@@ -264,6 +271,8 @@
     <section id="s-masivo" hidden>
       <p class="nota">Un pedido con título, lo que haga falta en la descripción (pegado como venga) y los adjuntos, por ejemplo el PDF con la lista.</p>
       <div class="caja">
+        <div class="campo"><label>¿Qué es?</label><div class="urgencias-el" id="ma-tipo">
+          <button type="button" data-tipo="pedido" aria-pressed="true">📦 Pedido</button><button type="button" data-tipo="servicio" aria-pressed="false">🔧 Servicio</button></div></div>
         <div class="campo"><label for="ma-titulo">Título</label><input type="text" id="ma-titulo" maxlength="200" autocomplete="off" placeholder="Ej: Materiales obra silos PAB"></div>
         <div class="campo"><label for="ma-sitio">Granja</label><select id="ma-sitio"></select></div>
         <div class="campo"><label>Urgencia</label><div class="urgencias-el" id="ma-urg"></div></div>
@@ -271,7 +280,7 @@
         <div class="campo"><label for="ma-desc">Descripción</label>
           <textarea id="ma-desc" rows="10" maxlength="20000" placeholder="Pegá acá los productos como los tengas, o lo que haga falta explicar."></textarea></div>
         <div class="campo"><label>Compartir con</label>
-          <p class="nota">Los encargados que elijas lo ven en su tablero, y pueden comentar y adjuntar. Si no elegís a nadie, lo ven solo los admins.</p>
+          <p class="nota">Las personas que elijas quedan como si lo hubieran pedido con vos: lo ven en "Mis pedidos", comentan y adjuntan (y un servicio lo pueden mover). Si no elegís a nadie, lo ven solo los admins.</p>
           <div class="pr-rubros" id="ma-compartir"></div></div>
         <div class="act-h"><h3>Adjuntos</h3><button type="button" class="btn-chico" id="ma-adj-b">📎 Adjuntar PDF o fotos</button></div>
         <input type="file" id="ma-adj" accept="image/*,application/pdf" multiple style="display:none">
@@ -279,6 +288,21 @@
       </div>
       <button type="button" class="btn" id="ma-crear" disabled>Crear pedido masivo</button>
       <p class="nota ad-estado" id="ma-estado" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- Paso 6: el padrón de productos (admin.js) -->
+    <section id="s-padron" hidden>
+      <div class="ad-barra">
+        <button type="button" class="btn ad-nuevo" id="pa-nuevo">＋ Agregar producto</button>
+      </div>
+      <div class="fila2">
+        <input type="search" id="pa-q" placeholder="Buscar producto o variante…" autocomplete="off">
+        <select id="pa-rubro"><option value="">Todos los rubros</option></select>
+      </div>
+      <label class="nota" style="display:flex;gap:6px;align-items:center;margin:6px 0"><input type="checkbox" id="pa-inactivos"> Ver también los desactivados</label>
+      <p class="nota ad-estado" id="pa-estado" role="status" aria-live="polite"></p>
+      <div class="pa-lista" id="pa-lista"></div>
+      <button type="button" class="btn2" id="pa-mas" hidden>Ver más</button>
     </section>
 
     <section id="s-cuenta" hidden>
@@ -355,6 +379,11 @@
             <div class="act-h"><h3 id="tj-prod-t">Productos</h3></div>
             <div id="tj-productos"></div>
             <button type="button" class="btn2" id="tj-agregar" hidden style="width:auto">+ Agregar producto</button>
+          </div>
+          <!-- Paso 6: aprobación de la compra (cotizar.js) -->
+          <div class="bloque" id="tj-aprob-b" hidden>
+            <div class="act-h"><h3>Aprobación</h3><button type="button" class="btn-chico" id="tj-aprobar-mandar" hidden>📨 Mandar a aprobar</button></div>
+            <div id="tj-aprob"></div>
           </div>
           <!-- Fase 3: a quién se le pidió cotización (cotizar.js) -->
           <div class="bloque" id="tj-cot-b" hidden>

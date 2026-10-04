@@ -16,6 +16,7 @@
    ============================================================ */
 
 const OPS_COTIZAR = { pedirCotizacion: 1, reintentarCotizacion: 1 };
+const OPS_APROBACION = { mandarAprobar: 1, decidirAprobacion: 1 };     // Paso 6
 const ESTADO_COT = {
   'Enviando': '⏳ Mandando…', 'En camino': '⏳ En camino', 'Enviado': '✅ Enviado', 'No salió': '⚠️ No se pudo mandar'
 };
@@ -33,6 +34,13 @@ function fechaCorta(iso) {
  * de la Tanda verde (Paso 4), en Por cotizar.
  */
 function sePuedeCotizar(t) { return !!t && (!t.trabajo || !!t.tanda) && !t.manual && t.columna === colPorCotizar(); }
+
+/** Decisión (Paso 6): en la tarjeta abierta de un pedido también está "📤 Pedir cotización" (en el tablero, no). */
+function colDecision() {
+  const c = columnasTb().filter(function (x) { return x.seccion === 'Cotización'; });
+  return (c[2] || {}).columna || 'Decisión';
+}
+function sePuedeCotizarAbierta(t) { return sePuedeCotizar(t) || (!!t && !t.trabajo && !t.manual && t.columna === colDecision()); }
 
 /** La marca de la tarjeta en el tablero, en Por cotizar. */
 function htmlMarcaCotizar(t) {
@@ -242,7 +250,7 @@ function pintarCotizaciones() {
   const t = buscarEnVista(ref);
   const lista = (d && d.solicitudes) || [];
   const esperan = bandeja.lista().filter(function (m) { return OPS_COTIZAR[m.fn] && m.args[0] === ref; });
-  const puede = APP.yo.admin && sePuedeCotizar(t);
+  const puede = APP.yo.admin && sePuedeCotizarAbierta(t);
   const deTanda = (t && t.tanda) || (d && d.trabajo && d.trabajo.tanda);
   b.hidden = TB.tipo === 'tarea' || (esTrabajo(ref) && !deTanda) || (!lista.length && !esperan.length && !puede);
   if (b.hidden) return;
@@ -287,6 +295,117 @@ $('tj-cotizar').addEventListener('click', function () { if (TB.abierta) abrirPed
       const n = (r.solicitudes || []).filter(function (s) { return s.estado === 'No salió'; }).length;
       aviso(r.repetido ? 'Ese pedido de cotización ya se había mandado.' : n ? '📤 Pedido de cotización ' + r.codigo + ' mandado. ' + n + ' no se ' + (n === 1 ? 'pudo' : 'pudieron') + ' mandar: mirá la tarjeta.' : '📤 Pedido de cotización ' + r.codigo + ' mandado.');
     }
+    cargarTablero();
+    if (TB.abierta === ref) { pintarTarjeta(); traerTarjeta(ref); }
+  };
+})();
+
+/* ---------- Aprobación de la compra (Paso 6) ----------
+   "📨 Mandar a aprobar" (admins, en Decisión): un WhatsApp al que aprueba (Admin → Ajustes), con el
+   mensaje que se elija y siempre el link a la tarjeta. Mientras espera, al que aprueba le aparecen
+   "✅ Aprobar compra" y "❌ No aprobar" (con un motivo). Todo por la bandeja. */
+const APROB_DECIDIDA = {};          // ref → {estado, motivo} mientras la decisión espera en la bandeja
+
+function aprobacionVista(ref, p) {
+  const a = (p && p.aprobacion) ? Object.assign({}, p.aprobacion) : null;
+  if (APROB_DECIDIDA[ref] && a) Object.assign(a, APROB_DECIDIDA[ref], { decidio: APP.yo.nombre });
+  return a;
+}
+
+function pintarAprobacion() {
+  const ref = TB.abierta, d = TB.detalle, b = $('tj-aprob-b');
+  if (!b) return;
+  const p = d && d.pedido, t = buscarEnVista(ref);
+  const esperan = bandeja.lista().filter(function (m) { return m.fn === 'mandarAprobar' && m.args[0] === ref; });
+  const columna = t ? t.columna : (p && p.columna);
+  const puedeMandar = APP.yo.admin && p && !esTrabajo(ref) && !p.servicio && columna === colDecision();
+  const a = aprobacionVista(ref, p);
+  b.hidden = TB.tipo === 'tarea' || esTrabajo(ref) || !p || (!a && !esperan.length && !puedeMandar);
+  if (b.hidden) return;
+  const fecha = function (iso) { return iso ? ' (' + fechaCorta(iso) + ')' : ''; };
+  let html = '';
+  if (esperan.length) html = '<div class="cot-fila espera">' + (APP.enLinea ? '⏳ Mandando el pedido de aprobación…' : '⏳ El pedido de aprobación se manda solo cuando vuelva la señal.') + '</div>';
+  else if (a && a.estado === 'Esperando') {
+    html = '<div class="cot-fila"><b>⏳ Esperando aprobación de ' + esc(a.aprueba) + '</b><div class="sub">Lo mandó ' + esc(a.pidio) + esc(fecha(a.fecha)) + '</div>' +
+      (a.aprueba === APP.yo.nombre ? '<div class="cambio-b"><button type="button" class="btn-chico si" id="tj-aprob-si">✅ Aprobar compra</button>' +
+                                     '<button type="button" class="btn-chico" id="tj-aprob-no">❌ No aprobar</button></div>' : '') + '</div>';
+  } else if (a && a.estado === 'Aprobada') html = '<div class="cot-fila"><b>✅ Aprobada por ' + esc(a.decidio) + '</b>' + esc(fecha(a.decidida)) + '</div>';
+  else if (a && a.estado === 'No aprobada') html = '<div class="cot-fila mal"><b>❌ No aprobada por ' + esc(a.decidio) + '</b>' + esc(fecha(a.decidida)) + (a.motivo ? '<div class="sub">' + esc(a.motivo) + '</div>' : '') + '</div>';
+  else html = '<p class="nota" style="margin:0">Todavía no se mandó a aprobar.</p>';
+  $('tj-aprob').innerHTML = html;
+  const m = $('tj-aprobar-mandar');
+  m.hidden = !puedeMandar || !!esperan.length || !!(a && a.estado === 'Esperando');
+  m.textContent = a ? '📨 Volver a mandar a aprobar' : '📨 Mandar a aprobar';
+  if ($('tj-aprob-si')) $('tj-aprob-si').addEventListener('click', function () { decidirAprobacionUI(ref, true); });
+  if ($('tj-aprob-no')) $('tj-aprob-no').addEventListener('click', function () { decidirAprobacionUI(ref, false); });
+}
+
+$('tj-aprobar-mandar').addEventListener('click', async function () {
+  const ref = TB.abierta, d = TB.detalle;
+  if (!ref || !d || !d.pedido || !APP.yo.admin) return;
+  const prods = lineasConCambios(ref, d.lineas || []).filter(function (l) { return vigente(l) && l.estado !== 'Para agregar' && !l.tarjeta; })
+    .map(function (l) { return '- ' + l.cantidad + 'x ' + nombreProducto(l); });
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<label for="ap-msj">Mensaje</label><textarea id="ap-msj" rows="9"></textarea>' +
+    '<p class="nota">Abajo va siempre el link a esta tarjeta. Le llega por WhatsApp a quien aprueba las compras (se elige en Admin → Ajustes).</p>';
+  const texto = await dialogo({
+    titulo: '📨 Mandar a aprobar', cuerpo: cuerpo,
+    botones: [{ texto: 'Mandar', clase: 'btn', id: 'dg-ok', valor: function () { return $('ap-msj').value.trim(); } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      const m = $('ap-msj');
+      m.value = 'Necesitamos aprobación de la compra de los siguientes productos:\n' + prods.join('\n') + '\n\n' + (d.pedido.titulo || '') + ' · ' + (d.pedido.sitio || '');
+      const ok = $('dg-ok');
+      const revisar = function () { ok.disabled = m.value.trim().length < 5; };
+      m.addEventListener('input', revisar);
+      revisar();
+    }
+  });
+  if (!texto) return;
+  delete APROB_DECIDIDA[ref];
+  bandeja.agregar('mandarAprobar', [ref, { id: 'A' + nuevoId(), texto: texto }], 'mandar a aprobar "' + (d.pedido.titulo || ref) + '"');
+  pintarAprobacion();
+  aviso(APP.enLinea ? '📨 Mandando el pedido de aprobación…' : '📶 Poca señal: el pedido de aprobación se manda solo cuando vuelva.');
+});
+
+async function decidirAprobacionUI(ref, aprobar) {
+  let motivo = '';
+  if (!aprobar) {
+    const cuerpo = document.createElement('div');
+    cuerpo.className = 'cuerpo';
+    cuerpo.innerHTML = '<label for="ap-motivo">¿Por qué no se aprueba?</label><textarea id="ap-motivo" rows="3"></textarea>';
+    motivo = await dialogo({
+      titulo: '❌ No aprobar', cuerpo: cuerpo,
+      botones: [{ texto: 'No aprobar', clase: 'btn', id: 'dg-ok', valor: function () { return $('ap-motivo').value.trim(); } }, { texto: 'Volver', valor: null }],
+      alAbrir: function () {
+        const m = $('ap-motivo'), ok = $('dg-ok');
+        const revisar = function () { ok.disabled = m.value.trim().length < 3; };
+        m.addEventListener('input', revisar);
+        revisar();
+        m.focus();
+      }
+    });
+    if (!motivo) return;
+  }
+  APROB_DECIDIDA[ref] = { estado: aprobar ? 'Aprobada' : 'No aprobada', motivo: motivo, decidida: new Date().toISOString() };
+  bandeja.agregar('decidirAprobacion', [ref, aprobar, motivo], (aprobar ? 'aprobar' : 'no aprobar') + ' la compra');
+  pintarAprobacion();
+}
+
+// Cuando sale de la bandeja: la tarjeta queda con lo que dice el servidor
+(function () {
+  const antes = bandeja.alTerminar;
+  bandeja.alTerminar = function (m, r) {
+    if (antes) antes(m, r);
+    if (!OPS_APROBACION[m.fn]) return;
+    const ref = m.args[0];
+    delete APROB_DECIDIDA[ref];
+    if (r.ok && r.aprobacion) {
+      const todos = detallesGuardados();
+      if (todos[ref] && todos[ref].d.pedido) { todos[ref].d.pedido.aprobacion = r.aprobacion; guardado.guardarJSON(K_TARJETAS, todos); }
+      if (TB.abierta === ref && TB.detalle && TB.detalle.pedido) TB.detalle.pedido.aprobacion = r.aprobacion;
+    }
+    if (r.ok && m.fn === 'mandarAprobar' && !document.hidden) aviso(r.repetido ? 'Ese pedido de aprobación ya se había mandado.' : '📨 Listo: le llegó el pedido de aprobación a ' + ((r.aprobacion && r.aprobacion.aprueba) || 'quien aprueba') + '.');
     cargarTablero();
     if (TB.abierta === ref) { pintarTarjeta(); traerTarjeta(ref); }
   };

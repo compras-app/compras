@@ -11,7 +11,10 @@
    - Ajustes: granjas (renombrar cambia también los pedidos viejos) y
      cada cuántos días avisa la Tanda verde.
    - Pedido masivo: título, descripción y PDF, compartido con los
-     encargados que se elijan (Feli sacó la lista pegada).
+     encargados que se elijan (Feli sacó la lista pegada). Paso 6: también
+     un servicio masivo.
+   - Padrón (Paso 6): los productos, sus variantes, cuándo se pidieron y a
+     quién se cotizó; agregar, cambiar, desactivar y variantes.
    Todo esto necesita señal: se manda directo, no por la bandeja.
    ============================================================ */
 
@@ -19,7 +22,7 @@ const AD = {
   personas: null, yo: '', sesion: '',
   provs: null,                 // {proveedores, rubros, maximo}
   ajustes: null,
-  masivo: { id: '', urgencia: '', archivos: [], compartir: null }
+  masivo: { id: '', urgencia: '', archivos: [], compartir: null, tipo: 'pedido' }
 };
 
 pantalla('admin', { titulo: 'Administración' });
@@ -27,6 +30,7 @@ pantalla('personas', { titulo: 'Personas y dispositivos', tab: 'admin', alMostra
 pantalla('proveedores', { titulo: 'Proveedores', tab: 'admin', alMostrar: mostrarProveedores });
 pantalla('ajustes', { titulo: 'Ajustes', tab: 'admin', alMostrar: mostrarAjustes });
 pantalla('masivo', { titulo: 'Pedido masivo', tab: 'admin', alMostrar: mostrarMasivo });
+pantalla('padron', { titulo: 'Padrón', tab: 'admin', alMostrar: mostrarPadron });
 
 document.querySelectorAll('#s-admin [data-ir]').forEach(function (b) {
   b.addEventListener('click', function () { abrir(b.dataset.ir); });
@@ -333,6 +337,10 @@ function pintarAjustes() {
     $('aj-numero').value = a.cotizar.numeroPrueba || '';
     $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';
     $('aj-msj-conf').value = a.cotizar.msjConfirmar || '';
+    const ps = a.cotizar.personas || [];
+    if (a.cotizar.aprobador && ps.indexOf(a.cotizar.aprobador) === -1) ps.unshift(a.cotizar.aprobador);
+    $('aj-aprobador').innerHTML = ps.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
+    $('aj-aprobador').value = a.cotizar.aprobador || '';
   }
 }
 
@@ -398,7 +406,7 @@ async function sacarGranja(nombre) {
 $('aj-cot-ok').addEventListener('click', async function () {
   const r = await api('guardarAjustesCotizar', {
     numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
-    msjConfirmar: $('aj-msj-conf').value
+    msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined
   });
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   AD.ajustes.cotizar = r.cotizar;
@@ -463,14 +471,19 @@ function pintarMasivo() {
     return '<button type="button" data-u="' + esc(u) + '" aria-pressed="' + (u === m.urgencia) + '">' + esc(u) + '</button>';
   }).join('');
   $('ma-urg').querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { m.urgencia = b.dataset.u; pintarMasivo(); }); });
+  // Paso 6: pedido o servicio masivo
+  $('ma-tipo').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.tipo === (m.tipo || 'pedido'))); });
   pintarArchivos();
   revisarMasivo();
 }
+$('ma-tipo').querySelectorAll('button').forEach(function (b) {
+  b.addEventListener('click', function () { AD.masivo.tipo = b.dataset.tipo; pintarMasivo(); });
+});
 
 function revisarMasivo() {
   const m = AD.masivo;
   $('ma-crear').disabled = !$('ma-sitio').value || !m.urgencia || m.creando || $('ma-titulo').value.trim().length < 3;
-  $('ma-crear').textContent = 'Crear pedido masivo' + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
+  $('ma-crear').textContent = (m.tipo === 'servicio' ? 'Crear servicio masivo' : 'Crear pedido masivo') + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
 }
 ['ma-sitio', 'ma-titulo'].forEach(function (id) { $(id).addEventListener('input', revisarMasivo); $(id).addEventListener('change', revisarMasivo); });
 
@@ -502,7 +515,7 @@ function pintarArchivos() {
 $('ma-crear').addEventListener('click', async function () {
   const m = AD.masivo;
   const d = { id: m.id, sitio: $('ma-sitio').value, urgencia: m.urgencia, razon: $('ma-razon').value.trim(),
-              titulo: $('ma-titulo').value.trim(), descripcion: $('ma-desc').value.trim(), compartido: elegidosLista(m.compartir) };
+              titulo: $('ma-titulo').value.trim(), descripcion: $('ma-desc').value.trim(), compartido: elegidosLista(m.compartir), tipo: m.tipo || 'pedido' };
   m.creando = true;
   revisarMasivo();
   notaAd('ma-estado', 'Creando el pedido…');
@@ -512,13 +525,164 @@ $('ma-crear').addEventListener('click', async function () {
   const ref = r.ref || m.id;
   const archivos = m.archivos.slice();
   // Todo de nuevo para el próximo (con otro número)
-  AD.masivo = { id: nuevoIdMasivo(), urgencia: m.urgencia, archivos: [], compartir: {}, sitiosArmados: true };
+  AD.masivo = { id: nuevoIdMasivo(), urgencia: m.urgencia, archivos: [], compartir: {}, sitiosArmados: true, tipo: m.tipo };
   ['ma-titulo', 'ma-desc', 'ma-razon'].forEach(function (id) { $(id).value = ''; });
   notaAd('ma-estado', '');
   pintarChipsEncargados($('ma-compartir'), AD.masivo.compartir);
   pintarMasivo();
   cargarTablero();
+  if (d.tipo === 'servicio' && typeof cargarServicios === 'function') cargarServicios();
   await abrirTarjeta(ref);
   if (archivos.length) adjuntar(archivos, ref);       // se suben solos, como cualquier adjunto
-  aviso('Listo: se creó el pedido masivo' + (d.compartido.length ? ', compartido con ' + d.compartido.join(', ') : '') + (archivos.length ? '. Los adjuntos se están subiendo.' : '.'));
+  aviso((d.tipo === 'servicio' ? 'Listo: se creó el servicio (está en la pestaña Servicios)' : 'Listo: se creó el pedido masivo') + (d.compartido.length ? ', compartido con ' + d.compartido.join(', ') : '') + (archivos.length ? '. Los adjuntos se están subiendo.' : '.'));
 });
+
+/* ============================================================
+   PADRÓN (Fase 3, Paso 6)
+   Los productos del padrón con lo más importante de cada uno. Tocar uno
+   abre el ✏️: nombre, rubro, proveedores particulares y variantes.
+   "Desactivar" no lo borra: deja de aparecer y se puede volver a activar.
+   ============================================================ */
+const PA = { datos: null, mostrar: 50 };
+
+async function mostrarPadron() {
+  if (!PA.datos) notaAd('pa-estado', 'Cargando el padrón…');
+  pintarPadron();
+  const r = await api('getPadronAdmin');
+  if (!r.ok) { notaAd('pa-estado', textoDeError(r)); return; }
+  PA.datos = r;
+  notaAd('pa-estado', '');
+  const sel = $('pa-rubro'), actual = sel.value;
+  sel.innerHTML = '<option value="">Todos los rubros</option><option value="__sin">Sin rubro</option>' +
+    r.canales.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('');
+  sel.value = actual;
+  pintarPadron();
+}
+
+function padronFiltrado() {
+  const q = sinTildes($('pa-q').value.trim()), rubro = $('pa-rubro').value, inactivos = $('pa-inactivos').checked;
+  return ((PA.datos && PA.datos.familias) || []).filter(function (f) {
+    if (!inactivos && !f.activa) return false;
+    if (rubro === '__sin' ? (f.canal || f.proveedores.length) : (rubro && f.canal !== rubro)) return false;
+    if (!q) return true;
+    return sinTildes(f.familia).indexOf(q) !== -1 || f.variantes.some(function (v) { return sinTildes(v).indexOf(q) !== -1; });
+  });
+}
+
+function pintarPadron() {
+  const l = padronFiltrado();
+  const fecha = function (iso) { const d = new Date(iso); return isNaN(d) ? '' : d.getDate() + '/' + (d.getMonth() + 1) + '/' + String(d.getFullYear()).slice(2); };
+  $('pa-lista').innerHTML = !PA.datos ? '' : !l.length ? '<p class="nota">No hay productos con ese filtro.</p>' :
+    '<p class="nota" style="margin:0 0 6px">' + l.length + (l.length === 1 ? ' producto' : ' productos') + '</p>' +
+    l.slice(0, PA.mostrar).map(function (f) {
+      const donde = f.proveedores.length ? '🎯 ' + f.proveedores.map(function (x) { return x.nombre; }).join(', ') : (f.canal || 'Sin rubro');
+      return '<button type="button" class="pa-item' + (f.activa ? '' : ' inactivo') + '" data-fam="' + esc(f.familia) + '">' +
+        '<b>' + esc(f.familia) + (f.activa ? '' : ' <small>(desactivado)</small>') + '</b><small class="sub">' + esc(donde) + '</small>' +
+        (f.variantes.length ? '<small class="sub">Variantes: ' + esc(f.variantes.join(', ')) + '</small>' : '') +
+        '<small class="sub">' + (f.ultimo ? 'Último pedido: ' + esc(fecha(f.ultimo.fecha)) + ' · ' + esc(f.ultimo.sitio) + (f.veces > 1 ? ' (' + f.veces + ' veces)' : '') : 'Todavía no se pidió en la app') +
+        (f.cotizado ? ' · Cotización: ' + esc(f.cotizado.proveedores.join(', ')) : '') + '</small></button>';
+    }).join('');
+  $('pa-mas').hidden = l.length <= PA.mostrar;
+  $('pa-lista').querySelectorAll('[data-fam]').forEach(function (b) { b.addEventListener('click', function () { editarFamiliaUI(b.dataset.fam); }); });
+}
+['pa-q', 'pa-rubro', 'pa-inactivos'].forEach(function (id) {
+  $(id).addEventListener(id === 'pa-q' ? 'input' : 'change', function () { PA.mostrar = 50; pintarPadron(); });
+});
+$('pa-mas').addEventListener('click', function () { PA.mostrar += 100; pintarPadron(); });
+$('pa-nuevo').addEventListener('click', function () { editarFamiliaUI(''); });
+
+/** Después de cambiar el padrón: lo que la app tenía guardado (nombres para el ✏️) se vuelve a pedir. */
+function padronCambiado() {
+  if (typeof TB !== 'undefined') TB.datosProd = null;
+  mostrarPadron();
+}
+
+async function editarFamiliaUI(nombre) {
+  const f = nombre ? (PA.datos.familias.filter(function (x) { return x.familia === nombre; })[0]) : null;
+  if (nombre && !f) return;
+  const datos = await datosProductos();
+  const provs = f ? f.proveedores.map(function (x) { return { id: x.id, nombre: x.nombre }; }) : [];
+  const canales = (PA.datos.canales || []).slice();
+  if (f && f.canal && canales.indexOf(f.canal) === -1) canales.push(f.canal);
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML =
+    campoDlg('pf-nombre', 'Nombre', f ? f.familia : '', { max: 120, placeholder: 'Ej: Guantes de nitrilo', nota: 'Sin paréntesis: la medida o el tamaño van en la especificación de cada pedido.' + (f ? ' Si lo cambiás, el nombre de ahora queda como variante y los pedidos en curso pasan al nuevo.' : '') }) +
+    '<div class="campo"><label for="pf-rubro">Rubro</label><select id="pf-rubro"></select><p class="nota" id="pf-rubro-nota" hidden>Con proveedores particulares va sin rubro.</p></div>' +
+    '<div class="campo"><label for="sp-q">Proveedores particulares (opcional)</label>' + htmlSelectorProv() + '</div>' +
+    (f ? '<div class="campo"><label>Variantes (cómo lo escriben)</label><div class="pila" id="pf-vars" style="gap:6px"></div>' +
+         '<div class="fila2"><input type="text" id="pf-var" maxlength="120" autocomplete="off" placeholder="Ej: guante de nitrilo"><button type="button" class="btn2" id="pf-var-ok" style="width:auto">Agregar</button></div></div>' +
+         (f.ultimo ? '<p class="nota">Último pedido: ' + esc(new Date(f.ultimo.fecha).toLocaleDateString('es-AR')) + ' · ' + esc(f.ultimo.sitio) + ' (' + esc(f.ultimo.ref) + ')</p>' : '') +
+         (f.cotizado ? '<p class="nota">Última cotización pedida a: ' + esc(f.cotizado.proveedores.join(', ')) + '</p>' : '') +
+         '<p class="nota">Dónde se compró llega con la Fase 4.</p>' : '');
+  const variantes = f ? f.variantes.slice() : [];
+  const pintarVars = function () {
+    const el = $('pf-vars');
+    if (!el) return;
+    el.innerHTML = variantes.length ? '' : '<p class="nota" style="margin:0">Todavía no tiene variantes.</p>';
+    variantes.forEach(function (v) {
+      const d = document.createElement('div');
+      d.className = 'elegido';
+      d.innerHTML = '<span>' + esc(v) + '</span><button type="button" aria-label="Quitar la variante ' + esc(v) + '">×</button>';
+      d.querySelector('button').addEventListener('click', async function () {
+        const r = await api('varianteFamilia', f.familia, v, false);
+        if (!r.ok) return aviso(textoDeError(r), 'bad');
+        variantes.splice(variantes.indexOf(v), 1);
+        f.variantes = variantes.slice();
+        pintarVars();
+        aviso('Listo: se quitó la variante "' + v + '".');
+      });
+      el.appendChild(d);
+    });
+  };
+  const botones = [{ texto: f ? 'Guardar' : 'Agregar al padrón', clase: 'btn', id: 'dg-ok', valor: function () { return { guardar: true, nombre: $('pf-nombre').value.trim(), canal: $('pf-rubro').value }; } }];
+  if (f) botones.push({ texto: f.activa ? 'Desactivar (borrar)' : 'Volver a activar', clase: 'btn2', valor: { activar: !f.activa } });
+  botones.push({ texto: 'Volver', valor: null });
+  const res = await dialogo({
+    titulo: f ? 'Editar producto del padrón' : 'Agregar producto al padrón', cuerpo: cuerpo, botones: botones,
+    alAbrir: function () {
+      const sel = $('pf-rubro');
+      sel.innerHTML = '<option value="">Sin rubro</option>' + canales.map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('');
+      sel.value = f ? f.canal : '';
+      const revisar = function () {
+        sel.hidden = provs.length > 0;
+        $('pf-rubro-nota').hidden = !provs.length;
+        $('dg-ok').disabled = $('pf-nombre').value.trim().length < 2;
+      };
+      $('pf-nombre').addEventListener('input', revisar);
+      armarSelectorProv({ provs: provs, proveedores: datos ? datos.proveedores.slice() : [], datos: datos, rubro: function () { return sel.value; }, alCambiar: revisar });
+      if (f) {
+        pintarVars();
+        $('pf-var-ok').addEventListener('click', async function () {
+          const t = $('pf-var').value.trim();
+          if (t.length < 2) return;
+          const r = await api('varianteFamilia', f.familia, t, true);
+          if (!r.ok) return aviso(textoDeError(r), 'bad');
+          variantes.push(t);
+          f.variantes = variantes.slice();
+          $('pf-var').value = '';
+          pintarVars();
+          aviso(r.aviso || 'Listo: "' + t + '" ahora se reconoce como "' + f.familia + '".');
+        });
+      }
+      revisar();
+    }
+  });
+  if (!res) { if (f) pintarPadron(); return; }
+  if (res.activar !== undefined) {
+    if (!res.activar) {
+      const si = await dialogo({ titulo: '¿Desactivar "' + f.familia + '"?', texto: 'Deja de aparecer en el formulario y en la app. Los pedidos viejos lo siguen mostrando bien, y se puede volver a activar.',
+        botones: [{ texto: 'Sí, desactivar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+      if (!si) return;
+    }
+    const r = await api('activarFamilia', f.familia, res.activar);
+    if (!r.ok) return aviso(textoDeError(r), 'bad');
+    aviso(res.activar ? 'Listo: "' + f.familia + '" volvió al padrón.' : 'Listo: "' + f.familia + '" quedó desactivado.');
+    return padronCambiado();
+  }
+  const d = { original: f ? f.familia : '', nombre: res.nombre, canal: provs.length ? '' : res.canal, proveedores: provs.map(function (x) { return x.id; }) };
+  const r = await api('guardarFamilia', d);
+  if (!r.ok) return aviso(textoDeError(r), 'bad');
+  aviso('Listo' + (r.hechos && r.hechos.length ? ': ' + r.hechos.join('. ') : '') + '.');
+  padronCambiado();
+}

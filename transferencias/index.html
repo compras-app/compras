@@ -483,6 +483,11 @@
   .sugerencias .nada{padding:12px;color:var(--ink-soft);font-size:13px}
 
   td.cant input.ci{width:100%}
+  /* Armar pedido: la cantidad ocupa todo el casillero y se ve como un campo (Feli, 2026-10-03) */
+  #atablehost th.count{width:150px}
+  #atablehost td.cant{padding:3px 4px}
+  #atablehost td.cant input.ci{min-height:36px;font-size:15px;text-align:center;border:1px solid var(--line-strong);
+                               border-radius:7px;background:var(--bg)}
   .quitar{
     appearance:none;border:0;background:none;color:var(--ink-faint);
     cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;
@@ -604,6 +609,10 @@
   .hresultado .det .obs{margin:8px 0 0;font-size:12.5px;color:var(--ink-soft);white-space:pre-wrap}
   .hresultado .det .acciones{display:flex;gap:12px;align-items:center;margin-top:10px}
   .hresultado .estado-c{color:#b3261e}
+  .hresultado .notah{font-size:12px;color:var(--ink-soft);font-style:italic;margin-top:2px}
+  .hresultado .notaedit-h{margin-top:12px}
+  .hresultado .notaedit-h textarea{display:block;width:100%;margin-top:6px;font:inherit;color:var(--ink);background:var(--panel);
+                                   border:1px solid var(--line-strong);border-radius:6px;padding:7px 9px;resize:vertical}
   @media (max-width:700px){ .hresultado{overflow-x:auto} .hresultado table{min-width:560px} }
 
   /* ---------- Ajustes ---------- */
@@ -654,7 +663,10 @@
     .toolbar .botones{width:100%;display:flex;gap:8px}
     .toolbar .botones .btn{flex:1;padding:12px 10px}
     .sugerencias .op{flex-wrap:wrap}
-    #atablehost td.cant input{width:70px;font-size:16px}
+    /* La cantidad: todo el casillero, alto y con letra grande (Feli, 2026-10-03) */
+    #atablehost th.count{width:34%}
+    #atablehost td.cant{padding:4px}
+    #atablehost td.cant input.ci{min-height:46px;font-size:20px}
     .sheethead .line{flex-wrap:wrap;gap:4px 14px}
   }
 </style>
@@ -1054,6 +1066,20 @@
         <button class="btn" id="jegresosguardar">Guardar</button>
         <span class="aviso" id="jegresosaviso"></span>
       </div>
+    </div>
+
+    <div class="paso" id="jauto">
+      <h3>Bajar existencias solas (en esta compu)</h3>
+      <div class="fila">
+        <label class="check"><input type="checkbox" id="jautosi"> De lunes a viernes, a las</label>
+        <input type="time" id="jautohora" value="07:30" class="select" style="width:auto">
+        <button class="btn" id="jautoguardar">Guardar</button>
+        <span class="aviso" id="jautoaviso"></span>
+      </div>
+      <p class="nota">A esa hora se abre Transferencias en una pestaña y baja las existencias de Albor, como si tocaras el
+         botón; quedan guardadas en esta compu para todo el día. Si Albor pide ingresar, toca INGRESAR solo (Chrome tiene
+         que tener guardada la contraseña). Chrome tiene que estar abierto: si estaba cerrado a esa hora, lo hace al abrirlo.
+         Se elige en cada compu.</p>
     </div>
 
     <div class="paso">
@@ -1514,7 +1540,44 @@
     return btoa(s);
   }
 
+  /* Las planillas que ya se bajaron en esta compu (Feli, 2026-10-03): los
+     botones de cada pestaña bajan siempre, pero "Cargar en Albor" no vuelve a
+     guardar una que ya se bajó igual (por el botón o en otra carga). Se
+     reconoce por el contenido: la planilla se arma siempre igual con los
+     mismos datos (no lleva la hora adentro). */
+  var CLAVE_BAJADAS = 'programa-compras:planillas_bajadas';
+  function huellaArchivo(b64){
+    var h = 2166136261;
+    for(var i = 0; i < b64.length; i++){ h ^= b64.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0).toString(36) + '-' + b64.length;
+  }
+  function planillasBajadas(){
+    try{ return JSON.parse(localStorage.getItem(CLAVE_BAJADAS) || '{}') || {}; }catch(e){ return {}; }
+  }
+  function anotarBajada(b64, nombre){
+    var t = planillasBajadas();
+    t[huellaArchivo(b64)] = { nombre: nombre, cuando: Date.now() };
+    var claves = Object.keys(t).sort(function(a, b){ return t[b].cuando - t[a].cuando; });
+    claves.slice(150).forEach(function(k){ delete t[k]; });     // las 150 más nuevas alcanzan
+    try{ localStorage.setItem(CLAVE_BAJADAS, JSON.stringify(t)); }catch(e){}
+  }
+  /* De las planillas de una carga, las que todavía no se bajaron. */
+  function planillasNuevas(archivos){
+    var t = planillasBajadas();
+    return archivos.filter(function(a){
+      if(!a) return false;
+      var ya = t[huellaArchivo(a.base64)];
+      if(!ya) return true;
+      alborLog('La planilla «' + a.nombre + '» ya la habías bajado (' +
+               new Date(ya.cuando).toLocaleString('es-AR').slice(0, 16) + '): no la guardo de nuevo.');
+      return false;
+    });
+  }
+
   async function descargar(nombre, datos, tipo){
+    try{
+      anotarBajada(aBase64(typeof datos === 'string' ? new TextEncoder().encode(datos) : datos), nombre);
+    }catch(e){}
     try{
       var plataforma = (window.claude && window.claude.use) ? await window.claude.use('downloads') : null;
       if(plataforma){
@@ -1737,10 +1800,12 @@
      sigue sin dejar cargar dos veces lo mismo. Duran EXIST_DIAS días. */
   var CLAVE_EXIST = 'programa-compras:existencias';
   var EXIST_DIAS = 7;
+  var EXIST_CUANDO = null;          // cuándo se bajaron las que se ven acá
   function guardarExistencias(texto, nombre, fecha){
+    EXIST_CUANDO = Date.now();
     try{
       localStorage.setItem(CLAVE_EXIST, JSON.stringify({ texto: texto, nombre: nombre || '', fecha: fecha || null,
-        cuando: Date.now(), hasta: '', transferido: '', egresadas: {} }));
+        cuando: EXIST_CUANDO, hasta: '', transferido: '', egresadas: {} }));
     }catch(e){ try{ localStorage.removeItem(CLAVE_EXIST); }catch(x){} }   // no entra: no se guarda
   }
   function recordarExistencias(cambios){
@@ -1760,6 +1825,7 @@
       return;
     }
     if(!cargarTexto(g.texto, g.nombre, g.fecha, true)) return;
+    EXIST_CUANDO = g.cuando;
     if(g.hasta){ DATA.hasta = g.hasta; mostrarFechaReporte(); }
     if(g.transferido) TRANSFERIDO_CON = { data: DATA, envio: g.transferido };
     var egr = g.egresadas || {};
@@ -3563,7 +3629,7 @@
      uno se abre para ver el detalle. Solo admins.
      ================================================================== */
 
-  var HIST = { cual: 'conteos', resultados: [], abierto: null };
+  var HIST = { cual: 'conteos', resultados: [], abierto: null, detalle: '' };
 
   function errorH(msg){ var e = $('herror'); e.textContent = msg; e.classList.toggle('on', !!msg); }
 
@@ -3592,8 +3658,8 @@
     $('hnota').textContent = {
       conteos: 'Los conteos guardados con "Guardar en el historial", con sus comentarios y observaciones.',
       pedidos: 'Los pedidos que mandaron las granjas desde Armar pedido, y en qué quedaron.',
-      transferencias: 'Las transferencias cargadas en Albor desde acá (desde el 2 de octubre de 2026).',
-      egresos: 'Los egresos cargados en Albor desde acá (desde el 2 de octubre de 2026).'
+      transferencias: 'Las transferencias cargadas en Albor desde acá. Cada una puede llevar una nota (abrila); el buscador también encuentra palabras de las notas.',
+      egresos: 'Los egresos cargados en Albor desde acá. Cada uno puede llevar una nota (abrilo); el buscador también encuentra palabras de las notas.'
     }[HIST.cual];
     $('hresultado').innerHTML = '<div class="cuenta">Buscando…</div>';
     var f = { producto: $('hproducto').value.trim(), desde: $('hdesde').value, hasta: $('hhasta').value,
@@ -3619,6 +3685,11 @@
     }).join(' · ') + '</div>';
   }
 
+  // La nota del comprobante, en la lista (Feli, 2026-10-03)
+  function notaFila(x){
+    return x.nota ? '<div class="notah" title="' + esc(x.nota) + '">📝 ' + esc(x.nota.length > 70 ? x.nota.slice(0, 70) + '…' : x.nota) + '</div>' : '';
+  }
+
   var COLS_HIST = {
     conteos: ['Fecha', 'Responsable', 'Existencias al', 'Insumos', 'Con diferencia', 'Comentarios'],
     pedidos: ['Fecha', 'Granja', 'Quién lo armó', 'Estado', 'Insumos'],
@@ -3638,10 +3709,10 @@
               (x.quedan && x.estado === 'Transferido' ? ' · ' + x.quedan + ' pendiente' + (x.quedan === 1 ? '' : 's') : '') + '</td>',
               '<td class="num">' + x.renglones + '</td>'];
     if(c === 'transferencias')
-      return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + '</td>', '<td>' + esc(x.comprobante || 'sin número') + '</td>',
+      return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + notaFila(x) + '</td>', '<td>' + esc(x.comprobante || 'sin número') + '</td>',
               '<td>' + esc(x.origen) + '</td>', '<td>' + esc(x.destino) + '</td>',
               '<td class="num">' + x.insumos + '</td>', '<td class="num">' + fmt(x.unidades) + '</td>'];
-    return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + '</td>', '<td>' + esc(x.comprobante) + '</td>',
+    return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + notaFila(x) + '</td>', '<td>' + esc(x.comprobante) + '</td>',
             '<td>' + esc(x.granja) + '</td>', '<td>' + esc(x.cuenta) + '</td>', '<td>' + esc(x.centro) + '</td>',
             '<td class="num">' + x.insumos + '</td>', '<td class="num">' + fmt(x.unidades) + '</td>'];
   }
@@ -3655,13 +3726,14 @@
     h.push('</tr></thead><tbody>');
     L.forEach(function(x, i){
       h.push('<tr class="uno' + (HIST.abierto === i ? ' abierto' : '') + '" data-h="' + i + '">' + filaHistorial(x).join('') + '</tr>');
-      if(HIST.abierto === i) h.push('<tr class="det"><td colspan="' + cols.length + '" id="hdet">Abriendo…</td></tr>');
+      if(HIST.abierto === i) h.push('<tr class="det"><td colspan="' + cols.length + '" id="hdet">' + (HIST.detalle || 'Abriendo…') + '</td></tr>');
     });
     h.push('</tbody></table>');
     $('hresultado').innerHTML = h.join('');
   }
 
   async function abrirHistorial(i){
+    HIST.detalle = '';
     if(HIST.abierto === i){ HIST.abierto = null; pintarHistorial(); return; }
     HIST.abierto = i;
     pintarHistorial();
@@ -3669,7 +3741,8 @@
     var r = await api('verHistorialTransf', cual, x.id);
     if(HIST.abierto !== i || cual !== HIST.cual || !$('hdet')) return;
     if(!r.ok){ $('hdet').textContent = r.sinConexion ? 'Hace falta señal.' : 'No se pudo: ' + (r.error || ''); return; }
-    $('hdet').innerHTML = detalleHistorial(cual, x, r);
+    HIST.detalle = detalleHistorial(cual, x, r);
+    $('hdet').innerHTML = HIST.detalle;
   }
 
   function tablaSimple(cab, filas){
@@ -3707,9 +3780,28 @@
       h.push(tablaSimple(['Insumo', 'Cantidad'], r.filas.map(function(f){
         return [esc(f.nombre) + ' <small style="color:var(--ink-faint)">' + esc(f.cod) + '</small>', fmt(f.cant)];
       })));
+      // Una nota, como recordatorio (Feli, 2026-10-03): "lleva los productos de la mitad del mes"
+      h.push('<div class="notaedit-h"><b>Nota</b>' + (r.notaDe ? ' <small style="color:var(--ink-faint)">· ' + esc(r.notaDe) + '</small>' : '') +
+             '<textarea id="hnotatxt" rows="2" placeholder="Un recordatorio. Ej.: lleva los productos de la mitad del mes">' +
+             esc(r.nota || '') + '</textarea>' +
+             '<div class="acciones"><button class="btn" data-hnota>Guardar nota</button><span class="aviso" id="hnotaaviso"></span></div></div>');
     }
     h.push('<div class="acciones"><button class="btn" data-himprimir>Imprimir</button></div>');
     return h.join('');
+  }
+
+  async function guardarNotaHistorial(){
+    var i = HIST.abierto, x = HIST.resultados[i], cual = HIST.cual;
+    if(i === null || !x) return;
+    var texto = $('hnotatxt').value.trim(), aviso = $('hnotaaviso');
+    aviso.textContent = 'Guardando…';
+    var r = await api('guardarNotaHistorial', cual, x.id, texto);
+    if(!r.ok){ aviso.textContent = r.sinConexion ? 'Hace falta señal para guardar la nota.' : 'No se pudo: ' + (r.error || ''); return; }
+    x.nota = r.nota;
+    var cel = document.querySelector('#hresultado tr.uno[data-h="' + i + '"] td');
+    if(cel){ var vieja = cel.querySelector('.notah'); if(vieja) vieja.remove(); cel.insertAdjacentHTML('beforeend', notaFila(x)); }
+    aviso.textContent = texto ? 'Nota guardada.' : 'Nota borrada.';
+    HIST.detalle = $('hdet').innerHTML;
   }
 
   /* Imprime solo el detalle abierto, en una hoja blanca. */
@@ -3720,6 +3812,12 @@
     if(!w){ errorH('El navegador no dejó abrir la hoja para imprimir.'); return; }
     var copia = det.cloneNode(true);
     [].forEach.call(copia.querySelectorAll('.acciones'), function(e){ e.remove(); });
+    [].forEach.call(copia.querySelectorAll('textarea'), function(t){
+      var v = $(t.id) ? $(t.id).value.trim() : t.value;
+      var d = document.createElement('div'); d.className = 'obs'; d.textContent = v;
+      t.replaceWith(d);
+      if(!v && d.parentNode) d.parentNode.remove();
+    });
     w.document.write('<!doctype html><meta charset="utf-8"><title>' + esc(document.title) + '</title><style>' +
       'body{font:11pt -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#000;margin:12mm}' +
       'table{border-collapse:collapse;width:100%;margin-top:8px;font-size:9.5pt}th,td{border:.5px solid #999;padding:4px 6px;text-align:right}' +
@@ -3745,6 +3843,8 @@
   });
   $('hresultado').addEventListener('click', function(e){
     if(e.target.closest('[data-himprimir]')){ imprimirDetalle(); return; }
+    if(e.target.closest('[data-hnota]')){ guardarNotaHistorial(); return; }
+    if(e.target.closest('#hdet')) return;            // escribir en la nota no cierra el detalle
     var tr = e.target.closest('tr.uno');
     if(tr) abrirHistorial(Number(tr.getAttribute('data-h')));
   });
@@ -3790,7 +3890,80 @@
     e.classList.add(n ? 'ok' : 'falta');
     $('jcatalogotxt').textContent = n ? n + ' insumos · publicado el ' + (c.actualizado || '') : 'Todavía no hay catálogo publicado.';
     pintarListasAlbor();
+    pintarAuto();
   }
+
+  /* ---------- Existencias solas cada mañana (Feli, 2026-10-03; extensión 3.2) ---------- */
+  function autoListo(){
+    var m = motor();
+    return !!(m && m.estado_existencias && !versionMenor(MOTOR.version, '3.2'));
+  }
+  function textoAuto(r){
+    if(!r.hora) return 'Apagado en esta compu.';
+    var px = r.proxima ? new Date(r.proxima).toLocaleString('es-AR', { weekday: 'long', day: '2-digit', month: '2-digit',
+                                                                           hour: '2-digit', minute: '2-digit' }) : '';
+    return 'Prendido: ' + (px ? 'la próxima es el ' + px : 'a las ' + r.hora) + (r.ultimo ? ' · la última, el ' + fechaCorta(r.ultimo) : '') + '.';
+  }
+  async function pintarAuto(){
+    var ok = autoListo();
+    ['jautosi', 'jautohora', 'jautoguardar'].forEach(function(id){ $(id).disabled = !ok; });
+    if(!ok){
+      avisarAjuste('jautoaviso', motor() ? 'Hace falta la versión 3.2 de la extensión en esta compu (el zip nuevo y Reload).'
+                                         : 'Hace falta la extensión de Albor en esta compu.', true);
+      return;
+    }
+    var r = await motor().estado_existencias();
+    if(!r.ok){ avisarAjuste('jautoaviso', esc(r.motivo || 'No pude leerlo de la extensión.'), true); return; }
+    $('jautosi').checked = !!r.hora;
+    if(r.hora) $('jautohora').value = r.hora;
+    avisarAjuste('jautoaviso', esc(textoAuto(r)));
+  }
+  $('jautoguardar').addEventListener('click', async function(){
+    if(!autoListo()) return;
+    var hora = $('jautosi').checked ? ($('jautohora').value || '') : '';
+    if($('jautosi').checked && !hora){ avisarAjuste('jautoaviso', 'Elegí la hora.', true); return; }
+    var r = await motor().programar_existencias(hora);
+    if(!r.ok){ avisarAjuste('jautoaviso', esc(r.motivo || 'No se pudo.'), true); return; }
+    avisarAjuste('jautoaviso', 'Guardado. ' + esc(textoAuto(r)));
+    // Para avisar si algún día no pudo bajarlas (la notificación de Chrome)
+    try{ if(window.Notification && Notification.permission === 'default') Notification.requestPermission(); }catch(e){}
+  });
+
+  /* La extensión abrió esta pestaña a la mañana (#bajar-solo): se bajan las
+     existencias y, si salió bien, la pestaña se cierra sola. Si no, queda
+     abierta con el aviso, y una notificación. */
+  var BAJAR_SOLO = location.hash === '#bajar-solo';
+  if(BAJAR_SOLO) try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){}
+  async function bajarSoloAlAbrir(){
+    var fin = Date.now() + 60000;
+    while(!MOTOR.vivo && Date.now() < fin) await new Promise(function(r){ setTimeout(r, 1000); });
+    var ok = false;
+    if(MOTOR.vivo && ES_ADMIN){
+      irA('panel-conteo');
+      ok = await bajarOficinas();
+    }else{
+      mostrarError('No pude bajar las existencias solas: ' + (ES_ADMIN ? 'no encontré la extensión de Albor.' : 'hace falta ser admin.'));
+    }
+    if(ok){
+      setTimeout(function(){ motor().cerrar_esta_pestana(); }, 3000);
+      return;
+    }
+    document.title = '🔔 ' + document.title;
+    try{
+      if(window.Notification && Notification.permission === 'granted')
+        new Notification('No pude bajar las existencias solas', { body: 'Mirá la pestaña de Transferencias que quedó abierta.',
+                                                                  requireInteraction: true });
+    }catch(e){}
+  }
+
+  // Si otra pestaña bajó existencias nuevas (por ejemplo, las de la mañana), esta las toma.
+  window.addEventListener('storage', function(e){
+    if(e.key !== CLAVE_EXIST || !e.newValue || CARGANDO || bajando || !ES_ADMIN) return;
+    try{
+      var g = JSON.parse(e.newValue);
+      if(g && g.cuando && g.cuando !== EXIST_CUANDO) recuperarExistencias();
+    }catch(x){}
+  });
 
   $('jcampaniamodo').addEventListener('change', function(){
     $('jcampania').hidden = this.value !== 'fija';
@@ -4014,14 +4187,17 @@
     responder_carga: window.AlborExt.api.responder_carga,
     cerrar_albor: window.AlborExt.api.cerrar_albor,
     abrir_carpeta: window.AlborExt.api.abrir_carpeta,
-    leer_albor: window.AlborExt.api.leer_albor && conRegistro(window.AlborExt.api.leer_albor, function(t){ alborLog(t); })
+    leer_albor: window.AlborExt.api.leer_albor && conRegistro(window.AlborExt.api.leer_albor, function(t){ alborLog(t); }),
+    programar_existencias: window.AlborExt.api.programar_existencias,
+    estado_existencias: window.AlborExt.api.estado_existencias,
+    cerrar_esta_pestana: window.AlborExt.api.cerrar_esta_pestana
   } : null;
 
   function motor(){ return MOTOR.vivo ? MOTOR_API : null; }
 
   /* La versión de la extensión que espera esta página: si la de la compu es
      más vieja, anda igual, pero se avisa que hay una nueva. */
-  var VERSION_EXTENSION = '3.1';
+  var VERSION_EXTENSION = '3.2';
   function versionMenor(a, b){
     var x = String(a || '0').split('.').map(Number), y = String(b).split('.').map(Number);
     for(var i = 0; i < Math.max(x.length, y.length); i++){
@@ -4054,8 +4230,8 @@
     var vieja = vivo && versionMenor(MOTOR.version, VERSION_EXTENSION);
     $('motorestado').innerHTML = vivo
       ? '<span class="punto"></span><span>Extensión de Albor de este Chrome: <b>lista</b>.' +
-        (vieja ? ' Hay una versión nueva: en <b>chrome://extensions</b>, tocá la flechita circular (Reload) de ' +
-                 '"Programa de Compras · Albor" (antes, <b>git pull</b> en la carpeta del programa).' : '') + '</span>'
+        (vieja ? ' Hay una versión nueva: descomprimí el zip nuevo encima de la carpeta de la extensión y, en ' +
+                 '<b>chrome://extensions</b>, tocá la flechita circular (Reload) de "Programa de Compras · Albor".' : '') + '</span>'
       : '<span class="punto"></span><span>Para usar Albor desde acá falta la extensión ' +
         '<b>Programa de Compras · Albor</b> en este Chrome (o Edge). ' +
         'Hasta entonces podés arrastrar el CSV abajo.</span>';
@@ -4869,8 +5045,9 @@
         if(DATA){ DATA.hasta = r.hasta || hasta || ''; recordarExistencias({ hasta: DATA.hasta }); mostrarFechaReporte(); }
         if(r.aviso) mostrarError(r.aviso);
         pintarEgresos();
-        progreso('Listo.');
-        setTimeout(function(){ $('progreso').classList.remove('on'); }, 4000);
+        // Se cierra ya, junto con la planilla (Feli: antes quedaba 4 segundos y la pantalla saltaba).
+        $('progreso').classList.remove('on');
+        var bien = true;
       }else{
         progreso('No se pudo.');
         mostrarError((r && r.motivo) || 'No se pudo traer el reporte de Albor.');
@@ -4881,6 +5058,7 @@
 
     bajando = false;
     if(boton){ boton.disabled = false; boton.textContent = etiqueta; }
+    return !!bien;
   }
 
   /* Un solo reporte con las oficinas y las granjas de la lista: alcanza para
@@ -5029,6 +5207,8 @@
     var archivos = [archivoParaPython(libroTransferencia()), archivoParaPython(libroPendientes())]
                    .filter(Boolean);
     abrirAlbor('Transferencia a ' + dest.nombre + ' · ' + renglones + ' renglones');
+    archivos = planillasNuevas(archivos);
+    archivos.forEach(function(a){ anotarBajada(a.base64, a.nombre); });
     alborLog('Abriendo Albor…');
 
     var r;
@@ -5103,11 +5283,13 @@
     limpiarErrorG();
 
     abrirAlbor('Egresos de fin de mes · ' + comps.length + ' comprobantes');
+    var planillas = planillasNuevas([archivoParaPython(libroEgresos())]);
+    planillas.forEach(function(a){ anotarBajada(a.base64, a.nombre); });
     alborLog('Abriendo Albor…');
 
     var r;
     try{
-      r = await motor().cargar_egresos(comps, [archivoParaPython(libroEgresos())],
+      r = await motor().cargar_egresos(comps, planillas,
             'Cierre ' + ($('gfecha').value || 'sin-fecha'));
     }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
 
@@ -5306,6 +5488,7 @@
     refrescarInicio();
     pintarMotor();
     buscarMotor();
+    if(BAJAR_SOLO) bajarSoloAlAbrir();
     if(!window.__buscandoMotor) window.__buscandoMotor = setInterval(function(){ if(!document.hidden && !CARGANDO && !bajando) buscarMotor(); }, 15000);
   }
 

@@ -557,3 +557,66 @@ html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96)
 /* Paso 5: lo que propone la IA (solo admins) */
 .producto .ia-prop{margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(120,140,255,.10);border:1px solid rgba(120,140,255,.30);font-size:13.5px}
 .producto .ia-prop .cambio-b{margin-top:6px}
+
+/* Paso 6: el padrón en Admin */
+.pa-lista{display:flex;flex-direction:column;gap:6px}
+.pa-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;padding:10px 12px;border-radius:9px;
+  border:1px solid var(--line);background:var(--tj);color:var(--fg);font:inherit;cursor:pointer}
+.pa-item:hover{border-color:var(--accent)}
+.pa-item .sub{color:var(--muted);font-size:12.5px}
+.pa-item.inactivo{opacity:.55}
+
+/* ============================================================
+   Paso 6 de la Fase 3: que se vean las tarjetas (Feli, 2026-10-04)
+   ============================================================ */
+/* Separación entre secciones del tablero: una línea clara y un poco de espacio */
+.tablero .col.nueva-sec{margin-left:12px;position:relative;overflow:visible}
+.tablero .col.nueva-sec::before{content:"";position:absolute;left:-12px;top:0;bottom:0;width:2px;border-radius:1px;background:rgba(255,255,255,.28);pointer-events:none}
+/* Herramientas del tablero: secciones, filtros y "recién" */
+.herramientas{padding:6px 12px;gap:6px}
+.herr-fila{display:flex;align-items:center;gap:6px;min-width:0}
+.herr-fila .secciones{flex:1;min-width:0}
+.secciones button{min-height:30px;padding:3px 11px;font-size:13px}
+.seg button{min-height:30px;padding:3px 10px;font-size:13px}
+.filtros select{min-height:30px;padding:3px 6px;font-size:13px}
+.refrescar{min-height:32px;font-size:12px}
+.filtros-b{flex:none;border:1.5px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:3px 11px;font:inherit;font-size:13px;font-weight:600;min-height:30px;cursor:pointer;
+  max-width:46vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tb-herramientas:not(.abiertos) .filtros{display:none}
+#tb-herramientas.abiertos .filtros-b{background:var(--accent-soft);color:var(--accent)}
+/* Procesando y Stand by: una línea fina */
+.procesando{padding:0 12px}
+.procesando .proc-h{min-height:30px;padding:3px 0;font-size:13px}
+/* Barra de arriba y de abajo, más delgadas */
+:root{--alto-barra:48px;--alto-nav:54px}
+.barra button{min-height:40px;min-width:40px}
+.tabs .tab{font-size:11px}
+.tabs .tab svg{width:22px;height:22px}
+.tabs .t-largo{display:none}
+@media (max-width:719px){
+  body[data-pantalla="tablero"] .barra h1{visibility:hidden;margin:0}      /* en el celular, sin "Tablero" (ya está abajo) */
+}
+@media (min-width:720px){
+  :root{--alto-barra:44px}
+  .barra h1{font-size:15px}
+  html[data-aspecto="programa"] .barra h1{font-size:15px}
+  .tabs .tab{height:40px;font-size:14px}
+  .tabs .t-largo{display:inline}.tabs .t-corto{display:none}
+  .pantalla-tablero{height:calc(100dvh - var(--alto-barra) - 40px - var(--alto-aviso,0px))}
+  .sinred{top:calc(var(--alto-barra) + 40px)}
+  /* En la compu, todo en una fila compacta y los filtros siempre a la vista */
+  #tb-herramientas{flex-direction:row;align-items:center;flex-wrap:wrap;padding:5px 12px;gap:10px}
+  #tb-herramientas .herr-fila{display:contents}
+  #tb-herramientas .secciones{flex:0 1 auto;order:0}
+  #tb-herramientas .filtros, #tb-herramientas:not(.abiertos) .filtros{display:flex;order:1;flex:none}
+  #tb-herramientas .refrescar{order:2;margin-left:auto}
+  .filtros-b{display:none}
+}
+
+/* Paso 6: soltar una tarjeta sobre Stand by, y la tarjeta a la que se llegó por un acceso directo */
+body.con-arrastre #tb-standby{outline:2px dashed var(--accent);outline-offset:-2px}
+body.con-arrastre #tb-standby .proc-h::after{content:" · Soltá acá para mandarla a Stand by";font-weight:500;color:var(--muted)}
+#tb-standby.destino{background:var(--accent-soft)}
+.tarjeta.resaltada,.proc-i.resaltada{outline:3px solid var(--accent);outline-offset:2px;transition:outline-color .3s}
+.tarjeta .sobre.en-entregas{color:#ff8a80}
+.proc-i{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}

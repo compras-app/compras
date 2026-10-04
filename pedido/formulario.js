@@ -129,11 +129,11 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 
 /* ---------- choices ---------- */
 /* Qué significa cada urgencia (Feli, 2026-10-02), por su emoji; si cambian, por su lugar en la lista */
-const URG_AYUDA={'🔴':'La granja no funciona sin esto','🟠':'Medianamente urgente','🟢':'Se gestiona como siempre'};
+const URG_AYUDA={'🔴':'La granja no funciona sin esto','🟠':'Medianamente urgente','🟢':'Necesidad sin urgencia'};
 function ayudaUrgencia(o,i,n){
   const e=String(o).trim().split(' ')[0];
   if(URG_AYUDA[e]) return URG_AYUDA[e];
-  return n===3?['La granja no funciona sin esto','Medianamente urgente','Se gestiona como siempre'][i]:'';
+  return n===3?['La granja no funciona sin esto','Medianamente urgente','Necesidad sin urgencia'][i]:'';
 }
 function choices(name,opts){
   const box=document.querySelector(`.choices[data-name="${name}"]`);

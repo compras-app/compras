@@ -22,7 +22,7 @@ pantalla('servicios', { titulo: 'Servicios', alMostrar: mostrarServicios });
 function colsServicios() { return (SV.datos && SV.datos.columnas) || ['Entrantes', 'Procesando', 'En reparación', 'Para retirar', 'Finalizados']; }
 function colFinalizadosServ() { const c = colsServicios(); return c[c.length - 1]; }
 function serviciosALaVista() { return !$('app').hidden && !$('s-servicios').hidden && !document.hidden; }
-function puedoMoverServicio(t) { return !!t && (APP.yo.admin || t.solicitante === APP.yo.nombre); }
+function puedoMoverServicio(t) { return !!t && (APP.yo.admin || t.solicitante === APP.yo.nombre || (t.compartido || []).indexOf(APP.yo.nombre) !== -1); }
 
 /* ---------- Lo que se ve: lo del servidor + lo que espera en la bandeja ---------- */
 function vistaServicios() {
@@ -85,7 +85,7 @@ function pintarServicios() {
   cols.forEach(function (c) { porCol[c] = []; });
   vistaServicios().forEach(function (t) {
     if (!porCol[t.columna]) return;
-    if (SV.filtros.mios && t.solicitante !== APP.yo.nombre) return;
+    if (SV.filtros.mios && t.solicitante !== APP.yo.nombre && (t.compartido || []).indexOf(APP.yo.nombre) === -1) return;
     porCol[t.columna].push(t);
   });
   cont.innerHTML = cols.map(function (c, k) {
@@ -154,7 +154,7 @@ function moverServicioA(ref, destino, despuesDe) {
 
 async function moverServicioUI(ref) {
   const p = TB.detalle && TB.detalle.pedido;
-  const t = buscarServicio(ref) || (p ? { ref: ref, titulo: p.titulo, columna: p.columna, solicitante: p.solicitante } : null);
+  const t = buscarServicio(ref) || (p ? { ref: ref, titulo: p.titulo, columna: p.columna, solicitante: p.solicitante, compartido: p.compartido } : null);
   if (!t || !puedoMoverServicio(t)) return;
   const destino = await moverADialogo('Mover el servicio a…', t.columna, '', colsServicios().map(function (c) { return { columna: c, seccion: 'Servicios' }; }));
   if (!destino || destino === t.columna) return;
@@ -171,7 +171,7 @@ function pintarServicioAbierto() {
   const pv = p ? pedidoConCambios(ref, p) : null;
   let columna = v ? v.columna : (p ? p.columna : '…');
   bandeja.lista().forEach(function (m) { if (m.fn === 'moverTarjeta' && m.args[0] === ref) columna = (m.args[1] || {}).columna || columna; });
-  const puede = puedoMoverServicio(v || (p ? { solicitante: p.solicitante } : null));
+  const puede = puedoMoverServicio(v || (p ? { solicitante: p.solicitante, compartido: p.compartido } : null));
   const chip = $('tj-columna');
   chip.textContent = columna + (puede ? ' ⌄' : '');
   chip.disabled = !puede;
@@ -187,7 +187,7 @@ function pintarServicioAbierto() {
   dato('Responsable', resp ? '<span class="resp">' + esc(inicial(resp)) + '</span> ' + esc(resp) : 'Sin responsable');
   $('tj-datos').innerHTML = datos.join('');
   $('tj-etiquetas').innerHTML = '<span class="etiqueta">🔧 Servicio</span>';
-  ['tj-prod-b', 'tj-cot-b', 'tj-enlaces', 'tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
+  ['tj-prod-b', 'tj-cot-b', 'tj-aprob-b', 'tj-enlaces', 'tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
   $('tj-editar').hidden = !(APP.yo.admin && p);
   $('tj-editar').textContent = '✏️ Editar servicio';
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');

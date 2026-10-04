@@ -5,7 +5,7 @@
    - Secciones (Tanda verde, Cotización, Seguimiento) con sus columnas,
      una al lado de la otra; en el celular se desliza de costado.
    - Tarjeta: título, sitio, urgencia, inicial del responsable (y en
-     "Por recibir", si hay que ir a buscarlo o nos lo traen). Las de la
+     "Para retirar", si hay que ir a buscarlo o nos lo traen). Las de la
      urgencia más alta (🔴), pintadas de rojo.
    - Filtros: Mis pedidos / Todos (los no admins entran con Mis pedidos),
      y para admins, granja y responsable.
@@ -44,14 +44,14 @@ pantalla('tablero', { titulo: 'Tablero', alMostrar: mostrarTablero });
 /* ---------- Columnas ---------- */
 function columnasTb() { return (TB.datos && TB.datos.columnas) || []; }
 function colEntregado() {
-  const seg = columnasTb().filter(function (c) { return c.seccion === 'Seguimiento'; });
+  const seg = columnasTb().filter(function (c) { return c.seccion === 'Entregas' || c.seccion === 'Seguimiento'; });   // "Seguimiento": el nombre de antes (Paso 6)
   return seg.length ? seg[seg.length - 1].columna : '';
 }
 function colCancelado() {
   const c = ((APP.config && APP.config.columnas) || []).filter(function (x) { return x.seccion === 'Cerrado'; });
   return c.length ? c[0].columna : 'Cancelado';
 }
-function colPorRecibir() { return (TB.datos && TB.datos.porRecibir) || 'Por recibir'; }
+function colPorRecibir() { return (TB.datos && TB.datos.porRecibir) || 'Para retirar'; }
 /** Stand by (Paso 2-ter): una columna más, que se ve como franja abajo del tablero. */
 function colStandby() { return (TB.datos && TB.datos.standby) || 'Stand by'; }
 function enTablero(columna) { return columna === colStandby() || columnasTb().some(function (c) { return c.columna === columna; }); }
@@ -164,7 +164,17 @@ function pintarFiltros() {
   $('tb-todos').setAttribute('aria-pressed', String(!TB.filtros.mios));
   $('tb-sitio').value = TB.filtros.sitio;
   $('tb-resp').value = TB.filtros.resp;
+  // Paso 6: el botón del bloque de filtros (celular) dice lo que está elegido
+  const f = TB.filtros, lo = [f.mios ? 'Mis pedidos' : 'Todos'];
+  if (f.sitio) lo.push(f.sitio);
+  if (f.resp) lo.push(f.resp === '-' ? 'Sin responsable' : f.resp);
+  $('tb-filtros-b').textContent = '⚙︎ Filtros · ' + lo.join(' · ');
 }
+$('tb-filtros-b').addEventListener('click', function () {
+  const h = $('tb-herramientas'), abierto = !h.classList.contains('abiertos');
+  h.classList.toggle('abiertos', abierto);
+  this.setAttribute('aria-expanded', String(abierto));
+});
 function seVe(t) {
   const f = TB.filtros;
   if (f.mios && !esMio(t)) return false;
@@ -181,8 +191,8 @@ function esMio(t) {
 }
 $('tb-mios').addEventListener('click', function () { TB.filtros.mios = true; pintarFiltros(); pintarTablero(); });
 $('tb-todos').addEventListener('click', function () { TB.filtros.mios = false; pintarFiltros(); pintarTablero(); });
-$('tb-sitio').addEventListener('change', function () { TB.filtros.sitio = this.value; pintarTablero(); });
-$('tb-resp').addEventListener('change', function () { TB.filtros.resp = this.value; pintarTablero(); });
+$('tb-sitio').addEventListener('change', function () { TB.filtros.sitio = this.value; pintarFiltros(); pintarTablero(); });
+$('tb-resp').addEventListener('change', function () { TB.filtros.resp = this.value; pintarFiltros(); pintarTablero(); });
 
 /* ---------- Dibujar ---------- */
 function esc(s) {
@@ -233,7 +243,8 @@ function pintarTablero() {
     // Paso 2-bis: "📤 Mandar a Por cotizar" arriba de la Tanda verde (solo admins)
     const tanda = admin && c.columna === colTanda() && ts.some(function (t) { return !t.trabajo; });
     const recordar = tanda ? avisoTanda(ts) : '';
-    html.push('<div class="col" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
+    // Paso 6: entre secciones, una línea y un poco de espacio
+    html.push('<div class="col' + (primera && html.length ? ' nueva-sec' : '') + '" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
       '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
       '<button type="button" class="col-orden" data-orden-col="' + esc(c.columna) + '" aria-label="Ordenar la columna" title="Ordenar: a mano, más nuevos o más viejos primero (solo en este dispositivo)">' + ORDEN_TEXTO[orden] + '</button>' +
@@ -353,7 +364,14 @@ function pintarStandby() {
     guardado.guardar(K_STANDBY, abierto ? '' : '1');
     pintarStandby();
   });
-  cont.querySelectorAll('.proc-i').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
+  cont.querySelectorAll('.proc-i').forEach(function (b) {
+    b.addEventListener('click', function (e) { if (TB.recienArrastrada) { e.preventDefault(); return; } abrirTarjeta(b.dataset.ref); });
+    // Paso 6: con la franja abierta, una tarjeta de Stand by se arrastra a cualquier columna
+    if (APP.yo && APP.yo.admin) {
+      b.addEventListener('touchstart', function (e) { tocar(e, b, b.dataset.ref); }, { passive: true });
+      b.addEventListener('mousedown', function (e) { conMouse(e, b, b.dataset.ref); });
+    }
+  });
 }
 
 /* ---------- Procesando (Fase 3): plegada, arriba de la Tanda verde ----------
@@ -390,6 +408,8 @@ function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : esVerde(t.urgencia) ? ' verde' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
     (t.manual ? '<div class="sobre">✋ Gestión manual</div>' : '') +                                          // Paso 5
+    (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6
+    (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
     (t.fueraPadron ? '<div class="sobre fuera-padron">✋ Contiene productos fuera del padrón</div>' : '') +   // Pasos 3 y 4
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
@@ -582,7 +602,8 @@ function empezarArrastre(el, ref, x, y, ctx) {
   tb.style.scrollSnapType = 'none';
   TB.arrastre = {
     ctx: ctx, ref: ref, el: el, fantasma: fantasma, hueco: hueco, dx: x - r.left, dy: y - r.top, x: x, y: y,
-    origen: el.closest('.lista').dataset.columna, despuesDeOriginal: tarjetaAnterior(hueco, el)
+    // Paso 6: también se arrastra desde la franja de Stand by (sus líneas no están en una .lista)
+    origen: el.closest('.lista') ? el.closest('.lista').dataset.columna : colStandby(), despuesDeOriginal: tarjetaAnterior(hueco, el)
   };
   document.body.classList.add('con-arrastre');
   requestAnimationFrame(autoDesplazar);
@@ -595,6 +616,11 @@ function seguirArrastre(x, y) {
   a.fantasma.style.left = (x - a.dx) + 'px';
   a.fantasma.style.top = (y - a.dy) + 'px';
   const bajo = document.elementFromPoint(x, y);
+  // Paso 6: soltar sobre la franja de Stand by la manda ahí (solo en el tablero de pedidos)
+  const sb = a.ctx === CTX_PEDIDOS && bajo && bajo.closest ? bajo.closest('#tb-standby') : null;
+  a.sobreStandby = !!sb;
+  $('tb-standby').classList.toggle('destino', !!sb);
+  if (sb) return;
   const col = bajo && bajo.closest ? bajo.closest('.col') : null;
   if (!col) return;
   const lista = col.querySelector('.lista');
@@ -655,12 +681,53 @@ function soltarArrastre(cancelado) {
   a.ctx.tb().style.scrollSnapType = '';
   TB.recienArrastrada = true;
   setTimeout(function () { TB.recienArrastrada = false; }, 400);
+  $('tb-standby').classList.remove('destino');
+  if (!cancelado && a.sobreStandby) {
+    if (a.origen === colStandby()) return a.ctx.repintar();
+    const t = buscarEnVista(a.ref);
+    if (t && t.trabajo) { aviso('A Stand by van los pedidos, no las tarjetas de seguimiento.'); return a.ctx.repintar(); }
+    return a.ctx.mover(a.ref, colStandby(), '*');
+  }
   const lista = a.hueco.parentNode;
-  if (cancelado || !lista) return a.ctx.repintar();
+  if (cancelado || !lista || !lista.classList.contains('lista')) return a.ctx.repintar();
   const destino = lista.dataset.columna;
   const despuesDe = tarjetaAnterior(a.hueco, a.el);
   if (destino === a.origen && despuesDe === a.despuesDeOriginal) return a.ctx.repintar();
   a.ctx.mover(a.ref, destino, despuesDe);
+}
+
+/**
+ * Paso 6: un acceso directo (de la tarjeta original a la de seguimiento, o al revés) reemplaza la tarjeta
+ * abierta: así la X cierra y el tablero queda sobre la tarjeta a la que se llegó.
+ */
+function irPorAccesoDirecto(ref) {
+  TB.irAlCerrar = ref;
+  const habia = !!(history.state && history.state.tarjeta);
+  abrirTarjeta(ref, habia);
+  if (habia) history.replaceState({ tarjeta: ref }, '', '#' + encodeURIComponent(ref));
+}
+
+/**
+ * Paso 6: mueve el tablero hasta una tarjeta y la marca un segundo, como si se hubiera ido a mano.
+ * Si está en Procesando o en Stand by, abre la franja y marca su línea.
+ */
+function irATarjeta(ref) {
+  if (document.body.dataset.pantalla !== 'tablero') return;
+  const sel = '[data-ref="' + (window.CSS && CSS.escape ? CSS.escape(ref) : ref) + '"]';
+  let el = $('tablero').querySelector('.tarjeta' + sel);
+  if (!el) {
+    const enSb = vista().some(function (t) { return t.ref === ref && t.columna === colStandby(); });
+    const enProc = ((TB.datos && TB.datos.procesando) || []).some(function (x) { return x.ref === ref; });
+    if (enSb) { guardado.guardar(K_STANDBY, '1'); pintarStandby(); el = $('tb-standby').querySelector('.proc-i' + sel); }
+    else if (enProc) { guardado.guardar(K_PROCESANDO, '1'); pintarProcesando(); el = $('tb-procesando').querySelector('.proc-i' + sel); }
+  }
+  if (!el) return;
+  const col = el.closest('.col');
+  if (col) $('tablero').scrollTo({ left: Math.max(0, col.offsetLeft - 12), behavior: 'smooth' });
+  const lista = el.closest('.lista, .proc-l');
+  if (lista) lista.scrollTo({ top: Math.max(0, el.offsetTop - lista.offsetTop - 40), behavior: 'smooth' });
+  el.classList.add('resaltada');
+  setTimeout(function () { el.classList.remove('resaltada'); }, 1600);
 }
 
 /* ---------- Diálogos ---------- */
@@ -822,6 +889,10 @@ async function traerTarjeta(ref) {
 }
 
 function ocultarTarjeta() {
+  // Paso 6: si se llegó por un acceso directo, al cerrar el tablero queda sobre esa tarjeta
+  const ir = TB.irAlCerrar && TB.irAlCerrar === TB.abierta ? TB.abierta : null;
+  TB.irAlCerrar = null;
+  if (ir) setTimeout(function () { irATarjeta(ir); }, 60);
   TB.abierta = null;
   TB.detalle = null;
   $('tarjeta-modal').hidden = true;
@@ -961,6 +1032,7 @@ function pintarTarjeta() {
   $('tj-reabrir').textContent = trabajo ? '↩️ Reabrir la tarjeta' : '↩️ Reabrir el pedido';
   pintarAdjuntos();
   pintarCotizaciones();                                                    // cotizar.js
+  pintarAprobacion();                                                      // Paso 6 (cotizar.js)
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {
@@ -986,7 +1058,7 @@ function pintarTarjeta() {
     a.addEventListener('click', function (e) { e.preventDefault(); verFoto(a.dataset.foto); });
   });
   prods.querySelectorAll('[data-abrir-ref]').forEach(function (b) {
-    b.addEventListener('click', function () { abrirTarjeta(b.dataset.abrirRef); });
+    b.addEventListener('click', function () { irPorAccesoDirecto(b.dataset.abrirRef); });
   });
   const b = $('tj-resp');
   if (b) b.addEventListener('click', function () { cambiarResponsable(ref); });
@@ -1029,7 +1101,7 @@ function pintarEnlaces(d, trabajo) {
   cont.hidden = !html;
   cont.innerHTML = html;
   cont.querySelectorAll('[data-abrir-ref]').forEach(function (b) {
-    b.addEventListener('click', function () { abrirTarjeta(b.dataset.abrirRef); });
+    b.addEventListener('click', function () { irPorAccesoDirecto(b.dataset.abrirRef); });
   });
 }
 
@@ -1277,6 +1349,7 @@ function fraseEvento(e, d) {
       case 'Urgencia': return 'cambió la urgencia de ' + a + ' a ' + n;
       case 'Título': return 'cambió el título a "' + n + '"';
       case 'Razón': return 'cambió la razón del pedido';
+      case 'Aprobación': return n === 'Esperando' ? 'lo mandó a aprobar' : n === 'Aprobada' ? 'aprobó la compra' : n === 'No aprobada' ? 'no aprobó la compra' : '';   // Paso 6
       case 'Automático': return String(n).toUpperCase() === 'NO' ? 'lo pasó a gestión manual' : 'lo volvió a automática';   // Paso 5
     }
   }
@@ -1517,7 +1590,7 @@ const IA_DESCARTADAS = {};
 function htmlIA(l, admin, activo) {
   const ia = l.ia;
   if (!admin || !ia || !activo || l.familia || l.nuevo || IA_DESCARTADAS[l.id]) return '';
-  const txt = ia.tipo === 'padron' ? '🤖 Es <b>' + esc(ia.nombre) + '</b> del padrón'
+  const txt = ia.tipo === 'padron' ? '🤖 Es <b>' + esc(ia.nombre) + '</b> del padrón' + (ia.especificacion ? ' · ' + esc(ia.especificacion) : '')
     : '🤖 Producto nuevo: <b>' + esc(ia.nombre) + '</b>' + (ia.especificacion ? ' · ' + esc(ia.especificacion) : '') + (ia.rubro ? ' · Rubro: ' + esc(ia.rubro) : '');
   return '<div class="ia-prop"><div>' + txt + '</div><div class="cambio-b">' +
     '<button type="button" class="btn-chico si" data-ia="aprobar" data-id="' + esc(l.id) + '">Aprobar</button>' +
@@ -2154,7 +2227,7 @@ function bloquesDeTarea(tarea) {
   ['tj-check-b', 'tj-rec-b'].forEach(function (id) { $(id).hidden = !tarea; });
   $('tj-borrar-tarea').hidden = !tarea;
   if (!tarea) $('tj-editar').textContent = '✏️ Editar pedido';
-  if (tarea) ['tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-enlaces', 'tj-cot-b'].forEach(function (id) { $(id).hidden = true; });
+  if (tarea) ['tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-enlaces', 'tj-cot-b', 'tj-aprob-b'].forEach(function (id) { $(id).hidden = true; });
 }
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */

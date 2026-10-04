@@ -732,6 +732,16 @@ Albor.prototype.asegurarSesion = async function(minutos){
 
   if(await this.haySesion()) return true;
 
+  // Chrome deja puestos usuario y contraseña: se toca INGRESAR (Feli, 2026-10-03).
+  if(await this.enLogin()){
+    this.decir('Albor pide ingresar: toco INGRESAR…');
+    await tocarIngresar(this.pg);
+    if(!(await this.enLogin())){
+      try{ await this.pg.ir(C.URL_EXISTENCIAS); await esperar(this.pg, 20000); }catch(e){ if(e instanceof Cortado) throw e; }
+      if(await this.haySesion()){ this.decir('Sesión iniciada.'); return true; }
+    }
+  }
+
   await this.pg.traer();
   this.decir('Iniciá sesión en la pestaña de Albor que se abrió. Cuando entres sigo solo.');
 
@@ -1052,6 +1062,9 @@ function puntosDelReporte(texto){
    ================================================================== */
 
 class Cancelado extends Error {}
+// Albor llevó a la pantalla de ingreso en el medio de un comprobante: lo que
+// estaba armado (sin guardar) se perdió y hay que armarlo de nuevo.
+class SesionPerdida extends Error {}
 
 /* Lo que la carga le dice a la pantalla y lo que la pantalla contesta.
    `decir(texto)` escribe una línea de avance. `preguntar(texto, boton)`
@@ -1321,8 +1334,105 @@ async function esperarModalLimpio(pg, limite){
   await esperar(pg, 8000);
 }
 
-/* Carga un renglón. Lanza si no entró: el que llama reintenta. */
-async function cargarItem(pg, item){
+/* ---------- La grilla y el ingreso a Albor en el medio (Feli, 2026-10-03) ----------
+   En la carga de Feli cada insumo entró dos veces: Albor lo aceptó, pero la
+   ventanita no se cerró a tiempo (pedía la contraseña) y el programa lo
+   volvió a cargar. Ahora se cuentan los renglones de la grilla: si el
+   insumo ya entró, no se carga de nuevo. */
+
+// Cuántos renglones tiene la grilla ("Mostrando 1 - N de N" abajo; si no, las
+// filas a la vista) y el texto de cada uno. n null: no se sabe.
+var JS_FILAS_GRILLA = String(function(){
+  var t = (document.body && document.body.innerText) || '';
+  var filas = [].slice.call(document.querySelectorAll('tr.jqgrow')).filter(function(r){ return r.offsetParent !== null; });
+  var textos = filas.map(function(r){ return (r.innerText || '').replace(/\s+/g, ' ').trim(); });
+  var m = /Mostrando\s+\d+\s*-\s*\d+\s+de\s+(\d+)/i.exec(t);
+  if(m) return { n: +m[1], textos: textos };
+  if(filas.length) return { n: filas.length, textos: textos };
+  if(/Sin registros|No hay registros|Mostrando 0/i.test(t)) return { n: 0, textos: [] };
+  return { n: document.querySelector('#ID_Tipo_Comprobante') ? 0 : null, textos: [] };
+});
+
+async function filasGrilla(pg){
+  try{ return (await pg.evaluar(JS_FILAS_GRILLA)) || { n: null, textos: [] }; }
+  catch(e){ if(e instanceof Cortado) throw e; return { n: null, textos: [] }; }
+}
+
+function entroUno(antes, ahora){
+  return antes && ahora && antes.n !== null && ahora.n !== null && ahora.n > antes.n;
+}
+
+// ¿Albor pide ingresar? (una contraseña a la vista o la pantalla de ingreso)
+var JS_INGRESO = String(function(){
+  var pw = [].slice.call(document.querySelectorAll('input[type=password]')).filter(function(e){ return e.offsetParent !== null; });
+  var url = location.href.toLowerCase();
+  return { pide: pw.length > 0 || url.indexOf('/account/') >= 0 || url.indexOf('login') >= 0,
+           formulario: !!document.querySelector('#ID_Tipo_Comprobante') };
+});
+var BTN_INGRESAR = "button:text-matches('^\\s*ingresar\\s*$', 'i'), a:text-matches('^\\s*ingresar\\s*$', 'i'), " +
+                   "input[type=submit][value='INGRESAR' i], input[type=button][value='INGRESAR' i]";
+
+async function pideIngreso(pg){
+  try{ return (await pg.evaluar(JS_INGRESO)) || { pide: false, formulario: true }; }
+  catch(e){ if(e instanceof Cortado) throw e; return { pide: false, formulario: true }; }
+}
+
+/* Chrome deja puestos el usuario y la contraseña de Albor: alcanza con tocar
+   INGRESAR (Feli). La contraseña nunca la escribe ni la guarda el programa. */
+async function tocarIngresar(pg){
+  try{
+    await pg.esperar(1500);
+    await pg.loc(BTN_INGRESAR).first().click({ timeout: 8000 });
+    await esperar(pg, 30000);
+    await pg.esperar(1500);
+  }catch(e){ if(e instanceof Cortado) throw e; }
+}
+
+/* Si Albor pide ingresar en el medio de la carga: toca INGRESAR y, si no
+   alcanza, frena para que lo haga la persona. Si Albor se fue a la pantalla
+   de ingreso, el comprobante a medio armar se perdió: SesionPerdida. */
+async function atenderIngreso(pg, charla){
+  var d = await pideIngreso(pg);
+  if(!d.pide) return;
+  if(!d.formulario) throw new SesionPerdida('Albor cerró la sesión en el medio del comprobante.');
+  charla.decir('   Albor pide ingresar de nuevo: toco INGRESAR…');
+  await tocarIngresar(pg);
+  d = await pideIngreso(pg);
+  if(!d.formulario) throw new SesionPerdida('Albor cerró la sesión en el medio del comprobante.');
+  if(d.pide){
+    await charla.pausa('Albor pide la contraseña. Ingresala en la pestaña de Albor (sin cerrar nada ni salir de la ' +
+                       'pantalla) y tocá Seguir.', 'Seguir');
+  }
+}
+
+/* Cierra la ventanita del insumo si quedó abierta después de que entró. */
+async function cerrarVentanita(pg){
+  try{
+    if(!(await pg.loc('#ID_Insumo_codigo').isVisible())) return;
+    await pg.presionar('Escape');
+    await pg.esperar(500);
+    if(await pg.loc('#ID_Insumo_codigo').isVisible())
+      await pg.loc('.ui-dialog-titlebar-close:visible').first().click({ timeout: 3000 });
+  }catch(e){ if(e instanceof Cortado) throw e; }
+  await esperar(pg, 8000);
+}
+
+/* Antes del control: ¿la grilla tiene renglones de más o repetidos? */
+async function revisarGrilla(pg, cargados){
+  var f = await filasGrilla(pg), avisos = [];
+  if(f.n !== null && f.n > cargados)
+    avisos.push('La grilla tiene ' + f.n + ' renglones y cargué ' + cargados + ': puede haber alguno repetido.');
+  var vistos = {}, repetidos = [];
+  f.textos.forEach(function(t){ if(vistos[t] && repetidos.indexOf(t) < 0) repetidos.push(t); vistos[t] = true; });
+  if(repetidos.length)
+    avisos.push('Estos renglones están repetidos: borrá los de más en Albor antes de seguir.\n' +
+                repetidos.map(function(t){ return '   ' + t; }).join('\n'));
+  return avisos.length ? '\n\n⚠️ ' + avisos.join('\n') : '';
+}
+
+/* Carga un renglón. Lanza si no entró: el que llama reintenta. `antes`: la
+   grilla antes de empezar con este insumo. */
+async function cargarItem(pg, item, antes){
   await cerrarPopups(pg);
   await pg.loc(BTN_MAS).first().click({ timeout: 15000 });
 
@@ -1338,9 +1448,19 @@ async function cargarItem(pg, item){
   await escribirCampo(pg, '#Unidades', unidadesAlbor(item.unidad), { secuencial: false });
   await pg.loc('#btAceptar_dialog').click({ timeout: 15000 });
 
-  // Si a Albor no le gustó el renglón, el diálogo queda abierto.
-  await codigo.waitFor('hidden', 20000);
+  // Si a Albor no le gustó el renglón, el diálogo queda abierto. Pero si
+  // la grilla ya sumó el renglón, entró (aunque la ventanita siga abierta).
+  var fin = Date.now() + 20000;
+  for(;;){
+    if(!(await codigo.isVisible())) break;
+    if(entroUno(antes, await filasGrilla(pg))){ await cerrarVentanita(pg); break; }
+    if(Date.now() > fin) throw new Error('la ventanita del insumo no se cerró (Albor no lo tomó)');
+    await pg.esperar(500);
+  }
   await esperar(pg, 15000);
+  // Si la ventanita "se cerró" porque Albor se fue a la pantalla de ingreso, se perdió todo.
+  var d = await pideIngreso(pg);
+  if(d.pide && !d.formulario) throw new SesionPerdida('Albor cerró la sesión en el medio del comprobante.');
 }
 
 /* Carga todos los renglones. Nunca aborta por un renglón: lo que falla se
@@ -1351,27 +1471,46 @@ async function cargarItems(pg, items, charla){
     var item = items[n - 1], entro = false;
     charla.revisar();
     var arranque = Date.now();
+    var antes = await filasGrilla(pg);
     for(var intento = 1; intento <= 3; intento++){
+      if(intento > 1){
+        // Antes de reintentar: ¿Albor pide ingresar? ¿entró igual?
+        await atenderIngreso(pg, charla);
+        if(entroUno(antes, await filasGrilla(pg))){
+          await cerrarVentanita(pg);
+          cargados.push(item);
+          charla.decir('   [' + n + '/' + total + '] ' + item.codigo + ' × ' + item.unidad + '  ya había entrado: no lo cargo de nuevo');
+          entro = true;
+          break;
+        }
+      }
       try{
-        await cargarItem(pg, item);
+        await cargarItem(pg, item, antes);
         cargados.push(item);
         charla.decir('   [' + n + '/' + total + '] ' + item.codigo + ' × ' + item.unidad + '  ok (' +
                      ((Date.now() - arranque) / 1000).toFixed(1) + ' s)');
         entro = true;
         break;
       }catch(e){
-        if(e instanceof Cortado) throw e;
+        if(e instanceof Cortado || e instanceof SesionPerdida || e instanceof Cancelado) throw e;
         charla.decir('   [' + n + '/' + total + '] ' + item.codigo + ': intento ' + intento + ' — ' + primeraLinea(e));
+        if((await pideIngreso(pg)).pide) continue;      // lo atiende el próximo intento, sin tocar nada
         try{ await pg.presionar('Escape'); }catch(e2){ if(e2 instanceof Cortado) throw e2; }
         await cerrarPopups(pg);
         await esperar(pg, 10000);
       }
+    }
+    if(!entro && entroUno(antes, await filasGrilla(pg))){
+      cargados.push(item);
+      charla.decir('   [' + n + '/' + total + '] ' + item.codigo + ' entró al final');
+      entro = true;
     }
     if(!entro){
       charla.decir('   [!] ' + item.codigo + ' NO entró. Sigo con el resto.');
       fallados.push(item);
     }
   }
+  await atenderIngreso(pg, charla);     // antes del control: con sesión y con el comprobante a la vista
   return { cargados: cargados, fallados: fallados };
 }
 
@@ -1511,6 +1650,8 @@ async function tocarYEsperar(pg, selector, listo, limite){
   await pg.esperar(1500);
   while(Date.now() < fin){
     await esperar(pg, 20000);
+    var ing = await pideIngreso(pg);
+    if(ing.pide && !ing.formulario) return { sesion: true };     // se fue a la pantalla de ingreso: no es "guardado"
     var adv = await advertenciaAlbor(pg, negVistos);
     if(adv) return { advertencia: adv };
     if(await listo()){
@@ -1526,12 +1667,39 @@ async function tocarYEsperar(pg, selector, listo, limite){
   return { nada: true };
 }
 
+/* Albor cerró la sesión mientras se aplicaba o guardaba: no se sabe si quedó.
+   Nunca se rearma solo (podría quedar dos veces): lo verifica la persona. */
+async function sesionCaidaAlGuardar(pg, charla, numero){
+  charla.decir('   [!] Albor cerró la sesión mientras guardaba.');
+  if((await pideIngreso(pg)).pide) await tocarIngresar(pg);
+  await charla.pausa('Albor cerró la sesión justo mientras ' + (numero ? 'guardaba el comprobante ' + numero : 'aplicaba o guardaba') +
+                     ', así que no sé si quedó.\n\nEntrá de nuevo en la pestaña de Albor (si pide la contraseña) y fijate en ' +
+                     'Comprobantes de Stock si está. Si no está, cargalo a mano. Después tocá «Ya lo revisé» y sigo con el resto.',
+                     'Ya lo revisé');
+  if(M.albor && !(await M.albor.asegurarSesion(5)))
+    throw new Error('Albor sigue sin sesión. Iniciá sesión en la pestaña de Albor y volvé a tocar el botón.');
+  return numero;
+}
+
+// El GUARDAR de las transferencias (el botón verde; no "Guardar y crear otro").
+var BTN_GUARDAR = "#btGuardar, button:text-matches('^\\s*guardar\\s*$', 'i'), a:text-matches('^\\s*guardar\\s*$', 'i'), " +
+                  "input[type=submit][value='GUARDAR' i], input[type=button][value='GUARDAR' i]";
+
+// Un cartel de Albor que dice que se guardó.
+async function guardadoEnPantalla(pg){
+  try{ return !!(await pg.evaluar("() => /se guard[óo]|guardad[oa] (correctamente|con [ée]xito)|se grab[óo]/i.test(document.body ? document.body.innerText : '')")); }
+  catch(e){ if(e instanceof Cortado) throw e; return false; }
+}
+
 /* Aplica (transferencias) y guarda con "Guardar y crear otro", y no sale de
    ahí hasta ver que Albor lo guardó. Si Albor muestra una advertencia, frena
    para que la persona la resuelva a mano. Devuelve el número del comprobante. */
 async function guardarComprobante(pg, charla, aplicar){
   var numero = '', antes = await huella(pg);
   for(var vuelta = 1; vuelta <= 8; vuelta++){
+    var ing = await pideIngreso(pg);
+    if(ing.pide && ing.formulario){ charla.decir('   Albor pide ingresar: toco INGRESAR…'); await tocarIngresar(pg); ing = await pideIngreso(pg); }
+    if(ing.pide) return await sesionCaidaAlGuardar(pg, charla, numero);
     var ahora = await huella(pg);
     if(!sigueAbierto(antes, ahora)){ charla.decir('   guardado.'); return numero; }
     if(ahora && ahora[3]){
@@ -1540,11 +1708,16 @@ async function guardarComprobante(pg, charla, aplicar){
     }
     var porAplicar = aplicar && !(ahora && ahora[3]);
     var que = porAplicar ? 'aplicar' : 'guardar';
-    charla.decir(porAplicar ? 'Aplicando…' : "Guardando ('Guardar y crear otro')…");
-    var r = await tocarYEsperar(pg, porAplicar ? '#btAplicar' : '#btGuardarYOtro', async function(){
+    // Transferencias: después de Aplicar, GUARDAR (no tienen "Guardar y crear
+    // otro", Feli 2026-10-03). Egresos: "Guardar y crear otro".
+    charla.decir(porAplicar ? 'Aplicando…' : aplicar ? "Guardando ('Guardar')…" : "Guardando ('Guardar y crear otro')…");
+    var urlAntes = await pg.url();
+    var r = await tocarYEsperar(pg, porAplicar ? '#btAplicar' : aplicar ? BTN_GUARDAR : '#btGuardarYOtro', async function(){
       var h = await huella(pg);
-      return porAplicar ? (h === null || !!(h && h[3])) : !sigueAbierto(antes, h);
+      if(porAplicar) return h === null || !!(h && h[3]);
+      return !sigueAbierto(antes, h) || (aplicar && (await pg.url()) !== urlAntes) || (await guardadoEnPantalla(pg));
     });
+    if(r.sesion) return await sesionCaidaAlGuardar(pg, charla, numero);
     if(r.ok){
       if(porAplicar){
         numero = await leerNumero(pg);
@@ -1558,13 +1731,16 @@ async function guardarComprobante(pg, charla, aplicar){
     if(r.advertencia){
       charla.decir('   [!] Albor no dejó ' + que + ': hay una advertencia arriba de la cabecera.');
       await charla.pausa(textoAdvertencia(r.advertencia, que), 'Seguir');
-    }else if(r.noToco){
-      await charla.pausa('No pude tocar ' + (porAplicar ? 'Aplicar' : 'Guardar') + ' (' + r.noToco + ').\n' +
-                         'Hacelo a mano en Albor y tocá Seguir.', 'Seguir');
     }else{
-      await charla.pausa('Albor no terminó de ' + que + ' (pasó un minuto y medio).\nFijate en Albor: si ' +
-                         'hay un recuadro rojo arriba, resolvelo. Después tocá Seguir: si todavía no está ' +
-                         'guardado, lo guardo yo.', 'Seguir');
+      // No se pudo tocar el botón, o Albor no contestó: no se vuelve a tocar
+      // (podría guardarlo dos veces). Lo termina la persona.
+      await charla.pausa((r.noToco ? 'No pude tocar ' + (porAplicar ? 'Aplicar' : 'Guardar') + '.'
+                                   : 'Albor no confirmó que terminó de ' + que + ' (pasó un minuto y medio).') +
+                         '\nFijate en Albor: si hay un recuadro rojo arriba, resolvelo. ' +
+                         (porAplicar ? 'Aplicalo y guardalo' : 'Guardalo') + ' a mano y tocá «Ya está guardado».',
+                         'Ya está guardado');
+      if(!numero) numero = await leerNumero(pg);
+      return numero;
     }
   }
   await charla.pausa('No puedo confirmar que Albor haya guardado este comprobante.\nGuardalo a mano en Albor ' +
@@ -1625,6 +1801,7 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total){
 
   var aviso = 'Entraron ' + r.cargados.length + ' de ' + b.items.length + ' insumos.';
   if(r.fallados.length) aviso += '\n\nNO entraron (cargalos a mano antes de seguir):\n' + textoFallados(r.fallados);
+  aviso += await revisarGrilla(pg, r.cargados.length);
   await charla.pausa(aviso + '\n\nRevisá en Albor la cabecera y la grilla:\n' + cabecera +
                      '\n\nCon este botón aplico y guardo solo.', 'Aplicar y guardar');
 
@@ -1640,13 +1817,36 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total){
 /* `hechos` se va llenando comprobante por comprobante, así si se cancela a
    la mitad el que llama sabe qué quedó hecho. */
 async function transferir(pg, bloques, charla, hechos){
-  var empresa = await empresaEnUrl(pg);
+  var empresa = await empresaEnUrl(pg), rehechos = 0;
   for(var n = 1; n <= bloques.length; n++){
-    var r = await transferirBloque(pg, bloques[n - 1], empresa, charla, n, bloques.length);
+    var r;
+    try{ r = await transferirBloque(pg, bloques[n - 1], empresa, charla, n, bloques.length); }
+    catch(e){
+      if(!(e instanceof SesionPerdida) || ++rehechos > 2) throw e;
+      await volverAEntrar(pg, charla);
+      empresa = await empresaEnUrl(pg);
+      n--;
+      continue;
+    }
     empresa = r.empresa;
     hechos.push(r.hecho);
   }
   return hechos;
+}
+
+/* Albor llevó a la pantalla de ingreso a mitad de un comprobante (no estaba
+   guardado). Se entra de nuevo (INGRESAR solo, o la persona) y se arma ese
+   comprobante otra vez desde el principio. */
+async function volverAEntrar(pg, charla){
+  charla.decir('   [!] Albor cerró la sesión en el medio: el comprobante a medio armar se perdió (no estaba guardado).');
+  if((await pideIngreso(pg)).pide) await tocarIngresar(pg);
+  if((await pideIngreso(pg)).pide)
+    await charla.pausa('Albor cerró la sesión en el medio de la carga y pide la contraseña.\n' +
+                       'El comprobante a medio armar no se había guardado: no hay nada que borrar.\n\n' +
+                       'Ingresá en la pestaña de Albor y tocá Seguir: lo armo de nuevo desde el principio.', 'Seguir');
+  if(M.albor && !(await M.albor.asegurarSesion(5)))
+    throw new Error('Albor sigue sin sesión. Iniciá sesión en la pestaña de Albor y volvé a tocar el botón.');
+  charla.decir('   Sesión de nuevo: armo el comprobante desde el principio.');
 }
 
 /* ---------- Egresos ---------- */
@@ -1859,6 +2059,7 @@ async function egresarComprobante(pg, c, empresaActual, charla, n, total, primer
   if(c.campania) campania = await ponerCampania(pg, c.campania, charla);
   var aviso = 'Entraron ' + r.cargados.length + ' de ' + c.items.length + ' insumos.';
   if(r.fallados.length) aviso += '\n\nNO entraron (cargalos a mano antes de guardar):\n' + textoFallados(r.fallados);
+  aviso += await revisarGrilla(pg, r.cargados.length);
   await charla.pausa(aviso + '\n\nRevisá en Albor la cabecera y la grilla:\n' + cabecera() +
                      '\n\nCon este botón guardo solo.', 'Guardar');
 
@@ -1875,9 +2076,19 @@ async function egresarComprobante(pg, c, empresaActual, charla, n, total, primer
 /* `hechos` se va llenando a medida que se guarda cada comprobante: si se
    cancela a la mitad, el que llama sabe cuáles números ya se usaron. */
 async function egresar(pg, comprobantes, charla, hechos, cuentas){
-  var empresa = await empresaEnUrl(pg);
+  var empresa = await empresaEnUrl(pg), rehechos = 0, rehacer = false;
   for(var n = 1; n <= comprobantes.length; n++){
-    var r = await egresarComprobante(pg, comprobantes[n - 1], empresa, charla, n, comprobantes.length, n === 1, cuentas);
+    var r;
+    try{ r = await egresarComprobante(pg, comprobantes[n - 1], empresa, charla, n, comprobantes.length, n === 1 || rehacer, cuentas); }
+    catch(e){
+      if(!(e instanceof SesionPerdida) || ++rehechos > 2) throw e;
+      await volverAEntrar(pg, charla);
+      empresa = await empresaEnUrl(pg);
+      rehacer = true;
+      n--;
+      continue;
+    }
+    rehacer = false;
     empresa = r.empresa;
     hechos.push(r.hecho);
   }
@@ -2380,6 +2591,21 @@ function abrir_carpeta(id){
                                                                   function(e){ return { ok: false, motivo: primeraLinea(e) }; });
 }
 
+/* Existencias solas cada mañana (extensión 3.2; Feli, 2026-10-03): la hora
+   ('' = apagado) se guarda en la extensión de esta compu, con esta página. */
+function programar_existencias(hora){
+  return Mano.pedirSeguro('programar', { hora: hora || '', url: location.href.split('#')[0] }, 15000)
+    .then(function(r){ return Object.assign({ ok: true }, r); }, function(e){ return { ok: false, motivo: primeraLinea(e, 200) }; });
+}
+function estado_existencias(){
+  return Mano.pedirSeguro('programacion', {}, 15000)
+    .then(function(r){ return Object.assign({ ok: true }, r); }, function(e){ return { ok: false, motivo: primeraLinea(e, 200) }; });
+}
+/* La pestaña que abrió la extensión a la mañana se cierra cuando terminó bien. */
+function cerrar_esta_pestana(){
+  return Mano.pedirSeguro('cerrarme', {}, 15000).catch(function(){ return false; });
+}
+
 /* ¿Está la extensión en este Chrome? {ok, version} o null. */
 function buscar(){
   return Mano.pedir('hola', {}, 3000).then(function(r){ return Object.assign({ ok: true }, r); },
@@ -2397,11 +2623,22 @@ window.AlborExt = {
     responder_carga: responder_carga,
     cerrar_albor: cerrar_albor,
     abrir_carpeta: abrir_carpeta,
-    leer_albor: leer_albor
+    leer_albor: leer_albor,
+    programar_existencias: programar_existencias,
+    estado_existencias: estado_existencias,
+    cerrar_esta_pestana: cerrar_esta_pestana
   }
 };
 
 /* Solo en el servidor de prueba (localhost): apuntar a un Albor falso. */
-if(EN_PRUEBA) window.__alborPrueba = function(o){ Object.assign(C, o || {}); return C; };
+// (queda guardado en la compu, así también lo usa una pestaña que abre la extensión a la mañana)
+if(EN_PRUEBA){
+  try{ Object.assign(C, JSON.parse(localStorage.getItem('__alborPrueba') || '{}')); }catch(e){}
+  window.__alborPrueba = function(o){
+    Object.assign(C, o || {});
+    try{ localStorage.setItem('__alborPrueba', JSON.stringify({ BASE: C.BASE, URL_EXISTENCIAS: C.URL_EXISTENCIAS })); }catch(e){}
+    return C;
+  };
+}
 
 })();
