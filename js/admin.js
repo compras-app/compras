@@ -610,9 +610,10 @@ async function editarFamiliaUI(nombre) {
     campoDlg('pf-nombre', 'Nombre', f ? f.familia : '', { max: 120, placeholder: 'Ej: Guantes de nitrilo', nota: 'Sin paréntesis: la medida o el tamaño van en la especificación de cada pedido.' + (f ? ' Si lo cambiás, el nombre de ahora queda como variante y los pedidos en curso pasan al nuevo.' : '') }) +
     '<div class="campo"><label for="pf-rubro">Rubro</label><select id="pf-rubro"></select><p class="nota" id="pf-rubro-nota" hidden>Con proveedores particulares va sin rubro.</p></div>' +
     '<div class="campo"><label for="sp-q">Proveedores particulares (opcional)</label>' + htmlSelectorProv() + '</div>' +
-    (f ? '<div class="campo"><label>Variantes (cómo lo escriben)</label><div class="pila" id="pf-vars" style="gap:6px"></div>' +
-         '<div class="fila2"><input type="text" id="pf-var" maxlength="120" autocomplete="off" placeholder="Ej: guante de nitrilo"><button type="button" class="btn2" id="pf-var-ok" style="width:auto">Agregar</button></div></div>' +
-         (f.ultimo ? '<p class="nota">Último pedido: ' + esc(new Date(f.ultimo.fecha).toLocaleDateString('es-AR')) + ' · ' + esc(f.ultimo.sitio) + ' (' + esc(f.ultimo.ref) + ')</p>' : '') +
+    // Variantes: en uno nuevo se guardan junto con el producto (Feli, 2026-10-04); en uno que ya está, al momento
+    '<div class="campo"><label for="pf-var">Variantes (cómo lo escriben)</label><div class="pila" id="pf-vars" style="gap:6px"></div>' +
+    '<div class="fila2"><input type="text" id="pf-var" maxlength="120" autocomplete="off" placeholder="Ej: guante de nitrilo"><button type="button" class="btn2" id="pf-var-ok" style="width:auto">Agregar</button></div></div>' +
+    (f ? (f.ultimo ? '<p class="nota">Último pedido: ' + esc(new Date(f.ultimo.fecha).toLocaleDateString('es-AR')) + ' · ' + esc(f.ultimo.sitio) + ' (' + esc(f.ultimo.ref) + ')</p>' : '') +
          (f.cotizado ? '<p class="nota">Última cotización pedida a: ' + esc(f.cotizado.proveedores.join(', ')) + '</p>' : '') +
          '<p class="nota">Dónde se compró llega con la Fase 4.</p>' : '');
   const variantes = f ? f.variantes.slice() : [];
@@ -625,6 +626,7 @@ async function editarFamiliaUI(nombre) {
       d.className = 'elegido';
       d.innerHTML = '<span>' + esc(v) + '</span><button type="button" aria-label="Quitar la variante ' + esc(v) + '">×</button>';
       d.querySelector('button').addEventListener('click', async function () {
+        if (!f) { variantes.splice(variantes.indexOf(v), 1); return pintarVars(); }
         const r = await api('varianteFamilia', f.familia, v, false);
         if (!r.ok) return aviso(textoDeError(r), 'bad');
         variantes.splice(variantes.indexOf(v), 1);
@@ -651,20 +653,27 @@ async function editarFamiliaUI(nombre) {
       };
       $('pf-nombre').addEventListener('input', revisar);
       armarSelectorProv({ provs: provs, proveedores: datos ? datos.proveedores.slice() : [], datos: datos, rubro: function () { return sel.value; }, alCambiar: revisar });
-      if (f) {
-        pintarVars();
-        $('pf-var-ok').addEventListener('click', async function () {
-          const t = $('pf-var').value.trim();
-          if (t.length < 2) return;
-          const r = await api('varianteFamilia', f.familia, t, true);
-          if (!r.ok) return aviso(textoDeError(r), 'bad');
-          variantes.push(t);
-          f.variantes = variantes.slice();
+      pintarVars();
+      const sumarVariante = async function () {
+        const t = $('pf-var').value.trim().replace(/\s+/g, ' ');
+        if (t.length < 2) return;
+        if (!f) {
+          const k = sinTildes(t), nom = sinTildes($('pf-nombre').value.trim());
+          if (k === nom) return aviso('Esa variante es el nombre mismo del producto.', 'bad');
+          if (!variantes.some(function (x) { return sinTildes(x) === k; })) variantes.push(t);
           $('pf-var').value = '';
-          pintarVars();
-          aviso(r.aviso || 'Listo: "' + t + '" ahora se reconoce como "' + f.familia + '".');
-        });
-      }
+          return pintarVars();
+        }
+        const r = await api('varianteFamilia', f.familia, t, true);
+        if (!r.ok) return aviso(textoDeError(r), 'bad');
+        variantes.push(t);
+        f.variantes = variantes.slice();
+        $('pf-var').value = '';
+        pintarVars();
+        aviso(r.aviso || 'Listo: "' + t + '" ahora se reconoce como "' + f.familia + '".');
+      };
+      $('pf-var-ok').addEventListener('click', sumarVariante);
+      $('pf-var').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); sumarVariante(); } });
       revisar();
     }
   });
@@ -681,6 +690,7 @@ async function editarFamiliaUI(nombre) {
     return padronCambiado();
   }
   const d = { original: f ? f.familia : '', nombre: res.nombre, canal: provs.length ? '' : res.canal, proveedores: provs.map(function (x) { return x.id; }) };
+  if (!f) d.variantes = variantes.slice();
   const r = await api('guardarFamilia', d);
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   aviso('Listo' + (r.hechos && r.hechos.length ? ': ' + r.hechos.join('. ') : '') + '.');

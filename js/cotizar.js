@@ -296,6 +296,7 @@ $('tj-cotizar').addEventListener('click', function () { if (TB.abierta) abrirPed
       aviso(r.repetido ? 'Ese pedido de cotización ya se había mandado.' : n ? '📤 Pedido de cotización ' + r.codigo + ' mandado. ' + n + ' no se ' + (n === 1 ? 'pudo' : 'pudieron') + ' mandar: mirá la tarjeta.' : '📤 Pedido de cotización ' + r.codigo + ' mandado.');
     }
     cargarTablero();
+    if (SV.datos && SV.datos.tarjetas.some(function (x) { return x.ref === ref; })) cargarServicios();
     if (TB.abierta === ref) { pintarTarjeta(); traerTarjeta(ref); }
   };
 })();
@@ -317,8 +318,10 @@ function pintarAprobacion() {
   if (!b) return;
   const p = d && d.pedido, t = buscarEnVista(ref);
   const esperan = bandeja.lista().filter(function (m) { return m.fn === 'mandarAprobar' && m.args[0] === ref; });
-  const columna = t ? t.columna : (p && p.columna);
-  const puedeMandar = APP.yo.admin && p && !esTrabajo(ref) && !p.servicio && columna === colDecision();
+  // Un servicio también se manda a aprobar desde su Decisión (Feli, 2026-10-04)
+  const sv = p && p.servicio ? buscarServicio(ref) : null;
+  const columna = p && p.servicio ? (sv ? sv.columna : p.columna) : (t ? t.columna : (p && p.columna));
+  const puedeMandar = APP.yo.admin && p && !esTrabajo(ref) && columna === (p.servicio ? colDecisionServicio() : colDecision());
   const a = aprobacionVista(ref, p);
   b.hidden = TB.tipo === 'tarea' || esTrabajo(ref) || !p || (!a && !esperan.length && !puedeMandar);
   if (b.hidden) return;
@@ -327,7 +330,7 @@ function pintarAprobacion() {
   if (esperan.length) html = '<div class="cot-fila espera">' + (APP.enLinea ? '⏳ Mandando el pedido de aprobación…' : '⏳ El pedido de aprobación se manda solo cuando vuelva la señal.') + '</div>';
   else if (a && a.estado === 'Esperando') {
     html = '<div class="cot-fila"><b>⏳ Esperando aprobación de ' + esc(a.aprueba) + '</b><div class="sub">Lo mandó ' + esc(a.pidio) + esc(fecha(a.fecha)) + '</div>' +
-      (a.aprueba === APP.yo.nombre ? '<div class="cambio-b"><button type="button" class="btn-chico si" id="tj-aprob-si">✅ Aprobar compra</button>' +
+      (a.aprueba === APP.yo.nombre ? '<div class="cambio-b"><button type="button" class="btn-chico si" id="tj-aprob-si">✅ Aprobar ' + (p.servicio ? 'servicio' : 'compra') + '</button>' +
                                      '<button type="button" class="btn-chico" id="tj-aprob-no">❌ No aprobar</button></div>' : '') + '</div>';
   } else if (a && a.estado === 'Aprobada') html = '<div class="cot-fila"><b>✅ Aprobada por ' + esc(a.decidio) + '</b>' + esc(fecha(a.decidida)) + '</div>';
   else if (a && a.estado === 'No aprobada') html = '<div class="cot-fila mal"><b>❌ No aprobada por ' + esc(a.decidio) + '</b>' + esc(fecha(a.decidida)) + (a.motivo ? '<div class="sub">' + esc(a.motivo) + '</div>' : '') + '</div>';
@@ -354,7 +357,9 @@ $('tj-aprobar-mandar').addEventListener('click', async function () {
     botones: [{ texto: 'Mandar', clase: 'btn', id: 'dg-ok', valor: function () { return $('ap-msj').value.trim(); } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       const m = $('ap-msj');
-      m.value = 'Necesitamos aprobación de la compra de los siguientes productos:\n' + prods.join('\n') + '\n\n' + (d.pedido.titulo || '') + ' · ' + (d.pedido.sitio || '');
+      m.value = d.pedido.servicio
+        ? 'Necesitamos aprobación del siguiente servicio:\n- ' + (d.pedido.titulo || '') + '\n\n' + (d.pedido.sitio || '')
+        : 'Necesitamos aprobación de la compra de los siguientes productos:\n' + prods.join('\n') + '\n\n' + (d.pedido.titulo || '') + ' · ' + (d.pedido.sitio || '');
       const ok = $('dg-ok');
       const revisar = function () { ok.disabled = m.value.trim().length < 5; };
       m.addEventListener('input', revisar);

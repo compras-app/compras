@@ -24,7 +24,6 @@ function mostrarApp() {
   $('app').hidden = false;
   // En la misma ventana: en el iPhone, otra ventana guardaría el pedido en otro lado
   $('t-nuevo').href = FORMULARIO + '?desde=app';
-  $('sv-nuevo').href = FORMULARIO + '?desde=app&servicio=1';         // Paso 2-ter: el formulario ya en "Servicio"
   pintarBarra();
   pintarSinRed();
   if (sinCompras()) ir('cuenta');

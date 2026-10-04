@@ -158,7 +158,8 @@
             <button type="button" id="sv-mios" aria-pressed="false">Mis servicios</button>
             <button type="button" id="sv-todos" aria-pressed="true">Todos</button>
           </div>
-          <a class="btn-chico si" id="sv-nuevo">＋ Pedir un servicio</a>
+          <label class="filtro" id="sv-sitio-l" hidden><span>Granja</span><select id="sv-sitio"></select></label>
+          <label class="filtro" id="sv-resp-l" hidden><span>Responsable</span><select id="sv-resp"></select></label>
           <button type="button" class="refrescar" id="sv-refrescar" aria-label="Actualizar los servicios"><span class="ic">↻</span> <span id="sv-hace"></span></button>
         </div>
       </div>
@@ -295,11 +296,11 @@
       <div class="ad-barra">
         <button type="button" class="btn ad-nuevo" id="pa-nuevo">＋ Agregar producto</button>
       </div>
-      <div class="fila2">
+      <div class="pa-filtros">
         <input type="search" id="pa-q" placeholder="Buscar producto o variante…" autocomplete="off">
         <select id="pa-rubro"><option value="">Todos los rubros</option></select>
       </div>
-      <label class="nota" style="display:flex;gap:6px;align-items:center;margin:6px 0"><input type="checkbox" id="pa-inactivos"> Ver también los desactivados</label>
+      <label class="pa-check"><input type="checkbox" id="pa-inactivos"> Ver también los desactivados</label>
       <p class="nota ad-estado" id="pa-estado" role="status" aria-live="polite"></p>
       <div class="pa-lista" id="pa-lista"></div>
       <button type="button" class="btn2" id="pa-mas" hidden>Ver más</button>

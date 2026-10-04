@@ -105,7 +105,7 @@ dd{margin:0;overflow-wrap:anywhere;font-family:var(--f-mono);font-size:13px}
 /* ============================================================
    TABLERO (Paso 3): herramientas, columnas que se deslizan, tarjetas
    ============================================================ */
-body[data-pantalla="tablero"] .contenido,body[data-pantalla="tareas"] .contenido{max-width:none;padding:0}
+body[data-pantalla="tablero"] .contenido,body[data-pantalla="tareas"] .contenido,body[data-pantalla="servicios"] .contenido{max-width:none;padding:0}
 .pantalla-tablero{display:flex;flex-direction:column;height:calc(100dvh - var(--alto-barra) - var(--alto-nav) - env(safe-area-inset-bottom) - var(--alto-aviso,0px))}
 @media (min-width:720px){.pantalla-tablero{height:calc(100dvh - var(--alto-barra) - 48px - var(--alto-aviso,0px))}}
 .herramientas{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1.5px solid var(--line);background:var(--bg)}
@@ -136,11 +136,7 @@ body[data-pantalla="tablero"] .contenido,body[data-pantalla="tareas"] .contenido
 .tarjeta{flex:none;background:var(--tj);border:0;border-radius:10px;padding:10px 12px;cursor:pointer;
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;box-shadow:var(--tj-sombra)}
 .tarjeta:hover{background:var(--tj-hover)}
-/* Urgencia: una franja de color arriba, como la raya de las columnas en "Liso oscuro" (Feli, 2026-10-02;
-   antes la 🔴 se pintaba entera): roja la más urgente (🔴), verde la menos (🟢) */
-.tarjeta.urgente,.tarjeta.verde{position:relative;overflow:hidden}
-.tarjeta.urgente::before,.tarjeta.verde::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:#e5484d;pointer-events:none}
-.tarjeta.verde::before{background:#30a46c}
+/* Urgencia: solo el globito de color, sin franjas (Feli, 2026-10-04) */
 .tarjeta .sobre.fuera-padron{color:#e8b25a}
 .tarjeta .t{font-weight:600;font-size:15px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .tarjeta .pie{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:var(--muted);min-height:24px}
@@ -565,13 +561,18 @@ html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96)
 .pa-item:hover{border-color:var(--accent)}
 .pa-item .sub{color:var(--muted);font-size:12.5px}
 .pa-item.inactivo{opacity:.55}
+.pa-filtros{display:grid;grid-template-columns:1fr;gap:8px}
+.pa-filtros input{min-height:48px}
+.pa-filtros select{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;min-height:48px}
+@media (min-width:720px){.pa-filtros{grid-template-columns:1fr 260px}}
+.pa-check{display:flex;gap:8px;align-items:center;margin:8px 0;color:var(--muted);font-size:14px;cursor:pointer;width:max-content;max-width:100%}
+.pa-check input{flex:none;width:18px;height:18px;min-height:0;padding:0;margin:0}
 
 /* ============================================================
    Paso 6 de la Fase 3: que se vean las tarjetas (Feli, 2026-10-04)
    ============================================================ */
-/* Separación entre secciones del tablero: una línea clara y un poco de espacio */
-.tablero .col.nueva-sec{margin-left:12px;position:relative;overflow:visible}
-.tablero .col.nueva-sec::before{content:"";position:absolute;left:-12px;top:0;bottom:0;width:2px;border-radius:1px;background:rgba(255,255,255,.28);pointer-events:none}
+/* Separación entre secciones del tablero: una línea clara de arriba a abajo (no solo lo que mide la columna) */
+.tablero .sep-sec{flex:none;align-self:stretch;width:2px;margin:-10px 4px -12px;border-radius:1px;background:rgba(255,255,255,.28);pointer-events:none}
 /* Herramientas del tablero: secciones, filtros y "recién" */
 .herramientas{padding:6px 12px;gap:6px}
 .herr-fila{display:flex;align-items:center;gap:6px;min-width:0}
@@ -595,6 +596,13 @@ html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96)
 .tabs .t-largo{display:none}
 @media (max-width:719px){
   body[data-pantalla="tablero"] .barra h1{visibility:hidden;margin:0}      /* en el celular, sin "Tablero" (ya está abajo) */
+  /* Las secciones, como puntitos sin letra que se prenden al pasar de una a otra (Feli, 2026-10-04) */
+  #tb-secciones{flex:none;gap:0;align-items:center}
+  #tb-secciones button{width:22px;min-width:22px;height:30px;min-height:30px;padding:0;border:0;background:none;font-size:0;color:transparent;display:flex;align-items:center;justify-content:center}
+  #tb-secciones button::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--line);transition:background .2s,transform .2s}
+  #tb-secciones button[aria-current="true"]{background:none}
+  #tb-secciones button[aria-current="true"]::before{background:var(--accent);transform:scale(1.25)}
+  .filtros-b{max-width:none;flex:0 1 auto;min-width:0}
 }
 @media (min-width:720px){
   :root{--alto-barra:44px}

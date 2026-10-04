@@ -3,7 +3,7 @@
    TABLERO DE TAREAS DE LOS ADMINS (Fase 2, Paso 4-ter)
    ------------------------------------------------------------
    Otro tablero, solo para admins, para lo que no son compras.
-   Columnas: Entrantes → En proceso → En espera → Finalizados (los
+   Columnas: Entrantes → Por hacer → En proceso → Esperando → Finalizados (los
    finalizados se ven 7 días y después se borran solos).
    - "+ Agregar tarea" abajo de la primera columna.
    - Se arrastra (lo mismo que el tablero de pedidos) o "Mover a…".
@@ -22,7 +22,7 @@ const TK = { datos: guardado.leerJSON(K_TAREAS, null), filtros: { mias: false },
 
 pantalla('tareas', { titulo: 'Tareas', alMostrar: mostrarTareas });
 
-function colsTareas() { return (TK.datos && TK.datos.columnas) || ['Entrantes', 'En proceso', 'En espera', 'Finalizados']; }
+function colsTareas() { return (TK.datos && TK.datos.columnas) || ['Entrantes', 'Por hacer', 'En proceso', 'Esperando', 'Finalizados']; }
 function colsTareasMover() { return colsTareas().map(function (c) { return { columna: c, seccion: 'Tareas' }; }); }
 function tareasALaVista() { return !$('app').hidden && !$('s-tareas').hidden && !document.hidden; }
 function dosDig(n) { return ('0' + n).slice(-2); }
@@ -106,7 +106,7 @@ $('tk-todas').addEventListener('click', function () { TK.filtros.mias = false; p
 const CTX_TAREAS = { tb: function () { return $('tareas-tablero'); }, mover: function (r, d, a) { moverTareaA(r, d, a); }, repintar: function () { pintarTareas(); } };
 
 function htmlTarea(t) {
-  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+  return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     '<div class="t">' + esc(t.titulo) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + (t.recordatorio ? '⏰ ' + esc(cuandoCorto(t.recordatorio)) : '') + '</span>' +

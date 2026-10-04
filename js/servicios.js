@@ -5,8 +5,10 @@
    Lo que hay que mandar a arreglar (ej. la motoguadaña). Se pide desde
    el formulario ("Servicio"): el encabezado de siempre, qué servicio,
    observaciones y adjuntos. No se cotiza desde la app: se maneja a mano.
-   - Un tablero aparte, como el de Tareas: Entrantes → Procesando →
-     En reparación → Para retirar → Finalizados (columnas_servicios).
+   - Un tablero aparte, como el de Tareas: Entrantes → Por cotizar →
+     Decisión → En armado/reparación → Para retirar → Finalizados
+     (columnas_servicios, Feli 2026-10-04). En Decisión, "📨 Mandar a aprobar".
+   - Filtros como los de Compras: Mis servicios / Todos, granja y responsable.
    - Los admins ven todos; los demás, los suyos. Lo mueven los admins y
      quien lo pidió (arrastrando o con "Mover a…").
    - La tarjeta abierta es la de los pedidos (tablero.js), sin productos:
@@ -15,12 +17,14 @@
    ============================================================ */
 
 const K_SERVICIOS = 'compras_servicios';     // lo último que mandó getServicios (para abrir sin señal)
-const SV = { datos: guardado.leerJSON(K_SERVICIOS, null), filtros: { mios: false }, cargando: false };
+const SV = { datos: guardado.leerJSON(K_SERVICIOS, null), filtros: { mios: false, sitio: '', resp: '' }, cargando: false };
 
 pantalla('servicios', { titulo: 'Servicios', alMostrar: mostrarServicios });
 
-function colsServicios() { return (SV.datos && SV.datos.columnas) || ['Entrantes', 'Procesando', 'En reparación', 'Para retirar', 'Finalizados']; }
+function colsServicios() { return (SV.datos && SV.datos.columnas) || ['Entrantes', 'Por cotizar', 'Decisión', 'En armado/reparación', 'Para retirar', 'Finalizados']; }
 function colFinalizadosServ() { const c = colsServicios(); return c[c.length - 1]; }
+/** La tercera, como en Compras (Entrantes → Por cotizar → Decisión): ahí se manda a aprobar. */
+function colDecisionServicio() { return colsServicios()[2] || 'Decisión'; }
 function serviciosALaVista() { return !$('app').hidden && !$('s-servicios').hidden && !document.hidden; }
 function puedoMoverServicio(t) { return !!t && (APP.yo.admin || t.solicitante === APP.yo.nombre || (t.compartido || []).indexOf(APP.yo.nombre) !== -1); }
 
@@ -51,7 +55,15 @@ function buscarServicio(ref) { return vistaServicios().filter(function (x) { ret
 
 /* ---------- Tablero ---------- */
 function mostrarServicios() {
-  $('sv-filtro').hidden = !APP.yo.admin;          // los demás ya ven solo los suyos
+  const admin = APP.yo.admin;
+  // Los demás ya ven solo los suyos. Granja y responsable, como en Compras (Feli, 2026-10-04)
+  $('sv-filtro').hidden = $('sv-sitio-l').hidden = $('sv-resp-l').hidden = !admin;
+  if (admin) {
+    $('sv-sitio').innerHTML = '<option value="">Ver todos</option>' +
+      (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+    $('sv-resp').innerHTML = '<option value="">Ver todos</option><option value="-">Sin responsable</option>' +
+      (APP.config.admins || []).map(function (a) { return '<option>' + esc(a) + '</option>'; }).join('');
+  }
   pintarFiltrosServicios();
   pintarServicios();
   cargarServicios();
@@ -59,15 +71,28 @@ function mostrarServicios() {
 function pintarFiltrosServicios() {
   $('sv-mios').setAttribute('aria-pressed', String(SV.filtros.mios));
   $('sv-todos').setAttribute('aria-pressed', String(!SV.filtros.mios));
+  $('sv-sitio').value = SV.filtros.sitio;
+  $('sv-resp').value = SV.filtros.resp;
 }
+function seVeServicio(t) {
+  const f = SV.filtros;
+  if (f.mios && t.solicitante !== APP.yo.nombre && (t.compartido || []).indexOf(APP.yo.nombre) === -1) return false;
+  if (f.sitio && t.sitio !== f.sitio) return false;
+  if (f.resp === '-' && t.responsable) return false;
+  if (f.resp && f.resp !== '-' && t.responsable !== f.resp) return false;
+  return true;
+}
+$('sv-sitio').addEventListener('change', function () { SV.filtros.sitio = this.value; pintarServicios(); });
+$('sv-resp').addEventListener('change', function () { SV.filtros.resp = this.value; pintarServicios(); });
 $('sv-mios').addEventListener('click', function () { SV.filtros.mios = true; pintarFiltrosServicios(); pintarServicios(); });
 $('sv-todos').addEventListener('click', function () { SV.filtros.mios = false; pintarFiltrosServicios(); pintarServicios(); });
 
 const CTX_SERVICIOS = { tb: function () { return $('servicios-tablero'); }, mover: function (r, d, a) { moverServicioA(r, d, a); }, repintar: function () { pintarServicios(); } };
 
 function htmlServicio(t) {
-  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : esVerde(t.urgencia) ? ' verde' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+  return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     '<div class="sobre">🔧 Servicio</div>' +
+    (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
@@ -84,9 +109,7 @@ function pintarServicios() {
   const scroll = cont.scrollLeft, porCol = {};
   cols.forEach(function (c) { porCol[c] = []; });
   vistaServicios().forEach(function (t) {
-    if (!porCol[t.columna]) return;
-    if (SV.filtros.mios && t.solicitante !== APP.yo.nombre && (t.compartido || []).indexOf(APP.yo.nombre) === -1) return;
-    porCol[t.columna].push(t);
+    if (porCol[t.columna] && seVeServicio(t)) porCol[t.columna].push(t);
   });
   cont.innerHTML = cols.map(function (c, k) {
     const ts = ordenarPorFecha(porCol[c], ordenDe('sv:' + c));
@@ -187,7 +210,7 @@ function pintarServicioAbierto() {
   dato('Responsable', resp ? '<span class="resp">' + esc(inicial(resp)) + '</span> ' + esc(resp) : 'Sin responsable');
   $('tj-datos').innerHTML = datos.join('');
   $('tj-etiquetas').innerHTML = '<span class="etiqueta">🔧 Servicio</span>';
-  ['tj-prod-b', 'tj-cot-b', 'tj-aprob-b', 'tj-enlaces', 'tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
+  ['tj-prod-b', 'tj-cot-b', 'tj-enlaces', 'tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
   $('tj-editar').hidden = !(APP.yo.admin && p);
   $('tj-editar').textContent = '✏️ Editar servicio';
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');
@@ -195,6 +218,7 @@ function pintarServicioAbierto() {
   $('tj-desc-t').textContent = 'Observaciones';
   $('tj-desc-b').hidden = !(pv && pv.descripcion);
   if (pv && pv.descripcion) { $('tj-desc').textContent = pv.descripcion; $('tj-desc-editar').hidden = !APP.yo.admin; }
+  pintarAprobacion();                              // "📨 Mandar a aprobar", en Decisión (cotizar.js)
   pintarAdjuntos();
   pintarActividad();
 }

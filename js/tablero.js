@@ -243,7 +243,8 @@ function pintarTablero() {
     // Paso 2-bis: "📤 Mandar a Por cotizar" arriba de la Tanda verde (solo admins)
     const tanda = admin && c.columna === colTanda() && ts.some(function (t) { return !t.trabajo; });
     const recordar = tanda ? avisoTanda(ts) : '';
-    // Paso 6: entre secciones, una línea y un poco de espacio
+    // Paso 6: entre secciones, una línea de arriba a abajo del tablero (Feli: tan larga como la página)
+    if (primera && html.length) html.push('<div class="sep-sec" aria-hidden="true"></div>');
     html.push('<div class="col' + (primera && html.length ? ' nueva-sec' : '') + '" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
       '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
@@ -399,13 +400,9 @@ function pintarProcesando() {
   cont.querySelectorAll('.proc-i').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
 }
 
-/** La urgencia más alta (la primera de App_Config, ej. 🔴): franja roja arriba de la tarjeta (Feli). */
-function esUrgente(u) { const l = (APP.config && APP.config.urgencias) || []; return !!u && u === l[0]; }
-/** La menos urgente (la última, ej. 🟢): franja verde (Pasos 3 y 4, Feli). */
-function esVerde(u) { const l = (APP.config && APP.config.urgencias) || []; return !!u && l.length > 1 && u === l[l.length - 1]; }
-
+/* Sin franjas roja ni verde (Feli, 2026-10-04: ensucian la vista): la urgencia es solo el globito de color. */
 function htmlTarjeta(t, enPorRecibir) {
-  return '<div class="tarjeta' + (esUrgente(t.urgencia) ? ' urgente' : esVerde(t.urgencia) ? ' verde' : '') + '" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+  return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
     (t.manual ? '<div class="sobre">✋ Gestión manual</div>' : '') +                                          // Paso 5
     (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6
@@ -428,7 +425,8 @@ function pintarSecciones() {
   columnasTb().forEach(function (c) { if (secs.indexOf(c.seccion) === -1) secs.push(c.seccion); });
   if (cont.dataset.secs !== secs.join('|')) {
     cont.dataset.secs = secs.join('|');
-    cont.innerHTML = secs.map(function (s) { return '<button type="button" role="tab" data-sec="' + esc(s) + '">' + esc(s) + '</button>'; }).join('');
+    // En el celular se ven como puntitos (css): el nombre queda para el lector de pantalla y al dejar el dedo encima
+    cont.innerHTML = secs.map(function (s) { return '<button type="button" role="tab" data-sec="' + esc(s) + '" aria-label="' + esc(s) + '" title="' + esc(s) + '">' + esc(s) + '</button>'; }).join('');
     cont.querySelectorAll('button').forEach(function (b) {
       b.addEventListener('click', function () {
         const col = $('tablero').querySelector('.col[data-seccion="' + b.dataset.sec + '"]');

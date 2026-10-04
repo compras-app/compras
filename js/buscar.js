@@ -127,7 +127,7 @@ function pintarResultados() {
   cont.innerHTML = BU.resultados.map(function (x) {
     const col = columnaConCambios(x);
     const fin = x.servicio ? col === colFinalizadosServ() : terminadas.indexOf(col) !== -1;
-    return '<button type="button" class="tarjeta resultado' + (fin ? '' : esUrgente(x.urgencia) ? ' urgente' : esVerde(x.urgencia) ? ' verde' : '') + (fin ? ' terminado' : '') + '" data-ref="' + esc(x.ref) + '">' +
+    return '<button type="button" class="tarjeta resultado' + (fin ? ' terminado' : '') + '" data-ref="' + esc(x.ref) + '">' +
       '<div class="t">' + (x.servicio ? '🔧 ' : '') + esc(x.titulo || x.ref) + '</div>' +
       '<div class="pie"><span aria-label="' + esc(x.urgencia) + '">' + esc(emojiUrgencia(x.urgencia)) + '</span>' +
       '<span class="sitio">' + esc(x.sitio) + '</span>' +
