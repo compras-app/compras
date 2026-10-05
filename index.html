@@ -264,6 +264,10 @@
         <div class="campo"><label for="aj-msj-conf">Confirmación al ganador</label><textarea id="aj-msj-conf" rows="4"></textarea></div>
         <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>
           <small class="nota">Le llega el WhatsApp de "📨 Mandar a aprobar" (en Decisión) y aprueba desde la tarjeta.</small></div>
+        <div class="campo"><label for="aj-msj-recep">¿Recibiste este pedido?</label><textarea id="aj-msj-recep" rows="5"></textarea>
+          <small class="nota">Le llega a quien retiró el pedido al pasarlo a Entregado. {nombre}: su nombre. {titulo}: el título. {productos}: un renglón por producto. Abajo va siempre el link para confirmar.</small></div>
+        <div class="campo"><label for="aj-msj-recep2">Recordatorio de "¿Recibiste este pedido?"</label><textarea id="aj-msj-recep2" rows="4"></textarea>
+          <small class="nota">Si en 1 día hábil no confirmó ni contestó (una sola vez).</small></div>
         <button type="button" class="btn2" id="aj-cot-ok">Guardar</button>
       </div>
       <p class="nota ad-estado" id="aj-estado" role="status" aria-live="polite"></p>
@@ -386,6 +390,11 @@
             <div class="act-h"><h3>Aprobación</h3><button type="button" class="btn-chico" id="tj-aprobar-mandar" hidden>📨 Mandar a aprobar</button></div>
             <div id="tj-aprob"></div>
           </div>
+          <!-- Fase 4, Paso 1-bis: "¿Recibiste este pedido?" (recepcion.js) -->
+          <div class="bloque" id="tj-recep-b" hidden>
+            <div class="act-h"><h3>Recepción</h3></div>
+            <div id="tj-recep"></div>
+          </div>
           <!-- Fase 3: a quién se le pidió cotización (cotizar.js) -->
           <div class="bloque" id="tj-cot-b" hidden>
             <div class="act-h"><h3>Cotizaciones</h3><button type="button" class="btn-chico si" id="tj-cotizar" hidden>📤 Pedir cotización</button></div>
@@ -452,6 +461,7 @@
 <script src="js/envio-pedidos.js"></script>
 <script src="js/tablero.js"></script>
 <script src="js/cotizar.js"></script>
+<script src="js/recepcion.js"></script>
 <script src="js/tareas.js"></script>
 <script src="js/servicios.js"></script>
 <script src="js/notificaciones.js"></script>

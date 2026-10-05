@@ -214,7 +214,21 @@ function mostrarTablero() {
   const h = decodeURIComponent(location.hash.slice(1));
   if (!h || h === 'cuenta') return;                                       // #cuenta es Tu cuenta, no un pedido
   if (/^K/.test(h)) { if (APP.yo.admin) ir('tareas'); return; }           // link a una tarea: se abre en Tareas
-  if (!TB.abierta) abrirTarjeta(h, true);
+  if (!TB.abierta) abrirPorLink(h);
+}
+
+/**
+ * Un link #Ref (el WhatsApp de una mención, de "¿Recibiste este pedido?"…): abre la tarjeta y, al cerrarla,
+ * el tablero queda sobre ella. Si no es un pedido suyo, el tablero pasa a "Todos" (Feli, 2026-10-05: los
+ * encargados arrancan con "Mis pedidos" y si no, al cerrar no la encuentran).
+ */
+function abrirPorLink(ref) {
+  if (TB.filtros && TB.filtros.mios) {
+    const t = buscarEnVista(ref);
+    if (!t || !esMio(t)) { TB.filtros.mios = false; pintarFiltros(); pintarTablero(); }
+  }
+  TB.irAlCerrar = ref;
+  abrirTarjeta(ref, true);
 }
 
 function pintarTablero() {
@@ -406,6 +420,7 @@ function htmlTarjeta(t, enPorRecibir) {
     (t.manual ? '<div class="sobre">✋ Gestión manual</div>' : '') +                                          // Paso 5
     (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6
     (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
+    htmlMarcaRecepcion(t) +                                                        // Fase 4, Paso 1-bis (recepcion.js)
     (t.fueraPadron ? '<div class="sobre fuera-padron">✋ Contiene productos fuera del padrón</div>' : '') +   // Pasos 3 y 4
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
@@ -509,7 +524,7 @@ async function moverA(ref, destino, despuesDe) {
     op.entrega = e;
   }
   if (destino !== t.columna && destino === colEntregado()) {
-    const d = await preguntarRetiro();
+    const d = await preguntarRetiro(t);
     if (!d) return pintarTablero();
     op.retiro = d.retiro;
     op.fechaRetiro = d.fecha;
@@ -805,26 +820,54 @@ function hoyTexto() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
-function preguntarRetiro() {
+/**
+ * "¿Quién lo retiró?" con botones (Feli, 2026-10-05): primero, ya elegida, la persona que hizo el pedido
+ * (en una tarjeta de seguimiento, quienes hicieron sus pedidos); después las demás, y "Otro" para escribir.
+ * A esa persona le llega "¿Recibiste este pedido?" (Fase 4, Paso 1-bis).
+ */
+function preguntarRetiro(t) {
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
-  const nombres = (APP.config.usuarios || []).map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
-  cuerpo.innerHTML = '<label for="dg-retiro">¿Quién lo retiró?</label>' +
-    '<input type="text" id="dg-retiro" list="dg-nombres" autocomplete="off" placeholder="Nombre" style="width:100%;font:inherit;min-height:48px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg);color:var(--fg)">' +
-    '<datalist id="dg-nombres">' + nombres + '</datalist>' +
+  const todos = APP.config.usuarios || [];
+  const sugeridos = ((t && (t.solicitantes && t.solicitantes.length ? t.solicitantes : [t.solicitante])) || [])
+    .filter(function (n) { return n && todos.indexOf(n) !== -1; });
+  const otros = todos.filter(function (n) { return sugeridos.indexOf(n) === -1; });
+  const boton = function (n, sub) {
+    return '<button type="button" class="choice" data-nombre="' + esc(n) + '">' + esc(n) + (sub ? ' <small>· ' + sub + '</small>' : '') + '</button>';
+  };
+  cuerpo.innerHTML = '<label>¿Quién lo retiró?</label><p class="nota" style="margin:0 0 6px">Le llega un WhatsApp para que confirme que lo recibió.</p>' +
+    '<div class="opciones" id="dg-quien">' + sugeridos.map(function (n) { return boton(n, 'hizo el pedido'); }).join('') +
+    (otros.length ? '<h4>Otras personas</h4>' + otros.map(function (n) { return boton(n); }).join('') : '') +
+    '<button type="button" class="choice" data-nombre="" id="dg-otro">Otro…</button></div>' +
+    '<input type="text" id="dg-retiro" autocomplete="off" placeholder="¿Quién?" hidden style="width:100%;font:inherit;min-height:48px;border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg);color:var(--fg);margin-top:6px">' +
     '<label for="dg-fecha">¿Cuándo?</label><input type="date" id="dg-fecha" value="' + hoyTexto() + '" max="' + hoyTexto() + '">';
+  let elegido = sugeridos[0] || '';
   return dialogo({
     titulo: 'Pasa a "' + colEntregado() + '"', cuerpo: cuerpo,
     botones: [
-      { texto: 'Listo', clase: 'btn', id: 'dg-ok', valor: function () { return { retiro: $('dg-retiro').value.trim(), fecha: $('dg-fecha').value }; } },
+      { texto: 'Listo', clase: 'btn', id: 'dg-ok', valor: function () {
+        const quien = $('dg-retiro').hidden ? elegido : $('dg-retiro').value.trim();
+        return { retiro: quien, fecha: $('dg-fecha').value };
+      } },
       { texto: 'Volver', valor: null }
     ],
     alAbrir: function () {
       const ok = $('dg-ok'), input = $('dg-retiro');
-      const revisar = function () { ok.disabled = !input.value.trim(); };
+      const revisar = function () { ok.disabled = input.hidden ? !elegido : !input.value.trim(); };
+      const marcar = function () {
+        cuerpo.querySelectorAll('#dg-quien .choice').forEach(function (b) {
+          b.setAttribute('aria-current', String(input.hidden ? b.dataset.nombre === elegido && !!elegido : b.id === 'dg-otro'));
+        });
+      };
+      cuerpo.querySelectorAll('#dg-quien .choice').forEach(function (b) {
+        b.addEventListener('click', function () {
+          if (b.id === 'dg-otro') { input.hidden = false; input.focus(); }
+          else { input.hidden = true; elegido = b.dataset.nombre; }
+          marcar(); revisar();
+        });
+      });
       input.addEventListener('input', revisar);
-      revisar();
-      input.focus();
+      marcar(); revisar();
     }
   });
 }
@@ -910,7 +953,7 @@ window.addEventListener('popstate', function () {
 window.addEventListener('hashchange', function () {
   const ref = decodeURIComponent(location.hash.slice(1));
   if (ref === 'cuenta') { if (APP.token && !$('app').hidden) abrir('cuenta'); return; }
-  if (ref && APP.token && !$('app').hidden && TB.abierta !== ref) abrirTarjeta(ref, true);
+  if (ref && APP.token && !$('app').hidden && TB.abierta !== ref) abrirPorLink(ref);
 });
 $('tj-cerrar').addEventListener('click', cerrarTarjeta);
 $('tarjeta-modal').addEventListener('click', function (e) { if (e.target === this) cerrarTarjeta(); });
@@ -1030,6 +1073,7 @@ function pintarTarjeta() {
   pintarAdjuntos();
   pintarCotizaciones();                                                    // cotizar.js
   pintarAprobacion();                                                      // Paso 6 (cotizar.js)
+  pintarRecepcion();                                                       // Fase 4, Paso 1-bis (recepcion.js)
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {
@@ -1348,6 +1392,9 @@ function fraseEvento(e, d) {
       case 'Razón': return 'cambió la razón del pedido';
       case 'Aprobación': return n === 'Esperando' ? 'lo mandó a aprobar' : n === 'Aprobada' ? 'aprobó la compra' : n === 'No aprobada' ? 'no aprobó la compra' : '';   // Paso 6
       case 'Automático': return String(n).toUpperCase() === 'NO' ? 'lo pasó a gestión manual' : 'lo volvió a automática';   // Paso 5
+      case 'Recepción': return n === 'Recibido' ? 'confirmó que lo recibió' : n === 'No recibió' ? 'dijo que no lo recibió o que falta algo' :      // Fase 4, Paso 1-bis
+                               n === 'Esperando' ? 'le preguntó a quien lo retiró si lo recibió' : n === 'Sin confirmar' ? 'le recordó que confirme si lo recibió' :
+                               n === 'Sin aviso' ? 'no le pudo avisar a quien lo retiró' : '';
     }
   }
   if (e.entidad === 'linea') {

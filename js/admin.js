@@ -337,6 +337,8 @@ function pintarAjustes() {
     $('aj-numero').value = a.cotizar.numeroPrueba || '';
     $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';
     $('aj-msj-conf').value = a.cotizar.msjConfirmar || '';
+    $('aj-msj-recep').value = a.cotizar.msjRecepcion || '';                 // Fase 4, Paso 1-bis
+    $('aj-msj-recep2').value = a.cotizar.msjRecepcionRecordatorio || '';
     const ps = a.cotizar.personas || [];
     if (a.cotizar.aprobador && ps.indexOf(a.cotizar.aprobador) === -1) ps.unshift(a.cotizar.aprobador);
     $('aj-aprobador').innerHTML = ps.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
@@ -403,10 +405,13 @@ async function sacarGranja(nombre) {
   if (si) granjaOp({ accion: 'sacar', nombre: nombre }, function () { return 'Listo: se sacó ' + nombre + '.'; });
 }
 
+/** Un texto de Ajustes, o undefined si el servidor publicado todavía no lo tiene (así no se borra nada). */
+function a_siHay(id) { return AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.msjRecepcion !== undefined ? $(id).value : undefined; }
 $('aj-cot-ok').addEventListener('click', async function () {
   const r = await api('guardarAjustesCotizar', {
     numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
-    msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined
+    msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined,
+    msjRecepcion: a_siHay('aj-msj-recep'), msjRecepcionRecordatorio: a_siHay('aj-msj-recep2')
   });
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   AD.ajustes.cotizar = r.cotizar;
