@@ -2403,15 +2403,32 @@ var JS_CARTEL = String(function(o){
       '.s{background:' + o.color + ';color:#1a1013}' +
       '.x{background:transparent;color:#cfccc5;border:1px solid #55555e}' +
       '.x.seguro{color:#f08b84;border-color:#f08b84}' +
-      '</style><div class="c"><div class="h">Programa de Compras</div><div class="t"></div>' +
+      '.hh{display:flex;align-items:center;justify-content:space-between;gap:10px}' +
+      '.m{color:#cfccc5;font-weight:500;font-size:13px;padding:4px 8px;border:1px solid #55555e}' +
+      '.p{display:none;background:#1d1d20;color:#eceae5;border:1px solid #33333a;border-left:5px solid ' + o.color + ';' +
+      'border-radius:10px;padding:10px 14px;font:600 14px/1.2 ' + letra + ';box-shadow:0 8px 24px rgba(0,0,0,.45)}' +
+      '.p b{color:' + o.color + '}' +
+      '.chico .c{display:none}.chico .p{display:inline-block}' +
+      '</style><div class="w"><div class="c"><div class="hh"><div class="h">Programa de Compras</div>' +
+      '<button type="button" class="m" title="Achicar el cartel para revisar Albor">Minimizar ▾</button></div>' +
+      '<div class="t"></div>' +
       '<div class="b"><button type="button" class="s"></button>' +
-      '<button type="button" class="x">Cancelar la carga</button></div></div>';
+      '<button type="button" class="x">Cancelar la carga</button></div></div>' +
+      '<button type="button" class="p"><b>Programa de Compras</b> · esperando que revises ▴</button></div>';
+    // Minimizar (Feli, 2026-10-05): el cartel tapaba los datos de Albor que hay que controlar
+    raiz.querySelector('.m').onclick = function(){ raiz.querySelector('.w').classList.add('chico'); };
+    raiz.querySelector('.p').onclick = function(){ raiz.querySelector('.w').classList.remove('chico'); };
     raiz.querySelector('.s').onclick = function(){ window.__pcResp = 'seguir'; host.remove(); };
     raiz.querySelector('.x').onclick = function(){
       if(this.dataset.seguro){ window.__pcResp = 'cancelar'; host.remove(); }
       else{ this.dataset.seguro = '1'; this.textContent = '¿Seguro? Tocá de nuevo para cancelar'; this.className = 'x seguro'; }
     };
     (document.body || document.documentElement).appendChild(host);
+  }
+  // Una pausa nueva (otro texto) vuelve a abrir el cartel aunque estuviera minimizado
+  if(host.getAttribute('data-texto') !== o.texto){
+    host.setAttribute('data-texto', o.texto);
+    host.shadowRoot.querySelector('.w').classList.remove('chico');
   }
   host.shadowRoot.querySelector('.t').textContent = o.texto;
   host.shadowRoot.querySelector('.s').textContent = o.boton;
