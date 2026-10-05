@@ -155,7 +155,11 @@ function htmlArchivo(m) {
    dispositivo no lo reproduce, lo pasa a WAV ahí mismo con un decodificador
    (ogg-opus-decoder, se baja solo la primera vez). Hay un solo reproductor
    para todos los audios, así no se corta cuando el chat se vuelve a dibujar. */
-const CH_AU = { el: null, id: '', urls: {}, cargando: {} };
+const CH_AU = { el: null, id: '', urls: {}, cargando: {}, vel: 1 };
+// Velocidad, como WhatsApp (Feli, 2026-10-05): 1× → 1,5× → 2× (queda guardada en el dispositivo)
+const VELOCIDADES = [1, 1.5, 2];
+try { const v = Number(localStorage.getItem('compras_audio_vel')); if (VELOCIDADES.indexOf(v) >= 0) CH_AU.vel = v; } catch (e) { /* sin guardado */ }
+function textoVel() { return String(CH_AU.vel).replace('.', ',') + '×'; }
 const DECODER_OPUS = 'https://cdn.jsdelivr.net/npm/ogg-opus-decoder@1.7.5/dist/ogg-opus-decoder.min.js';
 // Medio segundo de silencio: el iPhone solo deja sonar un audio que arrancó con un toque
 const SILENCIO_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
@@ -178,7 +182,8 @@ function htmlAudio(id) {
   return '<div class="ch-audio" data-audio="' + esc(id) + '">' +
     '<button type="button" class="ch-au-b" data-audio-play="' + esc(id) + '" aria-label="Escuchar el audio">' + e.boton + '</button>' +
     '<input type="range" class="ch-au-r" min="0" max="1000" step="1" value="' + e.pos + '" aria-label="Adelantar o atrasar el audio"' + (e.activo ? '' : ' disabled') + '>' +
-    '<span class="ch-au-t">' + esc(e.texto) + '</span></div>';
+    '<span class="ch-au-t">' + esc(e.texto) + '</span>' +
+    '<button type="button" class="ch-au-v" data-audio-vel aria-label="Cambiar la velocidad">' + textoVel() + '</button></div>';
 }
 
 /** Actualiza el audio en pantalla sin volver a dibujar el chat. */
@@ -221,7 +226,9 @@ function wavDe(canales, frecuencia) {
 
 async function urlDeAudio(id) {
   const r = await api('audioChat', id);
-  if (!r.ok) throw new Error(r.sinConexion ? '📶 Hace falta señal para escuchar el audio.' : (r.error || 'No se pudo abrir el audio.'));
+  if (!r.ok) throw new Error(r.sinConexion ? '📶 Hace falta señal para escuchar el audio.'
+    : /desconocida/i.test(r.error || '') ? 'Para escuchar audios falta publicar la versión nueva de la app (Deploy → New version).'
+    : (r.error || 'No se pudo abrir el audio.'));
   const bin = atob(r.datos), bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const mime = String(r.mime || 'audio/ogg').split(';')[0].trim();
@@ -268,8 +275,16 @@ async function tocarAudio(id) {
     if (!url || CH_AU.el !== el) { if (CH_AU.el === el) { CH_AU.el = null; CH_AU.id = ''; } pintarAudio(id); return; }
   }
   el.src = url;
+  el.playbackRate = CH_AU.vel;
   el.play().catch(function () { pintarAudio(id); });
   pintarAudio(id);
+}
+
+function cambiarVelocidad() {
+  CH_AU.vel = VELOCIDADES[(VELOCIDADES.indexOf(CH_AU.vel) + 1) % VELOCIDADES.length];
+  try { localStorage.setItem('compras_audio_vel', String(CH_AU.vel)); } catch (e) { /* sin guardado */ }
+  if (CH_AU.el && CH_AU.el.src !== SILENCIO_WAV) CH_AU.el.playbackRate = CH_AU.vel;
+  document.querySelectorAll('.ch-au-v').forEach(function (b) { b.textContent = textoVel(); });
 }
 
 function moverAudio(id, valor) {
@@ -332,6 +347,7 @@ function pintarChat(alFondo) {
   caja.innerHTML = html;
   caja.querySelectorAll('[data-foto]').forEach(function (b) { b.addEventListener('click', function () { verFoto(b.dataset.foto); }); });
   caja.querySelectorAll('[data-audio-play]').forEach(function (b) { b.addEventListener('click', function () { tocarAudio(b.dataset.audioPlay); }); });
+  caja.querySelectorAll('[data-audio-vel]').forEach(function (b) { b.addEventListener('click', cambiarVelocidad); });
   caja.querySelectorAll('.ch-audio .ch-au-r').forEach(function (r) {
     const id = r.parentNode.dataset.audio;
     r.addEventListener('input', function () { r.dataset.moviendo = '1'; });
