@@ -144,8 +144,137 @@ function htmlArchivo(m) {
     return '<button type="button" class="ch-foto' + (m.tipo === 'stickerMessage' ? ' sticker' : '') + '" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
       '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w480" alt="📷 Foto · abrir" loading="lazy"></button>';
   }
+  if (m.tipo === 'audioMessage') return htmlAudio(m.id);
   return '<a class="ch-arch" href="https://drive.google.com/file/d/' + esc(id) + '/view" target="_blank" rel="noopener">' + esc(etiqueta) +
-    ' <small>· ' + (m.tipo === 'audioMessage' ? 'escuchar' : 'abrir') + '</small></a>';
+    ' <small>· abrir</small></a>';
+}
+
+/* ---------- Audios: se escuchan adentro del chat (Feli, 2026-10-05) ----------
+   El de Drive no andaba en el iPhone (0:00): WhatsApp los graba en OGG Opus,
+   que Safari no reproduce. La app lo pide al servidor (audioChat) y, si el
+   dispositivo no lo reproduce, lo pasa a WAV ahí mismo con un decodificador
+   (ogg-opus-decoder, se baja solo la primera vez). Hay un solo reproductor
+   para todos los audios, así no se corta cuando el chat se vuelve a dibujar. */
+const CH_AU = { el: null, id: '', urls: {}, cargando: {} };
+const DECODER_OPUS = 'https://cdn.jsdelivr.net/npm/ogg-opus-decoder@1.7.5/dist/ogg-opus-decoder.min.js';
+// Medio segundo de silencio: el iPhone solo deja sonar un audio que arrancó con un toque
+const SILENCIO_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+
+function minSeg(s) {
+  s = Math.max(0, Math.floor(s || 0));
+  return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+}
+
+function estadoAudio(id) {
+  const activo = CH_AU.id === id && CH_AU.el && CH_AU.el.src !== SILENCIO_WAV;
+  const el = activo ? CH_AU.el : null, dur = el && isFinite(el.duration) ? el.duration : 0;
+  return { boton: CH_AU.cargando[id] ? '⏳' : (el && !el.paused ? '⏸' : '▶'),
+           pos: dur ? Math.round(1000 * el.currentTime / dur) : 0, activo: !!el,
+           texto: CH_AU.cargando[id] ? 'Abriendo el audio…' : (el && dur ? minSeg(el.currentTime) + ' / ' + minSeg(dur) : '🎤 Audio') };
+}
+
+function htmlAudio(id) {
+  const e = estadoAudio(id);
+  return '<div class="ch-audio" data-audio="' + esc(id) + '">' +
+    '<button type="button" class="ch-au-b" data-audio-play="' + esc(id) + '" aria-label="Escuchar el audio">' + e.boton + '</button>' +
+    '<input type="range" class="ch-au-r" min="0" max="1000" step="1" value="' + e.pos + '" aria-label="Adelantar o atrasar el audio"' + (e.activo ? '' : ' disabled') + '>' +
+    '<span class="ch-au-t">' + esc(e.texto) + '</span></div>';
+}
+
+/** Actualiza el audio en pantalla sin volver a dibujar el chat. */
+function pintarAudio(id) {
+  const caja = document.querySelector('.ch-audio[data-audio="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  if (!caja) return;
+  const e = estadoAudio(id), r = caja.querySelector('.ch-au-r');
+  caja.querySelector('.ch-au-b').textContent = e.boton;
+  caja.querySelector('.ch-au-t').textContent = e.texto;
+  r.disabled = !e.activo;
+  if (!r.dataset.moviendo) r.value = e.pos;
+}
+
+function cargarDecoderOpus() {
+  if (window['ogg-opus-decoder']) return Promise.resolve();
+  return new Promise(function (listo, mal) {
+    const sc = document.createElement('script');
+    sc.src = DECODER_OPUS;
+    sc.onload = function () { listo(); };
+    sc.onerror = function () { mal(new Error('Hace falta señal para preparar el audio.')); };
+    document.head.appendChild(sc);
+  });
+}
+
+/** Lo decodificado (canales de muestras entre -1 y 1) → un WAV de 16 bits que reproduce cualquier celular. */
+function wavDe(canales, frecuencia) {
+  const n = canales[0].length, c = canales.length, buf = new ArrayBuffer(44 + n * c * 2), v = new DataView(buf);
+  const txt = function (o, t) { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  txt(0, 'RIFF'); v.setUint32(4, 36 + n * c * 2, true); txt(8, 'WAVE'); txt(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, c, true); v.setUint32(24, frecuencia, true);
+  v.setUint32(28, frecuencia * c * 2, true); v.setUint16(32, c * 2, true); v.setUint16(34, 16, true);
+  txt(36, 'data'); v.setUint32(40, n * c * 2, true);
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let k = 0; k < c; k++) {
+    const x = Math.max(-1, Math.min(1, canales[k][i]));
+    v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true); o += 2;
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+async function urlDeAudio(id) {
+  const r = await api('audioChat', id);
+  if (!r.ok) throw new Error(r.sinConexion ? '📶 Hace falta señal para escuchar el audio.' : (r.error || 'No se pudo abrir el audio.'));
+  const bin = atob(r.datos), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const mime = String(r.mime || 'audio/ogg').split(';')[0].trim();
+  const prueba = document.createElement('audio');
+  const esOgg = /ogg|opus/i.test(mime);
+  if (esOgg ? prueba.canPlayType('audio/ogg; codecs=opus') === 'probably' : prueba.canPlayType(mime)) {
+    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+  }
+  if (!esOgg) throw new Error('Este dispositivo no puede reproducir ese audio.');
+  await cargarDecoderOpus();
+  const dec = new window['ogg-opus-decoder'].OggOpusDecoder();
+  await dec.ready;
+  try {
+    const d = await dec.decodeFile(bytes);
+    if (!d.samplesDecoded) throw new Error('El audio está vacío.');
+    return URL.createObjectURL(wavDe(d.channelData, d.sampleRate));
+  } finally { dec.free(); }
+}
+
+async function tocarAudio(id) {
+  if (CH_AU.cargando[id]) return;
+  if (CH_AU.id === id && CH_AU.el && CH_AU.el.src !== SILENCIO_WAV) {
+    if (CH_AU.el.paused) CH_AU.el.play().catch(function () {}); else CH_AU.el.pause();
+    return;
+  }
+  const antes = CH_AU.id;
+  if (CH_AU.el) CH_AU.el.pause();
+  // El reproductor se arranca ya, con el toque, aunque el audio todavía no llegó (iPhone)
+  const el = new Audio();
+  CH_AU.el = el; CH_AU.id = id;
+  if (antes && antes !== id) pintarAudio(antes);
+  ['timeupdate', 'play', 'pause', 'ended', 'loadedmetadata', 'durationchange'].forEach(function (ev) {
+    el.addEventListener(ev, function () { if (CH_AU.el === el) pintarAudio(id); });
+  });
+  el.addEventListener('ended', function () { el.currentTime = 0; });
+  let url = CH_AU.urls[id];
+  if (!url) {
+    el.src = SILENCIO_WAV;
+    el.play().catch(function () {});
+    CH_AU.cargando[id] = true; pintarAudio(id);
+    try { url = await urlDeAudio(id); CH_AU.urls[id] = url; }
+    catch (e) { aviso(e.message, 'bad'); }
+    delete CH_AU.cargando[id];
+    if (!url || CH_AU.el !== el) { if (CH_AU.el === el) { CH_AU.el = null; CH_AU.id = ''; } pintarAudio(id); return; }
+  }
+  el.src = url;
+  el.play().catch(function () { pintarAudio(id); });
+  pintarAudio(id);
+}
+
+function moverAudio(id, valor) {
+  const el = CH_AU.id === id ? CH_AU.el : null;
+  if (el && isFinite(el.duration)) el.currentTime = el.duration * valor / 1000;
 }
 
 function htmlBurbuja(m, grupo) {
@@ -202,11 +331,20 @@ function pintarChat(alFondo) {
   if (!ms.length) html += '<p class="nota" style="padding:12px;text-align:center">Todavía no hay mensajes en este chat.</p>';
   caja.innerHTML = html;
   caja.querySelectorAll('[data-foto]').forEach(function (b) { b.addEventListener('click', function () { verFoto(b.dataset.foto); }); });
+  caja.querySelectorAll('[data-audio-play]').forEach(function (b) { b.addEventListener('click', function () { tocarAudio(b.dataset.audioPlay); }); });
+  caja.querySelectorAll('.ch-audio .ch-au-r').forEach(function (r) {
+    const id = r.parentNode.dataset.audio;
+    r.addEventListener('input', function () { r.dataset.moviendo = '1'; });
+    r.addEventListener('change', function () { delete r.dataset.moviendo; moverAudio(id, Number(r.value)); });
+  });
   caja.querySelectorAll('[data-menu]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); menuMensaje(b.dataset.menu); }); });
   // En el celular: mantener apretado un mensaje abre el mismo menú
   caja.querySelectorAll('.ch-bur').forEach(function (el) {
     let t = null;
-    el.addEventListener('touchstart', function () { const id = el.parentNode.dataset.id; t = setTimeout(function () { t = null; menuMensaje(id); }, 550); }, { passive: true });
+    el.addEventListener('touchstart', function (e) {
+      if (e.target.closest('.ch-audio')) return;   // apretar el audio no abre el menú
+      const id = el.parentNode.dataset.id; t = setTimeout(function () { t = null; menuMensaje(id); }, 550);
+    }, { passive: true });
     ['touchend', 'touchmove', 'touchcancel'].forEach(function (ev) { el.addEventListener(ev, function () { if (t) { clearTimeout(t); t = null; } }, { passive: true }); });
   });
   if (alFondo || cerca) caja.scrollTop = caja.scrollHeight;
