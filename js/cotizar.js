@@ -266,7 +266,7 @@ function pintarCotizaciones() {
       return '<div class="cot-fila' + (s.estado === 'No salió' ? ' mal' : '') + '"><div><b>' + esc(s.nombre) + '</b> <small>· ' + esc(s.codigo) + ' · ' + esc(fechaCorta(s.fecha)) +
         (s.prueba ? ' · 🧪 prueba' : '') + '</small></div>' +
         '<div class="sub">' + esc(s.productos.join(', ')) + '</div>' +
-        '<div class="sub">' + esc(e) + (s.notas ? ' · ' + esc(s.notas) : '') + '</div>' +
+        '<div class="sub">' + esc(e) + (s.notas ? ' · ' + esc(s.notas) : '') + (s.respondio ? ' · 💬 Respondió ' + esc(fechaCorta(s.respondio)) : '') + '</div>' +
         (APP.yo.admin && s.estado === 'No salió' && !reintento[s.id] ? '<button type="button" class="btn-chico" data-reintentar="' + esc(s.id) + '">Reintentar</button>' : '') + '</div>';
     }).join('') : (esperan.length ? '' : '<p class="nota" style="margin:0">Todavía no se pidió cotización.</p>'));
   $('tj-cot').querySelectorAll('[data-reintentar]').forEach(function (btn) {
