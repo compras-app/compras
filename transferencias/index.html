@@ -950,6 +950,7 @@
         <label class="field" title="La del año de la fecha del egreso (cambia el 1 de enero). Se puede cambiar a mano.">Campaña
           <input type="text" id="gcampania" autocomplete="off" style="width:80px" placeholder="26/27">
         </label>
+        <label class="check" title="Es la misma casilla de Conteo de stock. Destildada, los productos excluidos también se egresan."><input type="checkbox" id="gusarexcl" checked> Ocultar excluidos</label>
         <span class="sep" style="flex:1"></span>
         <button class="linkbtn" id="ggranjasver" data-ajuste="ggranjas">editar granjas (Ajustes)</button>
         <button class="linkbtn" id="gcuentasver" data-ajuste="gcuentas">editar cuentas (Ajustes)</button>
@@ -1994,7 +1995,16 @@
     render();
   });
   $('bycat').addEventListener('change', render);
-  $('usarexcl').addEventListener('change', render);
+  /* "Ocultar excluidos" es una sola casilla, en Conteo de stock y en
+     Egresos: destildada, los productos excluidos también se egresan (Feli,
+     2026-10-05). */
+  function cambiarUsarExcl(){
+    $('usarexcl').checked = $('gusarexcl').checked = this.checked;
+    render();
+    analizarEgresos();
+  }
+  $('usarexcl').addEventListener('change', cambiarUsarExcl);
+  $('gusarexcl').addEventListener('change', cambiarUsarExcl);
   $('print').addEventListener('click', function(){ window.print(); });
 
 
@@ -3254,9 +3264,9 @@
         if(cant < 0){ negativos.push({granja:g.nombre, cod:it.cod, nombre:it.nombre, cant:cant}); return; }
         if(!(cant > 0)) return;
 
-        /* Lo que está en la lista de excluidos no se egresa: son productos que
-           en Albor están ocultos, y si se mandan no se pueden cargar. */
-        if(esExcluido(it)){
+        /* Lo que está en la lista de excluidos no se egresa, salvo que se
+           destilde "Ocultar excluidos" (Feli, 2026-10-05). */
+        if($('usarexcl').checked && esExcluido(it)){
           excluidos.push({granja:g.nombre, cod:it.cod, nombre:it.nombre, tipo:it.cat, cant:cant});
           return;
         }
@@ -3656,7 +3666,7 @@
     var conGranja = HIST.cual !== 'conteos';
     $('hgranjalbl').hidden = !conGranja;
     $('hnota').textContent = {
-      conteos: 'Los conteos guardados con "Guardar en el historial", con sus comentarios y observaciones.',
+      conteos: 'Los conteos guardados con "Guardar en el historial", con sus comentarios y observaciones. Cada uno puede llevar una nota (abrilo); el buscador también encuentra palabras de las notas.',
       pedidos: 'Los pedidos que mandaron las granjas desde Armar pedido, y en qué quedaron.',
       transferencias: 'Las transferencias cargadas en Albor desde acá. Cada una puede llevar una nota (abrila); el buscador también encuentra palabras de las notas.',
       egresos: 'Los egresos cargados en Albor desde acá. Cada uno puede llevar una nota (abrilo); el buscador también encuentra palabras de las notas.'
@@ -3700,7 +3710,7 @@
   function filaHistorial(x){
     var c = HIST.cual;
     if(c === 'conteos')
-      return ['<td>' + fechaCorta(x.dia) + coinciden(x) + '</td>', '<td>' + esc(x.responsable || x.quien) + '</td>',
+      return ['<td>' + fechaCorta(x.dia) + coinciden(x) + notaFila(x) + '</td>', '<td>' + esc(x.responsable || x.quien) + '</td>',
               '<td>' + esc(x.hasta) + '</td>', '<td class="num">' + x.insumos + '</td>',
               '<td class="num">' + x.conDiferencia + '</td>', '<td class="num">' + (x.comentarios || '') + (x.observaciones ? ' 📝' : '') + '</td>'];
     if(c === 'pedidos')
@@ -3752,6 +3762,14 @@
            }).join('') + '</tbody></table>';
   }
 
+  // Una nota, como recordatorio: en conteos (Feli, 2026-10-05), transferencias y egresos (2026-10-03)
+  function editorNota(r, ejemplo){
+    return '<div class="notaedit-h"><b>Nota</b>' + (r.notaDe ? ' <small style="color:var(--ink-faint)">· ' + esc(r.notaDe) + '</small>' : '') +
+           '<textarea id="hnotatxt" rows="2" placeholder="Un recordatorio. Ej.: ' + esc(ejemplo) + '">' +
+           esc(r.nota || '') + '</textarea>' +
+           '<div class="acciones"><button class="btn" data-hnota>Guardar nota</button><span class="aviso" id="hnotaaviso"></span></div></div>';
+  }
+
   function detalleHistorial(cual, x, r){
     var h = [];
     if(cual === 'conteos'){
@@ -3762,6 +3780,7 @@
                 f.conteo === null ? '' : fmt(f.conteo), f.diferencia === null ? '' : textoDif(String(f.conteo).replace('.', ','), f.sistema)];
       })));
       if(r.conteo.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(r.conteo.observaciones) + '</div>');
+      h.push(editorNota(r, 'el depósito se contó al otro día'));
     }else if(cual === 'pedidos'){
       var p = r.pedido;
       h.push('<b>' + esc(p.granja) + '</b> · armado por ' + esc(p.quien) + ' para el ' + fechaCorta(p.fechaPedido) +
@@ -3780,11 +3799,7 @@
       h.push(tablaSimple(['Insumo', 'Cantidad'], r.filas.map(function(f){
         return [esc(f.nombre) + ' <small style="color:var(--ink-faint)">' + esc(f.cod) + '</small>', fmt(f.cant)];
       })));
-      // Una nota, como recordatorio (Feli, 2026-10-03): "lleva los productos de la mitad del mes"
-      h.push('<div class="notaedit-h"><b>Nota</b>' + (r.notaDe ? ' <small style="color:var(--ink-faint)">· ' + esc(r.notaDe) + '</small>' : '') +
-             '<textarea id="hnotatxt" rows="2" placeholder="Un recordatorio. Ej.: lleva los productos de la mitad del mes">' +
-             esc(r.nota || '') + '</textarea>' +
-             '<div class="acciones"><button class="btn" data-hnota>Guardar nota</button><span class="aviso" id="hnotaaviso"></span></div></div>');
+      h.push(editorNota(r, 'lleva los productos de la mitad del mes'));
     }
     h.push('<div class="acciones"><button class="btn" data-himprimir>Imprimir</button></div>');
     return h.join('');

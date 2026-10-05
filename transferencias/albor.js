@@ -1869,8 +1869,9 @@ function sinPrefijo(nombre){
    'G2- CANDELARIA ENGORDE'. */
 async function centroDeLaGranja(pg, c, charla){
   // Albor llena la lista después de elegir la unidad de negocio: se espera
-  // a que aparezca (antes se leía enseguida y quedaba sin elegir).
-  var fin = Date.now() + 15000, opciones = [];
+  // a que aparezca (antes se leía enseguida y quedaba sin elegir). A veces
+  // tarda bastante: hasta 40 segundos.
+  var fin = Date.now() + 40000, opciones = [];
   for(;;){
     try{ opciones = (await pg.evaluar(JS_OPCIONES, CENTRO)) || []; }
     catch(e){ if(e instanceof Cortado) throw e; }
@@ -2024,13 +2025,16 @@ async function egresarComprobante(pg, c, empresaActual, charla, n, total, primer
     charla.decir('   [!] No se pudo cargar la cuenta (' + primeraLinea(e) + '). Ponela a mano.');
   }
 
-  // La unidad de negocio va antes: el centro de costo puede depender de ella.
+  // La fecha y la campaña van antes que el centro: al cambiarlas, Albor
+  // vuelve a dibujar el centro en "Ajuste stock" (Feli, 2026-10-05: se veía
+  // el centro bueno, después Ajuste stock y recién al final el bueno otra vez).
+  await ponerFecha(pg, c.fecha, charla);
+  var campania = await ponerCampania(pg, c.campania, charla);
+  // La unidad de negocio va antes: el centro de costo depende de ella.
   await elegirOpcion(pg, '#ID_IT_Dimension_3', c.unidad_negocio, 'Unidad de negocio', charla);
   var centro = await centroDeLaGranja(pg, c, charla);
   if(!centro) charla.decir('   [!] No encontré en Albor el centro de costos de ' + c.punto_nombre + '. Elegilo a mano.');
   await asegurarCentro(pg, centro, charla);
-  await ponerFecha(pg, c.fecha, charla);
-  var campania = await ponerCampania(pg, c.campania, charla);
   var grilla = await esperarGrilla(pg);
   var puesto = await asegurarCentro(pg, centro, charla);
   var quedo = puesto[0], textoCentro = puesto[1];
@@ -2116,13 +2120,28 @@ async function opcionesDe(pg, sel){
   return ops.filter(function(o){ return o[0] && o[1] && !/^-*\s*selecc?ione/i.test(o[1]); });
 }
 
-/* Los centros de costos de una unidad de negocio: Albor los llena después de elegirla. */
-async function centrosDeUnidad(pg, unidad, charla){
+/* Los centros de costos de una unidad de negocio: Albor los llena después de
+   elegirla, y a veces tarda (Feli, 2026-10-05: el control del principio
+   decía que faltaba un centro que sí estaba). Se espera a que la lista sea
+   otra que la de antes (si no, se leían los centros de la unidad anterior;
+   si a los 8 segundos sigue igual, es que las dos unidades tienen los
+   mismos), que tenga algo más que "Ajuste stock" y que quede quieta dos
+   lecturas seguidas. */
+async function centrosDeUnidad(pg, unidad, charla, limite){
+  function firma(ops){ return ops.map(function(o){ return o[0]; }).join('|'); }
+  var antes = firma(await opcionesDe(pg, CENTRO));
+  var yaEstaba = false;
+  try{ yaEstaba = (await pg.evaluar("sel => { const s = document.querySelector(sel); return s ? s.value : ''; }", '#ID_IT_Dimension_3')) === String(unidad); }
+  catch(e){ if(e instanceof Cortado) throw e; }
   await elegirOpcion(pg, '#ID_IT_Dimension_3', unidad, 'Unidad de negocio', charla);
-  var fin = Date.now() + 10000, ops = [];
+  var desde = Date.now(), fin = desde + (limite || 25000), ops = [], anterior = null;
   for(;;){
     ops = await opcionesDe(pg, CENTRO);
-    if(ops.some(function(o){ return !/AJUSTE/i.test(o[1]); }) || Date.now() > fin) break;
+    var f = firma(ops);
+    var lista = ops.some(function(o){ return !/AJUSTE/i.test(o[1]); }) &&
+                (yaEstaba || f !== antes || Date.now() - desde > 8000);
+    if((lista && f === anterior) || Date.now() > fin) break;
+    anterior = lista ? f : null;
     await pg.esperar(800);
     await esperar(pg, 10000);
   }
@@ -2143,7 +2162,9 @@ async function listasDeEmpresa(pg, empresa, actual, charla, unidades){
   var cuales = unidades || r.unidades.map(function(u){ return u[0]; });
   for(var i = 0; i < cuales.length; i++){
     var ops = await centrosDeUnidad(pg, cuales[i], charla);
-    ops.forEach(function(o){ if(!vistos[o[0]]){ vistos[o[0]] = true; r.centros.push([o[0], o[1], cuales[i]]); } });
+    // Por centro y unidad: un centro que está en dos unidades va con las dos
+    // (antes quedaba solo con la primera y el control decía que faltaba).
+    ops.forEach(function(o){ var k = o[0] + '|' + cuales[i]; if(!vistos[k]){ vistos[k] = true; r.centros.push([o[0], o[1], cuales[i]]); } });
   }
   var camp = null;
   try{ camp = await pg.evaluar(JS_CAMPANIA); }catch(e){ if(e instanceof Cortado) throw e; }
@@ -2210,17 +2231,26 @@ async function revisarAntes(pg, lista, egreso, charla){
     var r = await listasDeEmpresa(pg, orden[i], actual, charla, egreso ? unidades : []);
     actual = r.actual;
     var L = r.listas;
-    cs.forEach(function(c){
+    for(var k = 0; k < cs.length; k++){
+      var c = cs[k];
       if(egreso){
         if(!hay(L.egreso, c.punto_id)) faltan.push('el punto de stock de ' + c.punto_nombre + ' (' + c.punto_id + ', empresa ' + orden[i] + ')');
         if(c.unidad_negocio && !hay(L.unidades, c.unidad_negocio)) faltan.push('la unidad de negocio ' + c.unidad_negocio + ' (empresa ' + orden[i] + ')');
-        if(!buscarCentro(L.centros.filter(function(o){ return !c.unidad_negocio || o[2] === String(c.unidad_negocio).trim(); }), c))
+        var u = String(c.unidad_negocio || '').trim();
+        var deLaUnidad = function(){ return L.centros.filter(function(o){ return !u || o[2] === u; }); };
+        // Si no aparece, se lee de nuevo esa unidad con más tiempo antes de
+        // decir que falta: Albor a veces tarda en llenar la lista.
+        if(!buscarCentro(deLaUnidad(), c) && u && hay(L.unidades, u)){
+          var otra = await centrosDeUnidad(pg, u, charla, 45000);
+          otra.forEach(function(o){ if(!L.centros.some(function(x){ return x[0] === o[0] && x[2] === u; })) L.centros.push([o[0], o[1], u]); });
+        }
+        if(!buscarCentro(deLaUnidad(), c))
           faltan.push('el centro de costos de ' + c.punto_nombre + ' (' + (c.centro_costo || 'sin número') + ', empresa ' + orden[i] + ')');
       }else{
         if(!hay(L.origen, c.origen_id)) faltan.push('el punto de stock ' + c.origen_nombre + ' (' + c.origen_id + ', empresa ' + orden[i] + ')');
         if(!hay(L.destino, c.destino_id)) faltan.push('el punto de stock ' + c.destino_nombre + ' (' + c.destino_id + ', empresa ' + orden[i] + ')');
       }
-    });
+    }
   }
   faltan = faltan.filter(function(f, n){ return faltan.indexOf(f) === n; });
   if(!faltan.length){ charla.decir('   está todo.'); return; }
