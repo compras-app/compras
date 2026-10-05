@@ -105,6 +105,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 12l3 3 5-6"/></svg>
       Tareas
     </button>
+    <button class="tab" type="button" data-tab="chats" id="t-chats" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
+      Chats
+    </button>
     <button class="tab" type="button" data-tab="servicios" id="t-servicios">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8V20h3.2l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.3-.6-.6-2.3z"/></svg>
       Servicios
@@ -164,6 +168,49 @@
         </div>
       </div>
       <div class="tablero" id="servicios-tablero" aria-label="Tablero de servicios"></div>
+    </section>
+
+    <!-- Fase 4, Paso 2: los chats del WhatsApp (chats.js) -->
+    <section id="s-chats" class="pantalla-tablero" hidden>
+      <div class="ch" id="ch">
+        <aside class="ch-lista">
+          <div class="ch-herr">
+            <input type="search" id="ch-buscar" placeholder="Buscar un chat" aria-label="Buscar un chat" autocomplete="off">
+            <div class="seg" role="group" aria-label="Qué chats ver" id="ch-filtros">
+              <button type="button" data-f="todos" aria-pressed="true">Todos</button>
+              <button type="button" data-f="activos" aria-pressed="false">Con cotizaciones activas</button>
+              <button type="button" data-f="noleidos" aria-pressed="false">Sin leer</button>
+            </div>
+          </div>
+          <div class="ch-items" id="ch-items"></div>
+        </aside>
+        <div class="ch-chat" id="ch-chat" hidden>
+          <header class="ch-cab">
+            <button type="button" class="ch-volver" id="ch-volver" aria-label="Volver a la lista de chats">‹</button>
+            <div class="ch-quien"><b id="ch-nombre"></b><small id="ch-sub"></small></div>
+            <button type="button" class="btn-chico" id="ch-ver-tarjetas">📋 Tarjetas</button>
+            <button type="button" class="btn-chico" id="ch-ver-notas">📝 Notas</button>
+          </header>
+          <div class="ch-panel" id="ch-panel" hidden></div>
+          <div class="ch-notas" id="ch-notas-p" hidden>
+            <textarea id="ch-notas" rows="3" placeholder="Notas de este chat (las ven todos los administradores)"></textarea>
+            <button type="button" class="btn2" id="ch-notas-ok">Guardar la nota</button>
+          </div>
+          <div class="ch-msjs" id="ch-msjs" aria-live="polite"></div>
+          <div class="ch-cita" id="ch-cita" hidden>
+            <div><b id="ch-cita-quien"></b><span id="ch-cita-texto"></span></div>
+            <button type="button" id="ch-cita-x" aria-label="No citar">✕</button>
+          </div>
+          <div class="ch-escribir">
+            <button type="button" class="ch-ic" id="ch-predis" aria-label="Mensajes prediseñados" title="Mensajes prediseñados">📋</button>
+            <button type="button" class="ch-ic" id="ch-adjuntar" aria-label="Mandar una foto o un PDF" title="Foto o PDF">📎</button>
+            <input type="file" id="ch-archivo" accept="image/*,application/pdf" hidden>
+            <textarea id="ch-texto" rows="1" placeholder="Escribí un mensaje"></textarea>
+            <button type="button" class="ch-mandar" id="ch-mandar" aria-label="Mandar">➤</button>
+          </div>
+        </div>
+        <div class="ch-vacio" id="ch-vacio">💬 Elegí un chat de la lista</div>
+      </div>
     </section>
 
     <section id="s-tareas" class="pantalla-tablero" hidden>
@@ -264,6 +311,10 @@
         <div class="campo"><label for="aj-msj-conf">Confirmación al ganador</label><textarea id="aj-msj-conf" rows="4"></textarea></div>
         <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>
           <small class="nota">Le llega el WhatsApp de "📨 Mandar a aprobar" (en Decisión) y aprueba desde la tarjeta.</small></div>
+        <div class="campo"><label>Mensajes prediseñados del chat</label>
+          <div id="aj-predis"></div>
+          <button type="button" class="btn-chico" id="aj-predis-mas">＋ Agregar un mensaje</button>
+          <small class="nota">En el chat, el botón 📋 los pega en el cuadro de texto (ej.: "Esta es nuestra dirección: …"). Se guardan con el botón Guardar de abajo.</small></div>
         <div class="campo"><label for="aj-msj-recep">¿Recibiste este pedido?</label><textarea id="aj-msj-recep" rows="5"></textarea>
           <small class="nota">Le llega a quien retiró el pedido al pasarlo a Entregado. {nombre}: su nombre. {titulo}: el título. {productos}: un renglón por producto. Abajo va siempre el link para confirmar.</small></div>
         <div class="campo"><label for="aj-msj-recep2">Recordatorio de "¿Recibiste este pedido?"</label><textarea id="aj-msj-recep2" rows="4"></textarea>
@@ -395,6 +446,11 @@
             <div class="act-h"><h3>Recepción</h3></div>
             <div id="tj-recep"></div>
           </div>
+          <!-- Fase 4, Paso 2: en una ✋ manual, los proveedores con los que se está hablando (chats.js) -->
+          <div class="bloque" id="tj-hablando-b" hidden>
+            <div class="act-h"><h3>Proveedores con los que se está hablando</h3><button type="button" class="btn-chico" id="tj-hablando-sumar">＋ Sumar proveedor</button></div>
+            <div id="tj-hablando"></div>
+          </div>
           <!-- Fase 3: a quién se le pidió cotización (cotizar.js) -->
           <div class="bloque" id="tj-cot-b" hidden>
             <div class="act-h"><h3>Cotizaciones</h3><button type="button" class="btn-chico si" id="tj-cotizar" hidden>📤 Pedir cotización</button></div>
@@ -462,6 +518,7 @@
 <script src="js/tablero.js"></script>
 <script src="js/cotizar.js"></script>
 <script src="js/recepcion.js"></script>
+<script src="js/chats.js"></script>
 <script src="js/tareas.js"></script>
 <script src="js/servicios.js"></script>
 <script src="js/notificaciones.js"></script>

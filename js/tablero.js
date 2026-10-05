@@ -1074,6 +1074,7 @@ function pintarTarjeta() {
   pintarCotizaciones();                                                    // cotizar.js
   pintarAprobacion();                                                      // Paso 6 (cotizar.js)
   pintarRecepcion();                                                       // Fase 4, Paso 1-bis (recepcion.js)
+  pintarHablando();                                                        // Fase 4, Paso 2 (chats.js)
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {

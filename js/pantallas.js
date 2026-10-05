@@ -50,6 +50,7 @@ function pintarBarra() {
   document.querySelector('nav.tabs').hidden = sinCompras();
   $('t-admin').hidden = !APP.yo.admin;
   $('t-tareas').hidden = !APP.yo.admin;             // el tablero de tareas es solo de los admins
+  $('t-chats').hidden = !APP.yo.admin;              // Fase 4, Paso 2: los chats, solo los admins
   $('b-notif').hidden = sinCompras();               // Paso 2-ter: las notificaciones (notificaciones.js)
 }
 

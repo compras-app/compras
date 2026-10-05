@@ -338,6 +338,7 @@ function pintarAjustes() {
     $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';
     $('aj-msj-conf').value = a.cotizar.msjConfirmar || '';
     $('aj-msj-recep').value = a.cotizar.msjRecepcion || '';                 // Fase 4, Paso 1-bis
+    pintarPredisenados(a.cotizar.predisenados || []);                       // Fase 4, Paso 2
     $('aj-msj-recep2').value = a.cotizar.msjRecepcionRecordatorio || '';
     const ps = a.cotizar.personas || [];
     if (a.cotizar.aprobador && ps.indexOf(a.cotizar.aprobador) === -1) ps.unshift(a.cotizar.aprobador);
@@ -405,13 +406,33 @@ async function sacarGranja(nombre) {
   if (si) granjaOp({ accion: 'sacar', nombre: nombre }, function () { return 'Listo: se sacó ' + nombre + '.'; });
 }
 
+/* Fase 4, Paso 2: los mensajes prediseñados del chat (uno por cuadro; se guardan con el Guardar de "Pedir cotización") */
+function pintarPredisenados(l) {
+  $('aj-predis').innerHTML = '';
+  l.forEach(function (t) { sumarPredisenado(t); });
+}
+function sumarPredisenado(t) {
+  const fila = document.createElement('div');
+  fila.className = 'aj-predis-f';
+  fila.innerHTML = '<textarea rows="2"></textarea><button type="button" class="btn-chico" aria-label="Sacar este mensaje">Sacar</button>';
+  fila.querySelector('textarea').value = t || '';
+  fila.querySelector('button').addEventListener('click', function () { fila.remove(); });
+  $('aj-predis').appendChild(fila);
+  return fila;
+}
+function leerPredisenados() {
+  return Array.prototype.map.call($('aj-predis').querySelectorAll('textarea'), function (x) { return x.value.trim(); }).filter(String);
+}
+$('aj-predis-mas').addEventListener('click', function () { sumarPredisenado('').querySelector('textarea').focus(); });
+
 /** Un texto de Ajustes, o undefined si el servidor publicado todavía no lo tiene (así no se borra nada). */
 function a_siHay(id) { return AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.msjRecepcion !== undefined ? $(id).value : undefined; }
 $('aj-cot-ok').addEventListener('click', async function () {
   const r = await api('guardarAjustesCotizar', {
     numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
     msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined,
-    msjRecepcion: a_siHay('aj-msj-recep'), msjRecepcionRecordatorio: a_siHay('aj-msj-recep2')
+    msjRecepcion: a_siHay('aj-msj-recep'), msjRecepcionRecordatorio: a_siHay('aj-msj-recep2'),
+    predisenados: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.predisenados !== undefined ? leerPredisenados() : undefined
   });
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   AD.ajustes.cotizar = r.cotizar;
