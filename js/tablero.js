@@ -919,6 +919,7 @@ async function traerTarjeta(ref) {
     const antes = TB.detalle;
     TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
                    trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {}, solicitudes: r.solicitudes || [],
+                   presupuestos: r.presupuestos || [],
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -1075,6 +1076,7 @@ function pintarTarjeta() {
   pintarAprobacion();                                                      // Paso 6 (cotizar.js)
   pintarRecepcion();                                                       // Fase 4, Paso 1-bis (recepcion.js)
   pintarHablando();                                                        // Fase 4, Paso 2 (chats.js)
+  pintarPresupuestos();                                                    // Fase 4, Paso 3 (presupuestos.js)
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {

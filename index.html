@@ -201,7 +201,13 @@
             <div><b id="ch-cita-quien"></b><span id="ch-cita-texto"></span></div>
             <button type="button" id="ch-cita-x" aria-label="No citar">✕</button>
           </div>
-          <div class="ch-escribir">
+          <!-- Fase 4, Paso 3: "Seleccionar varios" para cargar un presupuesto escrito en varios mensajes (presupuestos.js) -->
+          <div class="ch-selbar" id="ch-selbar" hidden>
+            <span id="ch-sel-n">Tocá los mensajes del presupuesto</span>
+            <button type="button" class="btn-chico si" id="ch-sel-cargar">📥 Cargar en una tarjeta</button>
+            <button type="button" class="btn-chico" id="ch-sel-x">Cancelar</button>
+          </div>
+          <div class="ch-escribir" id="ch-escribir">
             <button type="button" class="ch-ic" id="ch-predis" aria-label="Mensajes prediseñados" title="Mensajes prediseñados">📋</button>
             <button type="button" class="ch-ic" id="ch-adjuntar" aria-label="Mandar una foto o un PDF" title="Foto o PDF">📎</button>
             <input type="file" id="ch-archivo" accept="image/*,application/pdf" hidden>
@@ -456,6 +462,11 @@
             <div class="act-h"><h3>Cotizaciones</h3><button type="button" class="btn-chico si" id="tj-cotizar" hidden>📤 Pedir cotización</button></div>
             <div id="tj-cot"></div>
           </div>
+          <!-- Fase 4, Paso 3: los presupuestos cargados desde el chat (presupuestos.js) -->
+          <div class="bloque" id="tj-presup-b" hidden>
+            <div class="act-h"><h3>Presupuestos</h3></div>
+            <div id="tj-presup"></div>
+          </div>
           <div class="bloque">
             <div class="act-h"><h3 id="tj-adj-t">Adjuntos</h3><button type="button" class="btn-chico" id="tj-adjuntar-b">📎 Adjuntar foto o PDF</button></div>
             <input type="file" id="tj-adjuntar" accept="image/*,application/pdf" multiple style="display:none">
@@ -519,6 +530,7 @@
 <script src="js/cotizar.js"></script>
 <script src="js/recepcion.js"></script>
 <script src="js/chats.js"></script>
+<script src="js/presupuestos.js"></script>
 <script src="js/tareas.js"></script>
 <script src="js/servicios.js"></script>
 <script src="js/notificaciones.js"></script>

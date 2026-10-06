@@ -88,7 +88,7 @@ function mostrarPanelChat(si) {
 }
 
 async function abrirChat(chat) {
-  if (CH.abierto !== chat) { CH.cita = null; CH.datos = null; $('ch-texto').value = ''; $('ch-panel').hidden = true; $('ch-notas-p').hidden = true; }
+  if (CH.abierto !== chat) { CH.cita = null; CH.datos = null; PR.sel = null; $('ch-texto').value = ''; $('ch-panel').hidden = true; $('ch-notas-p').hidden = true; }
   CH.abierto = chat;
   mostrarPanelChat(true);
   const guardadoChat = guardado.leerJSON(K_CHAT + chat, null);
@@ -315,7 +315,7 @@ function htmlBurbuja(m, grupo) {
     (!m.esperando ? '<button type="button" class="ch-menu" data-menu="' + esc(m.id) + '" aria-label="Opciones del mensaje">⌄</button>' : '') +
     (grupo && !m.sale && m.quien ? '<div class="ch-de">' + esc(m.quien) + '</div>' : '') +
     (m.sale && m.desde === 'app' ? '<div class="ch-de">' + (m.quien ? esc(m.quien) + ' · d' : 'D') + 'esde la app</div>' : '') +
-    cita + cuerpo +
+    cita + cuerpo + htmlCargado(m) +
     '<div class="ch-pie">' + (m.editado ? 'Editado · ' : '') + esc(horaMinutos(new Date(m.fecha))) +
     (m.esperando ? ' ⏳' : m.sale ? ' <span class="ch-tick' + (m.estado === 'read' || m.estado === 'played' ? ' leido' : '') + '">' + (TICKS[m.estado] || '') + '</span>' : '') + '</div>' +
     '</div>' + (reac.length ? '<div class="ch-reac">' + esc(reac.join(' ')) + '</div>' : '') + '</div>';
@@ -354,17 +354,27 @@ function pintarChat(alFondo) {
     r.addEventListener('change', function () { delete r.dataset.moviendo; moverAudio(id, Number(r.value)); });
   });
   caja.querySelectorAll('[data-menu]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); menuMensaje(b.dataset.menu); }); });
+  // Paso 3: "📥 Cargado en C-0007" abre la tarjeta; con "Seleccionar varios", tocar un mensaje lo marca (presupuestos.js)
+  caja.querySelectorAll('[data-abrir-tarjeta]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); if (!PR.sel) abrirTarjeta(b.dataset.abrirTarjeta); }); });
+  caja.querySelectorAll('.ch-fila').forEach(function (f) {
+    f.addEventListener('click', function (e) {
+      if (!PR.sel || e.target.closest('a, .ch-audio')) return;
+      e.preventDefault(); e.stopPropagation();
+      tocarSeleccion(f.dataset.id);
+    }, true);
+  });
   // En el celular: mantener apretado un mensaje abre el mismo menú
   caja.querySelectorAll('.ch-bur').forEach(function (el) {
     let t = null;
     el.addEventListener('touchstart', function (e) {
-      if (e.target.closest('.ch-audio')) return;   // apretar el audio no abre el menú
+      if (e.target.closest('.ch-audio') || PR.sel) return;   // apretar el audio no abre el menú; eligiendo mensajes, tampoco
       const id = el.parentNode.dataset.id; t = setTimeout(function () { t = null; menuMensaje(id); }, 550);
     }, { passive: true });
     ['touchend', 'touchmove', 'touchcancel'].forEach(function (ev) { el.addEventListener(ev, function () { if (t) { clearTimeout(t); t = null; } }, { passive: true }); });
   });
   if (alFondo || cerca) caja.scrollTop = caja.scrollHeight;
   pintarCita();
+  pintarSeleccion();
 }
 
 function mensajeDelChat(id) {
@@ -375,7 +385,13 @@ function mensajeDelChat(id) {
 async function menuMensaje(id) {
   const m = mensajeDelChat(id);
   if (!m) return;
-  const que = await elegir('Mensaje', '', [{ opciones: [{ texto: '↩️ Responder (citando este mensaje)', valor: 'responder' }, { texto: '📋 Copiar el texto', valor: 'copiar' }] }]);
+  if (PR.sel) return tocarSeleccion(id);
+  const ops = [{ texto: '↩️ Responder (citando este mensaje)', valor: 'responder' }, { texto: '📋 Copiar el texto', valor: 'copiar' }];
+  // Paso 3: el presupuesto se carga desde acá, en la compu y en el celular (Feli)
+  if (sePuedeCargar(m)) ops.push({ texto: '📥 Cargar en una tarjeta', valor: 'cargar' }, { texto: '☑️ Seleccionar varios (un presupuesto en varios mensajes)', valor: 'varios' });
+  const que = await elegir('Mensaje', '', [{ opciones: ops }]);
+  if (que === 'cargar') return cargarEnTarjeta([m.id]);
+  if (que === 'varios') return empezarSeleccion(m.id);
   if (que === 'responder') {
     CH.cita = { id: m.id, quien: m.sale ? 'Nosotros' : (m.quien || $('ch-nombre').textContent), texto: resumenChat(m) };
     pintarCita();
