@@ -146,7 +146,7 @@ async function cargarEnTarjeta(ids) {
   if (eleccion.refs.indexOf(TB.abierta) !== -1) traerTarjeta(TB.abierta);
   if (l.ok && l.presupuesto && l.presupuesto.estado) {
     aviso(l.presupuesto.estado === 'Revisar' ? 'El presupuesto de ' + nombre + ' quedó en la tarjeta para revisar: hay cosas que no dan.'
-                                              : 'El presupuesto de ' + nombre + ' está en la tarjeta, para confirmar.');
+                                              : 'El presupuesto de ' + nombre + ' está en la tarjeta: las cuentas dan.');
   } else if (l.ok && l.leyendo) aviso('Se está leyendo: en un rato aparece en la tarjeta.');
   else aviso(l.sinConexion ? '📶 Poca señal: se termina de leer solo y aparece en la tarjeta.' : l.error, l.sinConexion ? '' : 'bad');
 }
@@ -173,6 +173,12 @@ function cantTexto(n) { return n === null || n === undefined ? '' : Number(n).to
 function capital(t) { t = String(t || '').toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); }
 
 const PR_ICONO = { 'Leyendo': '⏳', 'No se pudo leer': '⚠️', 'Revisar': '⚠️', 'Para confirmar': '🔎', 'Confirmado': '✅' };
+/** Paso 5 (Feli, 2026-10-06): "Confirmar" pasó a ser "Revisado". Por dentro los estados siguen igual. */
+const PR_NOMBRE = { 'Revisar': 'Para revisar', 'Para confirmar': 'Sin revisar', 'Confirmado': 'Revisado' };
+function nombreEstado(e) { return PR_NOMBRE[e] || e; }
+function htmlEstado(e) {
+  return '<span class="pr-estado e-' + esc(e.replace(/\s+/g, '-').toLowerCase()) + '">' + (PR_ICONO[e] || '') + ' ' + esc(nombreEstado(e)) + '</span>';
+}
 
 /** "5/10 14:32" */
 function fechaHoraCorta(iso) {
@@ -264,7 +270,8 @@ function htmlCuerpoPresupuesto(b) {
   }
   if (b.renglones.length || b.productos.length) {
     h += '<div class="pr-prods">' + b.productos.map(function (p) {
-      return '<div class="pr-prod"><div class="pr-pedido">' + esc(p.cantidad) + ' · ' + esc(p.nombre) + '</div>' +
+      return '<div class="pr-prod"><div class="pr-pedido">' + esc(p.cantidad) + ' · ' + esc(p.nombre) +
+        (p.comprado ? ' <span class="pr-comprado' + (p.comprado.aEste ? ' aca' : '') + '">🛒 Comprado en ' + esc(p.comprado.proveedor) + '</span>' : '') + '</div>' +
         p.renglones.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda, b.id, editable) : ''; }).join('') +
         (p.avisos.length ? '<div class="pr-aviso">' + p.avisos.map(esc).join(' · ') + '</div>' : '') + '</div>';
     }).join('') + '</div>';
@@ -312,10 +319,10 @@ function htmlCuerpoPresupuesto(b) {
       return '<div class="pr-msj"><span>' + esc(m.texto || 'Mensaje') + '</span>' +
         (m.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(m.archivo) + '">Ver el original</button>' : '') + '</div>';
     }).join('') + '<button type="button" class="btn-chico" data-pr-chat="' + esc(b.chat) + '">💬 Ir al chat</button></div>';
-  if (b.confirmo) h += '<div class="pr-nota">Confirmado por ' + esc(b.confirmo) + ' el ' + esc(fechaCorta(b.fechaConfirmacion)) + '.</div>';
+  if (b.confirmo) h += '<div class="pr-nota">Revisado por ' + esc(b.confirmo) + ' el ' + esc(fechaCorta(b.fechaConfirmacion)) + '.</div>';
   // Lo que se puede hacer, según el estado
   const bs = [];
-  if (est === 'Revisar' || est === 'Para confirmar') bs.push(['corregir', '✏️ Corregir'], ['confirmar', '✅ Confirmar']);
+  if (est === 'Revisar' || est === 'Para confirmar') bs.push(['corregir', '✏️ Corregir'], ['confirmar', '✅ Revisado']);
   if (est === 'No se pudo leer') bs.push(['corregir', '✏️ Cargarlo a mano']);
   if (est === 'Confirmado') bs.push(['reabrir', '↩️ Volver a revisar']);
   if (est !== 'Confirmado') bs.push(['leer', est === 'Leyendo' ? 'Leer ahora' : '🔄 Volver a leer'], ['quitar', 'Quitar']);
@@ -349,12 +356,12 @@ function htmlPresupuesto(partes) {
     paraEste = 'las ' + partes.length + ' partes juntas';
   }
   const cabeza = '<summary><b>' + esc(b.nombre) + '</b>' + (partes.length > 1 ? ' <span class="pr-parte">' + partes.length + ' partes</span>' : '') +
-    ' <span class="pr-estado e-' + esc(est.replace(/\s+/g, '-').toLowerCase()) + '">' + (PR_ICONO[est] || '') + ' ' + esc(est) + '</span>' +
+    ' ' + htmlEstado(est) +
     (total ? ' <span class="pr-total">' + total + (paraEste ? '<small class="pr-total-este">' + paraEste + '</small>' : '') + '</span>' : '') + '</summary>';
   const h = partes.map(function (x, i) {
     if (partes.length === 1) return htmlCuerpoPresupuesto(x);
     return '<div class="pr-parte-b"><div class="pr-parte-t">' + esc(nombreParte(i + 1)) + ' · ' + esc(fechaCorta(x.fecha)) +
-      ' <span class="pr-estado e-' + esc(x.estado.replace(/\s+/g, '-').toLowerCase()) + '">' + (PR_ICONO[x.estado] || '') + ' ' + esc(x.estado) + '</span>' +
+      ' ' + htmlEstado(x.estado) +
       (x.resumen ? ' <span class="pr-total">' + htmlResumenTotal(x.resumen, x.moneda) + '</span>' : '') + '</div>' + htmlCuerpoPresupuesto(x) + '</div>';
   }).join('');
   return '<details class="pr-uno" data-pr-uno="' + esc(b.id) + '"' + (PR.abiertos[b.id] ? ' open' : '') + '>' + cabeza + '<div class="pr-cuerpo">' + h + '</div></details>';
@@ -378,10 +385,14 @@ function pintarPresupuestos() {
   b.hidden = !APP.yo.admin || TB.tipo === 'tarea' || !d || !d.pedido || (!l.length && !(d.solicitudes || []).length);
   if (b.hidden) return;
   const leidos = l.filter(function (x) { return ['Revisar', 'Para confirmar', 'Confirmado'].indexOf(x.estado) !== -1; });
-  $('tj-presup').innerHTML = (leidos.length ? '<button type="button" class="btn-chico pr-cuadro-b" id="pr-cuadro">📊 Armar cuadro comparativo</button>' : '') +
+  const cot = columnasTb().filter(function (c) { return c.seccion === 'Cotización'; }).map(function (c) { return c.columna; });
+  const comprar = leidos.length && cot.indexOf(d.pedido.columna) !== -1;     // Paso 5: se compra desde Cotización
+  $('tj-presup').innerHTML = (leidos.length ? '<div class="pr-arriba"><button type="button" class="btn-chico pr-cuadro-b" id="pr-cuadro">📊 Armar cuadro comparativo</button>' +
+      (comprar ? '<button type="button" class="btn-chico si pr-cuadro-b" id="pr-comprar">🛒 Realizar la compra</button>' : '') + '</div>' : '') +
     (l.length ? presupuestosEnPartes(l).map(htmlPresupuesto).join('')
       : '<p class="nota" style="margin:0">Cuando llegue un presupuesto, cargalo desde el chat: en el menú del mensaje, "📥 Cargar en una tarjeta".</p>');
   if ($('pr-cuadro')) $('pr-cuadro').addEventListener('click', function () { abrirCuadro(TB.abierta); });
+  if ($('pr-comprar')) $('pr-comprar').addEventListener('click', function () { abrirCuadro(TB.abierta, 'comprar'); });
   $('tj-presup').querySelectorAll('[data-pr-repartir]').forEach(function (x) { x.addEventListener('click', function () { repartirUI(x.dataset.id, Number(x.dataset.prRepartir)); }); });
   $('tj-presup').querySelectorAll('[data-pr-uno]').forEach(function (x) {
     x.addEventListener('toggle', function () { if (x.open) PR.abiertos[x.dataset.prUno] = true; else delete PR.abiertos[x.dataset.prUno]; });
@@ -411,8 +422,8 @@ async function accionPresupuesto(que, id) {
   if (que === 'confirmar') {
     let aunAsi = false;
     if (b.estado === 'Revisar') {
-      const si = await dialogo({ titulo: 'Las cuentas no dan', texto: 'Este presupuesto tiene cosas para revisar. ¿Lo confirmás igual?',
-                                 botones: [{ texto: 'Volver', valor: false }, { texto: 'Confirmar igual', clase: 'btn', valor: true }] });
+      const si = await dialogo({ titulo: 'Las cuentas no dan', texto: 'Este presupuesto tiene cosas para revisar. ¿Lo marcás como revisado igual?',
+                                 botones: [{ texto: 'Volver', valor: false }, { texto: 'Revisado igual', clase: 'btn', valor: true }] });
       if (!si) return;
       aunAsi = true;
     }
@@ -457,7 +468,7 @@ async function renglonEstaBien(idPresup, idRenglon) {
                                                                         precio: r.precio, importe: r.importe, contenido: r.contenido }] });
   if (!res.ok) return aviso(res.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : res.error, 'bad');
   ponerPresupuesto(res.presupuesto);
-  aviso(res.presupuesto.estado === 'Revisar' ? 'Listo. Todavía queda algo para revisar.' : 'Listo: ahora está para confirmar.');
+  aviso(res.presupuesto.estado === 'Revisar' ? 'Listo. Todavía queda algo para revisar.' : 'Listo: ya no tiene nada para revisar.');
 }
 
 /** Repartir un renglón que vino sumando lo de dos pedidos: cuánto va a cada uno (en la unidad del proveedor). */
@@ -561,4 +572,78 @@ async function corregirPresupuestoUI(b) {
   if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para guardar. Probá cuando vuelva.' : r.error, 'bad');
   ponerPresupuesto(r.presupuesto);
   aviso(r.presupuesto.estado === 'Revisar' ? 'Guardado. Todavía hay cosas que no dan: mirá "Para revisar".' : 'Guardado: las cuentas dan.');
+}
+
+/* ---------- Paso 5: la compra, en su tarjeta de seguimiento ---------- */
+
+/** El bloque "🛒 Compra" de una tarjeta de seguimiento que salió de "Realizar la compra". */
+function pintarCompra() {
+  const b = $('tj-compra-b');
+  if (!b) return;
+  const d = TB.detalle, c = d && d.compra;
+  b.hidden = !c || TB.tipo === 'tarea';
+  if (b.hidden) return;
+  if (!APP.yo.admin) { $('tj-compra').innerHTML = '<p class="nota" style="margin:0">Comprado en ' + esc(c.proveedor) + '.</p>'; return; }
+  const cond = [['Entrega', c.condiciones.entrega], ['Flete', c.condiciones.flete], ['Forma de pago', c.condiciones.formaPago], ['Plazo de entrega', c.condiciones.plazo], ['Validez', c.condiciones.validez]]
+    .filter(function (x) { return x[1]; });
+  const m = c.mensaje;
+  $('tj-compra').innerHTML = '<p class="pr-nota" style="margin-top:0">Comprado a <b>' + esc(c.proveedor) + '</b> por ' + esc(c.quien) + ' el ' + esc(fechaCorta(c.fecha)) +
+      ', desde <button type="button" class="enlace" data-abrir-ref="' + esc(c.desde) + '">' + esc(c.codigo) + '</button>.</p>' +
+    c.productos.map(function (p) {
+      return '<div class="pr-prod"><div class="pr-pedido">' + esc(p.cantidad) + ' · ' + esc(p.nombre) + '</div>' +
+        p.renglones.map(function (r) { return '<div class="pr-ren">' + esc(textoRenglon(r, r.moneda)) + '</div>'; }).join('') + '</div>';
+    }).join('') +
+    (c.total !== null ? '<div class="pr-totales"><div><span>Total (sin IVA)</span><b>' + esc(plata(c.total, c.moneda)) + '</b></div></div>' : '') +
+    (cond.length ? '<div class="pr-cond">' + cond.map(function (x) { return '<div><span>' + x[0] + ':</span> ' + esc(x[1]) + '</div>'; }).join('') + '</div>' : '') +
+    '<div class="pr-msjs">' + (m ? (m.enviado ? '<div class="pr-nota">✅ La confirmación le llegó por WhatsApp.</div>'
+                                                : '<div class="pr-problema">El mensaje de confirmación no salió: mandalo desde el chat.</div>') : '') +
+    (c.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(c.archivo) + '">Ver el presupuesto</button> ' : '') +
+    (c.chat ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') + '</div>';
+  $('tj-compra').querySelectorAll('[data-abrir-ref]').forEach(function (x) { x.addEventListener('click', function () { irPorAccesoDirecto(x.dataset.abrirRef); }); });
+  $('tj-compra').querySelectorAll('[data-pr-chat]').forEach(function (x) { x.addEventListener('click', function () { irAlChat(x.dataset.prChat); }); });
+  $('tj-compra').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
+}
+
+/**
+ * Cancelar una tarjeta de seguimiento de una compra: se anula la compra (los productos vuelven a Decisión).
+ * Va directo (con señal), y después ofrece avisarle al proveedor con un mensaje propuesto.
+ */
+async function anularCompraUI(ref, t) {
+  const c = TB.detalle.compra;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<label for="dg-motivo">¿Por qué se cancela?</label><textarea id="dg-motivo" placeholder="Ej: no tenía stock, se consiguió más barato…"></textarea>';
+  const motivo = await dialogo({
+    titulo: '¿Cancelar esta compra?',
+    texto: 'Se anula la compra a ' + c.proveedor + ': sus productos vuelven a ' + c.codigo + ', en Decisión, para elegir de nuevo. No se borra nada.',
+    cuerpo: cuerpo,
+    botones: [{ texto: 'Sí, cancelar la compra', clase: 'btn peligro-btn', id: 'dg-ok', valor: function () { return $('dg-motivo').value.trim(); } },
+              { texto: 'No, volver', valor: null }],
+    alAbrir: function () {
+      const ok = $('dg-ok'), m = $('dg-motivo');
+      const revisar = function () { ok.disabled = m.value.trim().length < 3; };
+      m.addEventListener('input', revisar);
+      revisar();
+      m.focus();
+    }
+  });
+  if (!motivo) return;
+  aviso('Cancelando la compra…');
+  const r = await api('cancelarPedido', ref, motivo, t.columna);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para cancelar una compra. Probá cuando vuelva.' : r.error, 'bad');
+  cerrarTarjeta();
+  cargarTablero();
+  aviso('Compra cancelada: los productos volvieron a ' + c.codigo + '.');
+  const a = r.aviso;
+  if (!a || !a.chat) return;
+  await new Promise(function (ok) { setTimeout(ok, 500); });     // que termine de cerrarse la tarjeta (el "atrás" cierra los diálogos)
+  const cuerpo2 = document.createElement('div');
+  cuerpo2.className = 'cuerpo';
+  const propuesto = 'Hola' + (a.contacto ? ' ' + a.contacto : '') + ', cancelamos la compra de:\n' + a.productos.map(function (x) { return '- ' + x; }).join('\n') + '\n\n¡Gracias por entender!';
+  cuerpo2.innerHTML = '<textarea id="dg-aviso" rows="7">' + esc(propuesto) + '</textarea>';
+  const texto = await dialogo({ titulo: '¿Le querés avisar a ' + a.proveedor + ' que no se lo vas a comprar?', cuerpo: cuerpo2,
+    botones: [{ texto: 'No avisar', valor: null }, { texto: 'Mandar el mensaje', clase: 'btn', valor: function () { return $('dg-aviso').value.trim(); } }] });
+  if (!texto) return;
+  const m = await api('mandarMensaje', { id: 'H' + nuevoId(), chat: a.chat, texto: texto });
+  aviso(m.ok ? 'Listo: se le avisó a ' + a.proveedor + '.' : (m.sinConexion ? '📶 Poca señal: no salió. Mandalo desde el chat.' : m.error), m.ok ? '' : 'bad');
 }

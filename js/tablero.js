@@ -919,7 +919,7 @@ async function traerTarjeta(ref) {
     const antes = TB.detalle;
     TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
                    trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {}, solicitudes: r.solicitudes || [],
-                   presupuestos: r.presupuestos || [],
+                   presupuestos: r.presupuestos || [], compra: r.compra || null,          // Fase 4, Pasos 3 y 5
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -1077,6 +1077,7 @@ function pintarTarjeta() {
   pintarRecepcion();                                                       // Fase 4, Paso 1-bis (recepcion.js)
   pintarHablando();                                                        // Fase 4, Paso 2 (chats.js)
   pintarPresupuestos();                                                    // Fase 4, Paso 3 (presupuestos.js)
+  pintarCompra();                                                         // Fase 4, Paso 5 (presupuestos.js)
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {
@@ -1157,6 +1158,11 @@ function htmlPorRubro(lineas, admin, mio, tarjetas) {
   const deTarjeta = {};
   tarjetas.forEach(function (w) { deTarjeta[w.id] = w; });
   const conTarjeta = function (l) {
+    // Fase 4, Paso 5: "Comprado en {proveedor} · En seguimiento de entrega" (abre su tarjeta de seguimiento)
+    if (l.compra && l.compra.tarjeta !== TB.abierta) {
+      return htmlProducto(l, admin, mio, '<button type="button" class="en-tarjeta comprado" data-abrir-ref="' + esc(l.compra.tarjeta) + '">🛒 Comprado en ' +
+        esc(l.compra.proveedor + ' · ' + l.compra.estado) + ' ›</button>');
+    }
     const w = l.tarjeta && deTarjeta[l.tarjeta];
     return htmlProducto(l, admin, mio, w ? '<button type="button" class="en-tarjeta" data-abrir-ref="' + esc(w.id) + '">📋 ' +
       esc(w.nombre + ' · ' + w.estado) + ' ›</button>' : '');
@@ -1273,6 +1279,7 @@ $('tj-manual').addEventListener('click', async function () {
 $('tj-cancelar').addEventListener('click', async function () {
   const ref = TB.abierta, t = buscarEnVista(ref);
   if (!t) return;
+  if (TB.detalle && TB.detalle.compra && esTrabajo(ref)) return anularCompraUI(ref, t);     // Fase 4, Paso 5 (presupuestos.js)
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = '<label for="dg-motivo">¿Por qué se cancela?</label><textarea id="dg-motivo" placeholder="Ej: ya no hace falta, se consiguió por otro lado…"></textarea>';

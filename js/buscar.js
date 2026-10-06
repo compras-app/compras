@@ -19,6 +19,7 @@
 const BU = {
   estado: 'todos',
   tipo: '',           // Paso 2-ter: '' (todo), 'pedidos' o 'servicios'
+  compra: '',         // Fase 4, Paso 5: '' (todos), 'si' (le compramos al proveedor buscado) o 'no'
   sitio: '',
   periodo: '',
   resultados: [],
@@ -47,6 +48,8 @@ function pintarFiltrosBuscar() {
     b.setAttribute('aria-pressed', String(b.dataset.estado === BU.estado));
   });
   document.querySelectorAll('#bu-tipo [data-tipo]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.tipo === BU.tipo)); });
+  document.querySelectorAll('#bu-compra [data-compra]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.compra === BU.compra)); });
+  $('bu-compra').hidden = !APP.yo.admin;
   $('bu-mios').setAttribute('aria-pressed', String(!!TB.filtros.mios));
   $('bu-todos').setAttribute('aria-pressed', String(!TB.filtros.mios));
   $('bu-sitio').value = BU.sitio;
@@ -54,7 +57,8 @@ function pintarFiltrosBuscar() {
 }
 
 function filtrosBuscar(desde) {
-  return { q: $('bu-q').value.trim(), estado: BU.estado, tipo: BU.tipo, mios: !!TB.filtros.mios, sitio: BU.sitio, periodo: BU.periodo, desde: desde || 0 };
+  return { q: $('bu-q').value.trim(), estado: BU.estado, tipo: BU.tipo, mios: !!TB.filtros.mios, sitio: BU.sitio, periodo: BU.periodo, desde: desde || 0,
+           compra: BU.compra };
 }
 
 /** Busca de nuevo (mas = "Ver más": suma los siguientes). */
@@ -172,6 +176,14 @@ document.querySelectorAll('#s-buscar [data-estado]').forEach(function (b) {
 // El mismo "Mis pedidos" del tablero
 document.querySelectorAll('#bu-tipo [data-tipo]').forEach(function (b) {
   b.addEventListener('click', function () { BU.tipo = b.dataset.tipo; pintarFiltrosBuscar(); buscarPedidos(); });
+});
+document.querySelectorAll('#bu-compra [data-compra]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    BU.compra = b.dataset.compra;
+    pintarFiltrosBuscar();
+    if (BU.compra && !$('bu-q').value.trim()) return aviso('Escribí el nombre del proveedor en el buscador.');
+    buscarPedidos();
+  });
 });
 $('bu-mios').addEventListener('click', function () { TB.filtros.mios = true; pintarFiltros(); pintarFiltrosBuscar(); buscarPedidos(); });
 $('bu-todos').addEventListener('click', function () { TB.filtros.mios = false; pintarFiltros(); pintarFiltrosBuscar(); buscarPedidos(); });

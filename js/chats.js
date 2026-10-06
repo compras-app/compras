@@ -503,11 +503,20 @@ function pintarPanelChat() {
   const l = d.tarjetas || [];
   p.innerHTML = (l.length ? l.map(function (t) {
     return '<button type="button" class="ch-tj" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
-      esc([t.codigo, t.manual ? '✋ Gestión manual' : '', t.columna, t.proveedor ? 'pedido a ' + t.proveedor : ''].filter(String).join(' · ')) + '</small></button>';
+      esc([t.codigo, t.manual ? '✋ Gestión manual' : '', t.columna, t.proveedor ? 'pedido a ' + t.proveedor : ''].filter(String).join(' · ')) + '</small>' +
+      htmlComprasEnChat(t.compras) + '</button>';
   }).join('') : '<p class="nota" style="margin:0">Este chat no tiene tarjetas abiertas.</p>') +
     '<button type="button" class="btn-chico" id="ch-sumar-manual">✋ Ver tarjetas de gestión manual</button>';
   p.querySelectorAll('.ch-tj').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
   $('ch-sumar-manual').addEventListener('click', sumarAManual);
+}
+
+/** Fase 4, Paso 5 (Feli, 2026-10-06): en la tarjeta, qué se le compró a este proveedor y qué a otro. Es un aviso, no un mensaje. */
+function htmlComprasEnChat(c) {
+  if (!c) return '';
+  return (c.aOtros || []).map(function (x) {
+    return '<small class="ch-compra otro">Estos productos se compraron en ' + esc(x.proveedor) + ': ' + esc(x.productos.join(', ')) + '</small>';
+  }).join('') + (c.aEste && c.aEste.length ? '<small class="ch-compra">🛒 Le compramos: ' + esc(c.aEste.map(function (x) { return x.producto; }).join(', ')) + '</small>' : '');
 }
 
 /** Desde el chat: sumarlo a una tarjeta ✋ manual ("Proveedores con los que se está hablando"). */

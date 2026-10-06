@@ -606,7 +606,9 @@ function pintarPadron() {
         '<b>' + esc(f.familia) + (f.activa ? '' : ' <small>(desactivado)</small>') + '</b><small class="sub">' + esc(donde) + '</small>' +
         (f.variantes.length ? '<small class="sub">Variantes: ' + esc(f.variantes.join(', ')) + '</small>' : '') +
         '<small class="sub">' + (f.ultimo ? 'Último pedido: ' + esc(fecha(f.ultimo.fecha)) + ' · ' + esc(f.ultimo.sitio) + (f.veces > 1 ? ' (' + f.veces + ' veces)' : '') : 'Todavía no se pidió en la app') +
-        (f.cotizado ? ' · Cotización: ' + esc(f.cotizado.proveedores.join(', ')) : '') + '</small></button>';
+        (f.cotizado ? ' · Cotización: ' + esc(f.cotizado.proveedores.join(', ')) : '') + '</small>' +
+        (f.comprado ? '<small class="sub">🛒 Comprado en ' + esc(f.comprado.proveedor) + ' el ' + esc(fecha(f.comprado.fecha)) +
+          (f.comprado.precio !== null ? ' a ' + esc(plata(f.comprado.precio, f.comprado.moneda)) + (f.comprado.unidad ? ' (' + esc(f.comprado.unidad) + ')' : '') : '') + '</small>' : '') + '</button>';
     }).join('');
   $('pa-mas').hidden = l.length <= PA.mostrar;
   $('pa-lista').querySelectorAll('[data-fam]').forEach(function (b) { b.addEventListener('click', function () { editarFamiliaUI(b.dataset.fam); }); });
@@ -641,7 +643,9 @@ async function editarFamiliaUI(nombre) {
     '<div class="fila2"><input type="text" id="pf-var" maxlength="120" autocomplete="off" placeholder="Ej: guante de nitrilo"><button type="button" class="btn2" id="pf-var-ok" style="width:auto">Agregar</button></div></div>' +
     (f ? (f.ultimo ? '<p class="nota">Último pedido: ' + esc(new Date(f.ultimo.fecha).toLocaleDateString('es-AR')) + ' · ' + esc(f.ultimo.sitio) + ' (' + esc(f.ultimo.ref) + ')</p>' : '') +
          (f.cotizado ? '<p class="nota">Última cotización pedida a: ' + esc(f.cotizado.proveedores.join(', ')) + '</p>' : '') +
-         '<p class="nota">Dónde se compró llega con la Fase 4.</p>' : '');
+         (f.comprado ? '<p class="nota">Dónde se compró la última vez: ' + esc(f.comprado.proveedor) + ', el ' + esc(new Date(f.comprado.fecha).toLocaleDateString('es-AR')) +
+           (f.comprado.precio !== null ? ', a ' + esc(plata(f.comprado.precio, f.comprado.moneda)) + (f.comprado.unidad ? ' (' + esc(f.comprado.unidad) + ')' : '') : '') + ' (' + esc(f.comprado.ref) + ')</p>'
+           : '<p class="nota">Todavía no se compró en la app.</p>') : '');
   const variantes = f ? f.variantes.slice() : [];
   const pintarVars = function () {
     const el = $('pf-vars');
