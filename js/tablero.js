@@ -1658,7 +1658,7 @@ function htmlProducto(l, admin, mio, extra) {
   if (l.descripcion) sub.push(esc(l.descripcion));
   const fotos = (l.fotos || []).map(function (u) {
     const id = idDrive(u);
-    return id ? '<a href="https://drive.google.com/file/d/' + esc(id) + '/view" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
+    return id ? '<a href="#" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
                 '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w200" alt="Foto" loading="lazy"></a>' : '';
   }).join('');
   const fuera = l.familiaEnPadron === undefined ? !l.enPadron : !l.familiaEnPadron;
@@ -2216,7 +2216,7 @@ function pintarAdjuntos() {
       const a = lista.filter(function (x) { return x.id === el.dataset.adj; })[0];
       if (!a) return;                                    // todavía se está subiendo
       if (a.tipo === 'foto') verFoto(a.idDrive);
-      else window.open('https://drive.google.com/file/d/' + encodeURIComponent(a.idDrive) + '/view', '_blank');
+      else verArchivo(a.idDrive);                         // el PDF, adentro de la app (Feli: nunca ir a Drive)
     });
   });
   cont.querySelectorAll('[data-quitar]').forEach(function (b) {
@@ -2304,7 +2304,88 @@ function verFoto(id) {
   img.src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w1600';
   $('visor').hidden = false;
 }
-function cerrarFoto() { $('visor').hidden = true; $('visor-img').removeAttribute('src'); }
+function cerrarFoto() {
+  $('visor').hidden = true;
+  $('visor-img').removeAttribute('src');
+  $('visor-doc').hidden = true;
+  $('visor-doc').innerHTML = '';                       // un video que suena se corta
+  VISOR.abierto = '';
+}
+
+/* ---------- Ver un archivo adentro de la app (Feli, 2026-10-05: nunca ir a Drive) ----------
+   El servidor lo manda (verArchivo: solo si se puede ver) y acá se muestra: el PDF página por página con
+   pdf.js (cdnjs, se baja la primera vez), una foto o un video. Lo traído queda en memoria mientras la app está abierta. */
+const VISOR = { cache: {}, abierto: '' };
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+
+function cargarPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve();
+  return new Promise(function (listo, mal) {
+    const sc = document.createElement('script');
+    sc.src = PDFJS + 'pdf.min.js';
+    sc.onload = function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js'; listo(); };
+    sc.onerror = function () { mal(new Error('Hace falta señal para abrir el PDF.')); };
+    document.head.appendChild(sc);
+  });
+}
+
+async function verArchivo(idDrive) {
+  if (!idDrive) return;
+  VISOR.abierto = idDrive;
+  $('visor-img').hidden = true;
+  $('visor-doc').hidden = true;
+  $('visor-doc').innerHTML = '';
+  $('visor-carga').hidden = false;
+  $('visor-carga').textContent = 'Abriendo…';
+  $('visor').hidden = false;
+  let a = VISOR.cache[idDrive];
+  if (!a) {
+    const r = await apiLenta('verArchivo', idDrive);
+    if (VISOR.abierto !== idDrive) return;
+    if (!r.ok) { $('visor-carga').textContent = r.sinConexion ? '📶 Hace falta señal para abrirlo.' : r.error; return; }
+    const bin = atob(r.datos), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    a = { nombre: r.nombre, mime: r.mime || '', bytes: bytes };
+    VISOR.cache[idDrive] = a;
+  }
+  try {
+    const mime = a.mime.toLowerCase();
+    if (/^image\//.test(mime)) {
+      const img = $('visor-img');
+      img.onload = function () { $('visor-carga').hidden = true; img.hidden = false; };
+      img.src = URL.createObjectURL(new Blob([a.bytes], { type: mime }));
+    } else if (/^video\//.test(mime)) {
+      $('visor-doc').innerHTML = '<video controls playsinline autoplay src="' + URL.createObjectURL(new Blob([a.bytes], { type: mime })) + '"></video>';
+      $('visor-carga').hidden = true;
+      $('visor-doc').hidden = false;
+    } else if (/pdf/.test(mime) || /\.pdf$/i.test(a.nombre)) {
+      $('visor-carga').textContent = 'Abriendo el PDF…';
+      await cargarPdfJs();
+      const pdf = await window.pdfjsLib.getDocument({ data: a.bytes.slice() }).promise;
+      if (VISOR.abierto !== idDrive) return;
+      const doc = $('visor-doc');
+      doc.innerHTML = '<p class="visor-titulo">' + esc(a.nombre || 'PDF') + ' · ' + pdf.numPages + ' página' + (pdf.numPages === 1 ? '' : 's') + '</p>';
+      doc.hidden = false;
+      $('visor-carga').hidden = true;
+      const ancho = Math.min(doc.clientWidth - 16, 1000), escala = window.devicePixelRatio || 1;
+      for (let n = 1; n <= pdf.numPages; n++) {
+        if (VISOR.abierto !== idDrive) return;
+        const pag = await pdf.getPage(n);
+        const v0 = pag.getViewport({ scale: 1 }), v = pag.getViewport({ scale: ancho / v0.width * escala });
+        const c = document.createElement('canvas');
+        c.width = v.width; c.height = v.height;
+        c.style.width = (v.width / escala) + 'px';
+        doc.appendChild(c);
+        await pag.render({ canvasContext: c.getContext('2d'), viewport: v }).promise;
+      }
+    } else {
+      $('visor-carga').textContent = 'Este archivo no se puede ver en la app.';
+    }
+  } catch (e) {
+    $('visor-carga').hidden = false;
+    $('visor-carga').textContent = e && e.message ? e.message : 'No se pudo abrir.';
+  }
+}
 $('visor-cerrar').addEventListener('click', cerrarFoto);
-$('visor').addEventListener('click', function (e) { if (e.target === this || e.target.id === 'visor-img') cerrarFoto(); });
+$('visor').addEventListener('click', function (e) { if (e.target === this || (e.target.id === 'visor-img' && $('visor-doc').hidden)) cerrarFoto(); });
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('visor').hidden) { e.stopImmediatePropagation(); cerrarFoto(); } }, true);

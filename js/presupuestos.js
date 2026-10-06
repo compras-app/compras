@@ -9,19 +9,6 @@
 
 const PR = { sel: null };       // "Seleccionar varios": los IDs de los mensajes marcados (null: no se está eligiendo)
 
-/** Como api(), con más tiempo: leer un presupuesto grande tarda hasta un minuto (las demás llamadas cortan a los 25 s). */
-async function apiLenta(fn) {
-  const args = [APP.token].concat(Array.prototype.slice.call(arguments, 1));
-  try {
-    const r = await llamar(fn, args, null, { limiteMs: 150000 });
-    if (r && r.sinSesion) sesionPerdida(r.error);
-    return r;
-  } catch (e) {
-    return e.servidor ? { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' }
-                      : { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
-  }
-}
-
 /* ---------- En el chat ---------- */
 
 /** ¿Se puede cargar este mensaje como presupuesto? (un PDF, una foto o un texto) */
@@ -143,12 +130,14 @@ function capital(t) { t = String(t || '').toLowerCase(); return t.charAt(0).toUp
 const PR_ICONO = { 'Leyendo': '⏳', 'No se pudo leer': '⚠️', 'Revisar': '⚠️', 'Para confirmar': '🔎', 'Confirmado': '✅' };
 
 /** Un renglón cotizado, como lo pidió Feli: unidades, el producto tal cual, precio unitario y total; abajo, en gris, los avisos. */
-function htmlRenglonPresup(r, moneda) {
-  return '<div class="pr-ren"><span>' + esc([cantTexto(r.cant), r.unidad].filter(String).join(' ')) + '</span> · ' + esc(capital(r.texto)) +
+function htmlRenglonPresup(r, moneda, idPresup, editable) {
+  return '<div class="pr-ren' + (r.problema ? ' pr-mal' : '') + '">' + (r.problema ? '⚠️ ' : '') +
+    '<span>' + esc([cantTexto(r.cant), r.unidad].filter(String).join(' ')) + '</span> · ' + esc(capital(r.texto)) +
     (r.precio !== null ? ' · ' + esc(plata(r.precio, r.moneda || moneda)) : '') + (r.importe !== null ? ' · <b>' + esc(plata(r.importe, r.moneda || moneda)) + '</b>' : '') +
     (r.contenido && r.contenido !== 1 ? ' <small>(1 ' + esc(r.unidad || 'unidad') + ' = ' + esc(cantTexto(r.contenido)) + ')</small>' : '') +
-    (r.acomodado ? '<div class="pr-aviso">' + esc(r.acomodado) + '</div>' : '') +
-    (r.corrigio ? '<div class="pr-nota">Corregido a mano por ' + esc(r.corrigio) + '</div>' : '') + '</div>';
+    (r.problema ? '<div class="pr-problema">' + esc(r.problema) +
+      (editable && r.revisable ? ' <button type="button" class="btn-chico" data-pr-bien="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">✓ Está bien</button>' : '') + '</div>' : '') +
+    (r.corrigio ? '<div class="pr-nota">' + (r.acomodado ? 'Revisado' : 'Corregido a mano') + ' por ' + esc(r.corrigio) + '</div>' : '') + '</div>';
 }
 
 function htmlPresupuesto(b) {
@@ -159,14 +148,18 @@ function htmlPresupuesto(b) {
     (b.total !== null ? ' <span class="pr-total">' + esc(plata(b.total, b.moneda)) + '</span>' : '') + '</summary>';
   let h = '';
   if (est === 'Leyendo') h += '<p class="nota">La IA lo está leyendo. Tarda hasta un minuto; si se cortó, lo termina el reloj solo.</p>';
-  if (b.problemas.length && est !== 'Confirmado') h += '<div class="pr-problemas"><b>Para revisar:</b><ul>' + b.problemas.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('') + '</ul></div>';
+  const editable = est === 'Revisar' || est === 'Para confirmar';
+  if (b.problemas.length && est !== 'Confirmado') {
+    h += '<div class="pr-problemas"><b>Para revisar:</b><ul>' + b.problemas.map(function (p) { return '<li>' + esc(p) + '</li>'; }).join('') + '</ul>' +
+      (b.renglones.some(function (r) { return r.problema; }) ? '<div class="pr-nota">Los renglones a revisar están marcados con ⚠️ más abajo.</div>' : '') + '</div>';
+  }
   if (b.renglones.length || b.productos.length) {
     h += '<div class="pr-prods">' + b.productos.map(function (p) {
       return '<div class="pr-prod"><div class="pr-pedido">' + esc(p.cantidad) + ' · ' + esc(p.nombre) + '</div>' +
-        p.renglones.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda) : ''; }).join('') +
+        p.renglones.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda, b.id, editable) : ''; }).join('') +
         (p.avisos.length ? '<div class="pr-aviso">' + p.avisos.map(esc).join(' · ') + '</div>' : '') + '</div>';
     }).join('') + '</div>';
-    if (b.noPedido.length) h += '<div class="pr-prod"><div class="pr-pedido">No pedido</div>' + b.noPedido.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda) : ''; }).join('') + '</div>';
+    if (b.noPedido.length) h += '<div class="pr-prod"><div class="pr-pedido">No pedido</div>' + b.noPedido.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda, b.id, editable) : ''; }).join('') + '</div>';
   }
   const iva = b.conIva === 'si' ? '(precios con IVA)' : b.conIva === 'no' ? '(precios sin IVA)' : '(sin dato de IVA)';
   const tot = [['Subtotal', b.subtotal], ['Descuento', b.descuento], ['IVA', b.iva], ['Otros impuestos', b.otros || null], ['Flete y otros cargos', b.cargos || null], ['Total', b.total]]
@@ -180,7 +173,7 @@ function htmlPresupuesto(b) {
   h += '<div class="pr-msjs"><div class="pr-nota">Cargado por ' + esc(b.cargo) + ' el ' + esc(fechaCorta(b.fecha)) + ', desde estos mensajes:</div>' +
     b.mensajes.map(function (m) {
       return '<div class="pr-msj"><span>' + esc(m.texto || 'Mensaje') + '</span>' +
-        (m.archivo ? '<a class="btn-chico" href="https://drive.google.com/file/d/' + esc(m.archivo) + '/view" target="_blank" rel="noopener">Ver el original</a>' : '') + '</div>';
+        (m.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(m.archivo) + '">Ver el original</button>' : '') + '</div>';
     }).join('') + '<button type="button" class="btn-chico" data-pr-chat="' + esc(b.chat) + '">💬 Ir al chat</button></div>';
   if (b.confirmo) h += '<div class="pr-nota">Confirmado por ' + esc(b.confirmo) + ' el ' + esc(fechaCorta(b.fechaConfirmacion)) + '.</div>';
   // Lo que se puede hacer, según el estado
@@ -204,7 +197,9 @@ function pintarPresupuestos() {
   $('tj-presup').innerHTML = l.length ? l.map(htmlPresupuesto).join('')
     : '<p class="nota" style="margin:0">Cuando llegue un presupuesto, cargalo desde el chat: en el menú del mensaje, "📥 Cargar en una tarjeta".</p>';
   $('tj-presup').querySelectorAll('[data-pr-chat]').forEach(function (x) { x.addEventListener('click', function () { irAlChat(x.dataset.prChat); }); });
+  $('tj-presup').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
   $('tj-presup').querySelectorAll('[data-pr]').forEach(function (x) { x.addEventListener('click', function () { accionPresupuesto(x.dataset.pr, x.dataset.id); }); });
+  $('tj-presup').querySelectorAll('[data-pr-bien]').forEach(function (x) { x.addEventListener('click', function () { renglonEstaBien(x.dataset.id, x.dataset.prBien); }); });
 }
 
 function presupuestoAbierto(id) { return ((TB.detalle && TB.detalle.presupuestos) || []).filter(function (b) { return b.id === id; })[0]; }
@@ -261,6 +256,18 @@ async function accionPresupuesto(que, id) {
   if (!r) return;
   if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
   ponerPresupuesto(r.presupuesto);
+}
+
+/** "✓ Está bien": el código acomodó las columnas y la persona miró el original. Queda quién lo revisó. */
+async function renglonEstaBien(idPresup, idRenglon) {
+  const b = presupuestoAbierto(idPresup);
+  const r = b && b.renglones.filter(function (x) { return x.id === idRenglon; })[0];
+  if (!r) return;
+  const res = await api('corregirPresupuesto', idPresup, { renglones: [{ id: r.id, linea: r.linea, texto: r.texto, cant: r.cant, unidad: r.unidad,
+                                                                        precio: r.precio, importe: r.importe, contenido: r.contenido }] });
+  if (!res.ok) return aviso(res.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : res.error, 'bad');
+  ponerPresupuesto(res.presupuesto);
+  aviso(res.presupuesto.estado === 'Revisar' ? 'Listo. Todavía queda algo para revisar.' : 'Listo: ahora está para confirmar.');
 }
 
 /* ---------- Corregir a mano ---------- */

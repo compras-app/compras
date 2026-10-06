@@ -145,8 +145,7 @@ function htmlArchivo(m) {
       '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w480" alt="📷 Foto · abrir" loading="lazy"></button>';
   }
   if (m.tipo === 'audioMessage') return htmlAudio(m.id);
-  return '<a class="ch-arch" href="https://drive.google.com/file/d/' + esc(id) + '/view" target="_blank" rel="noopener">' + esc(etiqueta) +
-    ' <small>· abrir</small></a>';
+  return '<button type="button" class="ch-arch" data-ver-archivo="' + esc(id) + '">' + esc(etiqueta) + ' <small>· abrir</small></button>';
 }
 
 /* ---------- Audios: se escuchan adentro del chat (Feli, 2026-10-05) ----------
@@ -346,6 +345,7 @@ function pintarChat(alFondo) {
   if (!ms.length) html += '<p class="nota" style="padding:12px;text-align:center">Todavía no hay mensajes en este chat.</p>';
   caja.innerHTML = html;
   caja.querySelectorAll('[data-foto]').forEach(function (b) { b.addEventListener('click', function () { verFoto(b.dataset.foto); }); });
+  caja.querySelectorAll('[data-ver-archivo]').forEach(function (b) { b.addEventListener('click', function () { if (!PR.sel) verArchivo(b.dataset.verArchivo); }); });
   caja.querySelectorAll('[data-audio-play]').forEach(function (b) { b.addEventListener('click', function () { tocarAudio(b.dataset.audioPlay); }); });
   caja.querySelectorAll('[data-audio-vel]').forEach(function (b) { b.addEventListener('click', cambiarVelocidad); });
   caja.querySelectorAll('.ch-audio .ch-au-r').forEach(function (r) {

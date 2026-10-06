@@ -755,3 +755,12 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .pr-ed-q input{width:auto!important}
 .pr-ed-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px}
 .pr-editar>label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
+/* El visor también muestra PDF (página por página) y videos, adentro de la app (Feli, 2026-10-05) */
+.visor-doc{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:calc(52px + env(safe-area-inset-top)) 8px 24px;text-align:center}
+.visor-doc canvas{display:block;margin:0 auto 10px;max-width:100%;background:#fff;border-radius:4px}
+.visor-doc video{max-width:100%;max-height:calc(100vh - 80px);margin-top:20px}
+.visor-titulo{color:#ddd;font-size:13px;margin:0 0 10px}
+.visor-cerrar{z-index:2}
+.pr-ren.pr-mal{border-left:3px solid var(--warn);padding-left:8px;margin-left:2px}
+.pr-problema{font-size:12px;color:var(--warn);margin-top:3px}
+.pr-problema .btn-chico{margin-left:6px}

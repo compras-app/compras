@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'b1c99fce0a';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '96de168da0';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -128,6 +128,19 @@ async function llamarUnaVez(fn, args, id, limite) {
     guardado.guardarJSON(K.error, { cuando: new Date().toISOString(), fn: fn,
                                     detalle: e.message + ' · ' + texto.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) });
     const x = new Error('respuesta rara del servidor: ' + e.message); x.servidor = true; throw x;
+  }
+}
+
+/** Como api(), con más tiempo (leer un presupuesto, traer un archivo grande): las demás llamadas cortan a los 25 s. */
+async function apiLenta(fn) {
+  const args = [APP.token].concat(Array.prototype.slice.call(arguments, 1));
+  try {
+    const r = await llamar(fn, args, null, { limiteMs: 150000 });
+    if (r && r.sinSesion) sesionPerdida(r.error);
+    return r;
+  } catch (e) {
+    return e.servidor ? { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' }
+                      : { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
   }
 }
 
