@@ -344,6 +344,12 @@ function pintarAjustes() {
     if (a.cotizar.aprobador && ps.indexOf(a.cotizar.aprobador) === -1) ps.unshift(a.cotizar.aprobador);
     $('aj-aprobador').innerHTML = ps.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
     $('aj-aprobador').value = a.cotizar.aprobador || '';
+    // Quiénes ven los chats (Feli, 2026-10-06)
+    const ven = a.cotizar.chatsVen || [], ads = (a.cotizar.admins || []).slice();
+    ven.forEach(function (n) { if (ads.indexOf(n) === -1) ads.push(n); });
+    $('aj-chats-ven').innerHTML = a.cotizar.admins ? ads.map(function (n) {
+      return '<label class="pa-check"><input type="checkbox" value="' + esc(n) + '"' + (ven.indexOf(n) !== -1 ? ' checked' : '') + '> ' + esc(n) + '</label>';
+    }).join('') : '';
   }
 }
 
@@ -432,6 +438,7 @@ $('aj-cot-ok').addEventListener('click', async function () {
     numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
     msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined,
     msjRecepcion: a_siHay('aj-msj-recep'), msjRecepcionRecordatorio: a_siHay('aj-msj-recep2'),
+    chatsVen: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.admins ? Array.prototype.map.call(document.querySelectorAll('#aj-chats-ven input:checked'), function (x) { return x.value; }) : undefined,
     predisenados: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.predisenados !== undefined ? leerPredisenados() : undefined
   });
   if (!r.ok) return aviso(textoDeError(r), 'bad');

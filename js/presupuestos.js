@@ -318,7 +318,7 @@ function htmlCuerpoPresupuesto(b) {
     b.mensajes.map(function (m) {
       return '<div class="pr-msj"><span>' + esc(m.texto || 'Mensaje') + '</span>' +
         (m.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(m.archivo) + '">Ver el original</button>' : '') + '</div>';
-    }).join('') + '<button type="button" class="btn-chico" data-pr-chat="' + esc(b.chat) + '">💬 Ir al chat</button></div>';
+    }).join('') + (veChats() ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(b.chat) + '">💬 Ir al chat</button>' : '') + '</div>';
   if (b.confirmo) h += '<div class="pr-nota">Revisado por ' + esc(b.confirmo) + ' el ' + esc(fechaCorta(b.fechaConfirmacion)) + '.</div>';
   // Lo que se puede hacer, según el estado
   const bs = [];
@@ -595,7 +595,7 @@ function pintarCompra() {
     '<div class="pr-msjs">' + (c.manual ? '<div class="pr-nota">✅ Confirmada a mano por el chat (la app no le mandó mensaje).</div>' : '') + (m ? (m.enviado ? '<div class="pr-nota">✅ La confirmación le llegó por WhatsApp.</div>'
                                                 : '<div class="pr-problema">El mensaje de confirmación no salió: mandalo desde el chat.</div>') : '') +
     (c.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(c.archivo) + '">Ver el presupuesto</button> ' : '') +
-    (c.chat ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') +
+    (c.chat && veChats() ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') +
     // Feli (2026-10-06): a la vista, para anularla (es lo mismo que cancelar la tarjeta)
     (columnasFinales().indexOf(d.pedido.columna) === -1 ? ' <button type="button" class="btn-chico" id="tj-anular">Anular la compra</button>' : '') + '</div>';
   $('tj-compra').querySelectorAll('[data-abrir-ref]').forEach(function (x) { x.addEventListener('click', function () { irPorAccesoDirecto(x.dataset.abrirRef); }); });

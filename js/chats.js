@@ -55,13 +55,16 @@ function pintarListaChats() {
   if (!CH.lista) { cont.innerHTML = '<p class="nota" style="padding:12px">Cargando los chats…</p>'; return; }
   const q = sinAcentos(CH.q);
   const l = CH.lista.filter(function (c) {
-    if (CH.filtro === 'activos' && !c.pedidos) return false;
+    // Feli, 2026-10-06: cotizando (alguna tarjeta en Cotización) / en seguimiento (algo comprado en Entregas). Un servidor viejo no los manda: las tarjetas abiertas
+    if (CH.filtro === 'cotizando' && !(c.cotizando !== undefined ? c.cotizando : c.pedidos)) return false;
+    if (CH.filtro === 'seguimiento' && !c.seguimiento) return false;
     if (CH.filtro === 'noleidos' && !c.noLeidos) return false;
     return !q || sinAcentos(c.nombre + ' ' + c.proveedor + ' ' + c.chat).indexOf(q) !== -1;
   });
   if (!l.length) {
     cont.innerHTML = '<p class="nota" style="padding:12px">' + (q ? 'No hay chats con "' + esc(CH.q) + '".' :
-      CH.filtro === 'activos' ? 'Ningún chat tiene cotizaciones activas.' : CH.filtro === 'noleidos' ? 'No hay chats sin leer.' : 'Todavía no hay chats.') + '</p>';
+      CH.filtro === 'cotizando' ? 'Ningún chat tiene tarjetas cotizando.' : CH.filtro === 'seguimiento' ? 'Ningún chat tiene compras en seguimiento de entrega.' :
+      CH.filtro === 'noleidos' ? 'No hay chats sin leer.' : 'Todavía no hay chats.') + '</p>';
     return;
   }
   cont.innerHTML = l.slice(0, CH_MAX_LISTA).map(function (c) {
@@ -69,7 +72,8 @@ function pintarListaChats() {
       '<span class="ch-av" aria-hidden="true">' + (c.grupo ? '👥' : esc(inicial(c.nombre) || '#')) + '</span>' +
       '<span class="ch-it"><span class="ch-l1"><b>' + esc(c.nombre) + '</b><small>' + esc(horaChat(c.ultimo)) + '</small></span>' +
       '<span class="ch-l2"><span class="ch-ul">' + (c.proveedor && c.proveedor !== c.nombre ? '🏪 ' + esc(c.proveedor) + ' · ' : '') + esc(c.texto || '') + '</span>' +
-      (c.pedidos ? '<span class="ch-ped" title="Tarjetas abiertas">📋 ' + c.pedidos + '</span>' : '') +
+      (c.cotizando || (c.cotizando === undefined && c.pedidos) ? '<span class="ch-ped" title="Tarjetas cotizando">📋 ' + (c.cotizando || c.pedidos) + '</span>' : '') +
+      (c.seguimiento ? '<span class="ch-ped" title="Compras en seguimiento de entrega">📦 ' + c.seguimiento + '</span>' : '') +
       (c.noLeidos ? '<span class="ch-n">' + c.noLeidos + '</span>' : '') + '</span></span></button>';
   }).join('') + (l.length > CH_MAX_LISTA ? '<p class="nota" style="padding:8px 12px">Se ven los ' + CH_MAX_LISTA + ' más recientes de ' + l.length + ': buscá por nombre para encontrar otro.</p>' : '');
   cont.querySelectorAll('.ch-item').forEach(function (b) { b.addEventListener('click', function () { abrirChat(b.dataset.chat); }); });
@@ -326,7 +330,7 @@ function pintarChat(alFondo) {
   const info = (d && d.chat) || (CH.lista || []).filter(function (c) { return c.chat === chat; })[0] || { nombre: chat };
   $('ch-nombre').textContent = info.nombre || chat;
   $('ch-sub').textContent = info.proveedor ? '🏪 ' + info.proveedor : (info.grupo || /@g\.us$/.test(chat) ? 'Grupo' : '+' + chat.replace(/@.*/, ''));
-  const tarjetas = (d && d.tarjetas) || [];
+  const tarjetas = ((d && d.tarjetas) || []).concat((d && d.seguimiento) || []);   // también lo comprado, en seguimiento
   $('ch-ver-tarjetas').textContent = '📋 Tarjetas' + (tarjetas.length ? ' (' + tarjetas.length + ')' : '');
   pintarPanelChat();
   if (d && document.activeElement !== $('ch-notas')) $('ch-notas').value = (d.chat && d.chat.notas) || '';
@@ -508,7 +512,12 @@ function pintarPanelChat() {
       htmlComprasEnChat(t.compras) +
       // Paso 5 (Feli, 2026-10-06): si se le confirmó por el chat, sin el cuadro (chiquito, adentro de la tarjeta)
       (cot.indexOf(t.columna) !== -1 ? '<button type="button" class="ch-compra-b" data-compra-manual="' + esc(t.ref) + '">✅ Compra confirmada manualmente</button>' : '') + '</div>';
-  }).join('') : '<p class="nota" style="margin:0">Este chat no tiene tarjetas abiertas.</p>') +
+  }).join('') : (d.seguimiento || []).length ? '' : '<p class="nota" style="margin:0">Este chat no tiene tarjetas abiertas.</p>') +
+    // Feli, 2026-10-06: lo que se le compró y está en seguimiento de entrega
+    (d.seguimiento || []).map(function (t) {
+      return '<div class="ch-tj seg" role="button" tabindex="0" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
+        esc(['📦 En seguimiento de entrega', t.columna, t.proveedor ? 'comprado en ' + t.proveedor : ''].filter(String).join(' · ')) + '</small></div>';
+    }).join('') +
     '<button type="button" class="btn-chico" id="ch-sumar-manual">✋ Ver tarjetas de gestión manual</button>';
   p.querySelectorAll('.ch-tj').forEach(function (b) {
     b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); });
@@ -560,7 +569,7 @@ function pintarHablando() {
   const b = $('tj-hablando-b');
   if (!b) return;
   const d = TB.detalle, p = d && d.pedido;
-  b.hidden = !APP.yo.admin || TB.tipo === 'tarea' || !p || !p.manual || esTrabajo(TB.abierta);
+  b.hidden = !veChats() || TB.tipo === 'tarea' || !p || !p.manual || esTrabajo(TB.abierta);
   if (b.hidden) return;
   const l = p.chats || [];
   $('tj-hablando').innerHTML = l.length ? l.map(function (c) {

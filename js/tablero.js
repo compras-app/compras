@@ -416,6 +416,7 @@ function pintarProcesando() {
 /* Sin franjas roja ni verde (Feli, 2026-10-04: ensucian la vista): la urgencia es solo el globito de color. */
 function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+    (t.nuevo ? '<div class="nuevo-t">Nuevo</div>' : '') +                       // Feli (2026-10-06): nunca lo abriste
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
     (t.manual ? '<div class="sobre">✋ Gestión manual</div>' : '') +                                          // Paso 5
     (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6
@@ -883,11 +884,23 @@ function guardarDetalle(ref, d) {
   guardado.guardarJSON(K_TARJETAS, todos);
 }
 
+/** "Nuevo" (Feli, 2026-10-06): al abrirla deja de serlo enseguida (el servidor lo anota con getTarjeta). */
+function sacarNuevo(ref) {
+  [TB.datos, typeof SV !== 'undefined' ? SV.datos : null].forEach(function (d) {
+    const t = d && d.tarjetas && d.tarjetas.filter(function (x) { return x.ref === ref && x.nuevo; })[0];
+    if (!t) return;
+    t.nuevo = false;
+    const el = document.querySelector('.tarjeta[data-ref="' + CSS.escape(ref) + '"] .nuevo-t');
+    if (el) el.remove();
+  });
+}
+
 async function abrirTarjeta(ref, sinHistoria) {
   if (!ref) return;
   TB.tipo = /^K/.test(ref) ? 'tarea' : 'pedido';     // las tareas (Paso 4-ter) usan la misma ventana
   if (TB.tipo === 'tarea' && !(APP.yo && APP.yo.admin)) return;
   TB.abierta = ref;
+  sacarNuevo(ref);
   const g = detallesGuardados()[ref];
   TB.detalle = g ? g.d : null;
   TB.sinDetalle = '';
@@ -1648,8 +1661,8 @@ const IA_DESCARTADAS = {};
 function htmlIA(l, admin, activo) {
   const ia = l.ia;
   if (!admin || !ia || !activo || l.familia || l.nuevo || IA_DESCARTADAS[l.id]) return '';
-  const txt = ia.tipo === 'padron' ? '🤖 Es <b>' + esc(ia.nombre) + '</b> del padrón' + (ia.especificacion ? ' · ' + esc(ia.especificacion) : '')
-    : '🤖 Producto nuevo: <b>' + esc(ia.nombre) + '</b>' + (ia.especificacion ? ' · ' + esc(ia.especificacion) : '') + (ia.rubro ? ' · Rubro: ' + esc(ia.rubro) : '');
+  if (ia.tipo !== 'padron') return '';     // Feli, 2026-10-06: la IA ya no propone productos nuevos
+  const txt = '🤖 Este producto es <b>' + esc(ia.nombre) + '</b> del padrón' + (ia.especificacion ? ' · ' + esc(ia.especificacion) : '');
   return '<div class="ia-prop"><div>' + txt + '</div><div class="cambio-b">' +
     '<button type="button" class="btn-chico si" data-ia="aprobar" data-id="' + esc(l.id) + '">Aprobar</button>' +
     '<button type="button" class="btn-chico" data-ia="descartar" data-id="' + esc(l.id) + '">Descartar</button></div></div>';

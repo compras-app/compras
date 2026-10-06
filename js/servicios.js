@@ -91,6 +91,7 @@ const CTX_SERVICIOS = { tb: function () { return $('servicios-tablero'); }, move
 
 function htmlServicio(t) {
   return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
+    (t.nuevo ? '<div class="nuevo-t">Nuevo</div>' : '') +                       // Feli (2026-10-06): nunca lo abriste
     '<div class="sobre">🔧 Servicio</div>' +
     (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +

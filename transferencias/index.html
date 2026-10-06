@@ -488,6 +488,22 @@
   #atablehost td.cant{padding:3px 4px}
   #atablehost td.cant input.ci{min-height:36px;font-size:15px;text-align:center;border:1px solid var(--line-strong);
                                border-radius:7px;background:var(--bg)}
+  /* Elegir del catálogo (Feli, 2026-10-06) */
+  .acat{margin-top:10px;border:1px solid var(--line);border-radius:7px;padding:8px 12px}
+  .acat details{border-bottom:1px solid var(--line)}
+  .acat details:last-child{border-bottom:0}
+  .acat summary{cursor:pointer;padding:9px 2px;font-size:14px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center}
+  .acat summary::-webkit-details-marker{display:none}
+  .acat summary::before{content:'▸';color:var(--ink-faint);width:12px}
+  .acat details[open] summary::before{content:'▾'}
+  .acat summary .n{margin-left:auto;color:var(--ink-faint);font-weight:400;font-size:12px}
+  .acat summary .n b{color:var(--accent)}
+  .acat label.ins{display:flex;align-items:center;gap:10px;padding:8px 4px 8px 20px;font-size:13.5px;cursor:pointer;border-top:1px solid var(--line)}
+  .acat label.ins:hover{background:var(--accent-soft)}
+  .acat label.ins input{width:20px;height:20px;flex:none;margin:0}
+  .acat label.ins .cod{color:var(--ink-faint);font-size:12px;margin-left:auto;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .acat .nada{padding:10px 2px;color:var(--ink-soft);font-size:13px}
+
   .quitar{
     appearance:none;border:0;background:none;color:var(--ink-faint);
     cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;
@@ -889,6 +905,18 @@
       <p class="nota">Elegí de la lista con <b>Enter</b> o un clic, y seguí escribiendo el próximo.
          Si ponés la cantidad al final (<code>draxxin 6</code>) entra ya con la cantidad.
          Para muchos de una vez: <button class="linkbtn" id="arapidaver">carga rápida</button></p>
+      <!-- Elegir del catálogo (Feli, 2026-10-06): tildar los insumos, por tipo, sin escribir -->
+      <div class="fila"><button class="btn" id="acatver" type="button">📋 Elegir del catálogo</button></div>
+      <div id="acat" class="acat" hidden>
+        <div class="fila">
+          <label class="field" style="flex:1">Filtrar
+            <input type="text" id="acatfiltro" placeholder="nombre, código o tipo" autocomplete="off" style="width:100%">
+          </label>
+        </div>
+        <p class="nota" style="margin:6px 0">Tildá los que querés pedir: van entrando abajo, en el pedido, y ahí les ponés la cantidad.</p>
+        <div id="acatlista"></div>
+        <div class="fila"><button class="btn" id="acatlisto" type="button">Listo</button><span class="aviso" id="acataviso"></span></div>
+      </div>
       <div id="arapida" style="display:none">
         <textarea class="pegar" id="arapidatxt" style="height:110px" spellcheck="false"
                   placeholder="Separados por coma o uno por renglón, con la cantidad al final:&#10;VET0015 6, caliercortin 10, nitrilo: 12"></textarea>
@@ -4509,6 +4537,7 @@
     });
     h.push('</tbody></table>');
     $('atablehost').innerHTML = h.join('');
+    if(!$('acat').hidden) pintarCatalogoElegir();   // los tildes del catálogo, al día (Feli, 2026-10-06)
 
     var cargados = ARMANDO.filter(function(i){ return numEscrito(i.unidad) > 0; }).length;
     $('aaviso').innerHTML = ARMANDO.length
@@ -4845,6 +4874,72 @@
       agregarInsumo(ops[Math.max(0, i)].getAttribute('data-cod'));
     }
   });
+  /* ---------- Elegir del catálogo (Feli, 2026-10-06) ----------
+     Además de escribir, los encargados pueden ir tildando insumos de la
+     lista, agrupados por tipo. Tildar lo suma al pedido (sin cantidad) y
+     destildar lo saca. El filtro abre los grupos que tienen algo. */
+  var CAT_ABIERTOS = {};        // los tipos desplegados
+  function tipoDe(i){ return (i.tipo || '').trim() || 'Otros'; }
+  function enPedido(cod){ return ARMANDO.some(function(i){ return clave(i.cod) === clave(cod); }); }
+  function pintarCatalogoElegir(){
+    var caja = $('acatlista');
+    if(!caja || $('acat').hidden) return;
+    if(!CATALOGO.length){ caja.innerHTML = '<div class="nada">Todavía no hay catálogo: lo publica compras.</div>'; return; }
+    var q = norm($('acatfiltro').value.trim()), grupos = {}, orden = [];
+    CATALOGO.forEach(function(i){
+      if(q && norm(i.nombre + ' ' + i.cod + ' ' + tipoDe(i)).indexOf(q) < 0) return;
+      var t = tipoDe(i);
+      if(!grupos[t]){ grupos[t] = []; orden.push(t); }
+      grupos[t].push(i);
+    });
+    orden.sort(function(a, b){ return a.localeCompare(b, 'es'); });
+    if(!orden.length){ caja.innerHTML = '<div class="nada">Ningún insumo con «' + esc($('acatfiltro').value.trim()) + '».</div>'; return; }
+    caja.innerHTML = orden.map(function(t){
+      var l = grupos[t].slice().sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es'); });
+      var elegidos = l.filter(function(i){ return enPedido(i.cod); }).length;
+      var abierto = q ? true : !!CAT_ABIERTOS[t];
+      return '<details data-tipo="' + esc(t) + '"' + (abierto ? ' open' : '') + '><summary>' + esc(t) +
+        '<span class="n">' + (elegidos ? '<b>' + elegidos + ' elegido' + (elegidos === 1 ? '' : 's') + '</b> · ' : '') + l.length + '</span></summary>' +
+        (abierto ? l.map(function(i){
+          return '<label class="ins"><input type="checkbox" data-cod="' + esc(i.cod) + '"' + (enPedido(i.cod) ? ' checked' : '') + '>' +
+                 '<span>' + esc(i.nombre) + (i.unidad ? ' <span style="color:var(--ink-faint)">(' + esc(i.unidad) + ')</span>' : '') + '</span>' +
+                 '<span class="cod">' + esc(i.cod) + '</span></label>';
+        }).join('') : '') + '</details>';
+    }).join('');
+  }
+  $('acatlista').addEventListener('toggle', function(e){
+    var d = e.target;
+    if(!d || d.tagName !== 'DETAILS' || $('acatfiltro').value.trim()) return;
+    var t = d.getAttribute('data-tipo');
+    if(!!CAT_ABIERTOS[t] === d.open) return;
+    CAT_ABIERTOS[t] = d.open;
+    pintarCatalogoElegir();
+  }, true);
+  $('acatlista').addEventListener('change', function(e){
+    var x = e.target;
+    if(!x || !x.getAttribute('data-cod')) return;
+    var cod = x.getAttribute('data-cod');
+    var ins = CATALOGO.filter(function(i){ return clave(i.cod) === clave(cod); })[0];
+    if(!ins) return;
+    if(x.checked){ if(!enPedido(cod)) ARMANDO.push(renglonDe(ins, '')); }
+    else ARMANDO = ARMANDO.filter(function(i){ return clave(i.cod) !== clave(cod); });
+    pintarArmado();
+    $('acataviso').textContent = ARMANDO.length ? ARMANDO.length + ' insumos en el pedido' : '';
+  });
+  $('acatfiltro').addEventListener('input', pintarCatalogoElegir);
+  $('acatver').addEventListener('click', function(){
+    var abrir = $('acat').hidden;
+    $('acat').hidden = !abrir;
+    this.textContent = abrir ? 'Cerrar el catálogo' : '📋 Elegir del catálogo';
+    if(abrir){ pintarCatalogoElegir(); }
+  });
+  $('acatlisto').addEventListener('click', function(){
+    $('acat').hidden = true;
+    $('acatver').textContent = '📋 Elegir del catálogo';
+    var t = $('atablewrap');
+    if(t && t.scrollIntoView) t.scrollIntoView({behavior:'smooth', block:'start'});
+  });
+
   $('arapidaver').addEventListener('click', function(){
     var caja = $('arapida'), abrir = caja.style.display === 'none';
     caja.style.display = abrir ? '' : 'none';

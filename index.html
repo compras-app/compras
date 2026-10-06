@@ -178,7 +178,8 @@
             <input type="search" id="ch-buscar" placeholder="Buscar un chat" aria-label="Buscar un chat" autocomplete="off">
             <div class="seg" role="group" aria-label="Qué chats ver" id="ch-filtros">
               <button type="button" data-f="todos" aria-pressed="true">Todos</button>
-              <button type="button" data-f="activos" aria-pressed="false">Con cotizaciones activas</button>
+              <button type="button" data-f="cotizando" aria-pressed="false">Cotizando</button>
+              <button type="button" data-f="seguimiento" aria-pressed="false">En seguimiento</button>
               <button type="button" data-f="noleidos" aria-pressed="false">Sin leer</button>
             </div>
           </div>
@@ -324,6 +325,8 @@
           <small class="nota">Le llega a cada proveedor al comprarle ("🛒 Realizar la compra"); antes de mandarlo se puede cambiar. {codigo}, {contacto} y {productos}: los productos como los escribió el proveedor, con las cantidades a comprar.</small></div>
         <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>
           <small class="nota">Le llega el WhatsApp de "📨 Mandar a aprobar" (en Decisión) y aprueba desde la tarjeta.</small></div>
+        <div class="campo"><label>Ven los chats</label><div id="aj-chats-ven" class="aj-chats-ven"></div>
+          <small class="nota">Los chats son los del WhatsApp conectado a la app. Solo los admins tildados ven la pestaña 💬 Chats y los botones "💬 Chat". Sin ninguno tildado, los ven todos los admins. Los presupuestos cargados y el cuadro los ven todos los admins.</small></div>
         <div class="campo"><label>Mensajes prediseñados del chat</label>
           <div id="aj-predis"></div>
           <button type="button" class="btn-chico" id="aj-predis-mas">＋ Agregar un mensaje</button>
