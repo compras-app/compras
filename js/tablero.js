@@ -16,7 +16,7 @@
      es lo último que mandó el servidor MÁS lo que está en la bandeja.
    - Tarjeta abierta (Paso 4): comentarios con @ (al mencionado le llega
      un WhatsApp) y, con "Ver detalles", la historia del pedido; tildar
-     productos (comprado) y, los admins, editarlos y editar el pedido.
+     productos (recibido) y, los admins, editarlos y editar el pedido.
    ============================================================ */
 
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
@@ -423,6 +423,7 @@ function htmlTarjeta(t, enPorRecibir) {
     htmlMarcaRecepcion(t) +                                                        // Fase 4, Paso 1-bis (recepcion.js)
     (t.fueraPadron ? '<div class="sobre fuera-padron">✋ Contiene productos fuera del padrón</div>' : '') +   // Pasos 3 y 4
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
+    (t.subtitulo ? '<div class="sub-t">' + esc(t.subtitulo) + '</div>' : '') +          // Feli (2026-10-06): el proveedor o el rubro, aparte
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
     (enPorRecibir && t.entrega ? '<span class="entrega">' + esc(ENTREGA_CORTO[t.entrega] || t.entrega) + '</span>' : '') +
@@ -999,6 +1000,9 @@ function pintarTarjeta() {
   chip.disabled = !puedeMover;
   chip.title = puedeMover ? 'Mover a…' : '';
   $('tj-titulo').textContent = (t && t.titulo) || (p && p.titulo) || ref;
+  const subt = (t && t.subtitulo) || (p && p.subtitulo) || '';                   // tarjetas de seguimiento: el proveedor o el rubro
+  $('tj-subtitulo').textContent = subt;
+  $('tj-subtitulo').hidden = !subt;
 
   const responsable = t ? t.responsable : (p ? p.responsable : '');
   const entrega = t ? t.entrega : (p ? p.entrega : '');
@@ -1049,7 +1053,7 @@ function pintarTarjeta() {
     const ls = todas.filter(vigente);
     const comprados = ls.filter(function (l) { return l.tildado; }).length;
     const esperan = todas.filter(function (l) { return l.estado === 'Para agregar' || l.estado === 'Para quitar'; }).length;
-    $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' comprado' + (comprados > 1 ? 's' : '') : '') +
+    $('tj-prod-t').textContent = 'Productos (' + ls.length + ')' + (comprados ? ' · ' + comprados + ' recibido' + (comprados > 1 ? 's' : '') : '') +
       (esperan ? ' · ⏳ ' + esperan + ' para aprobar' : '');
     // Los quitados, abajo de todo
     const orden = todas.filter(function (l) { return l.estado !== 'Quitado'; }).concat(todas.filter(function (l) { return l.estado === 'Quitado'; }));
@@ -1421,7 +1425,7 @@ function fraseEvento(e, d) {
         if (a === 'Para quitar') return 'dejó ' + prod + ' en el pedido';
         if (a === 'Quitado') return 'volvió a poner ' + prod;
         return '';
-      case 'Tildado': return (n === 'SI' ? 'marcó como comprado: ' : 'desmarcó como comprado: ') + prod;
+      case 'Tildado': return (n === 'SI' ? 'marcó como recibido: ' : 'desmarcó como recibido: ') + prod;
       case 'Familia': return a ? 'cambió el nombre de "' + a + '" a "' + n + '"' : 'le puso el nombre "' + n + '" a "' + (l ? l.texto : prod) + '"';
       case 'Canal': return n ? 'cambió el rubro de ' + prod + ' a ' + n : 'le sacó el rubro a ' + prod;
       case 'Especificación': return 'cambió la especificación de ' + prod + ' a "' + n + '"';
@@ -1689,10 +1693,10 @@ function htmlProducto(l, admin, mio, extra) {
   }
   const activo = vigente(l) && e !== 'Para agregar';
   return '<div class="producto' + (l.tildado ? ' tildado' : '') + (e === 'Para agregar' ? ' propuesto' : '') + (e === 'Quitado' ? ' quitado' : '') + '">' +
-    '<button type="button" class="tilde" data-id="' + esc(l.id) + '" aria-pressed="' + !!l.tildado + '" aria-label="Comprado" title="' +
-      (l.tildado ? 'Comprado (tocá para desmarcar)' : 'Marcar como comprado') + '"' + (activo && !l.nuevo ? '' : ' disabled') + '>✓</button>' +
+    '<button type="button" class="tilde" data-id="' + esc(l.id) + '" aria-pressed="' + !!l.tildado + '" aria-label="Recibido" title="' +
+      (l.tildado ? 'Recibido (tocá para desmarcar)' : 'Marcar como recibido') + '"' + (activo && !l.nuevo ? '' : ' disabled') + '>✓</button>' +
     '<div class="prod-c"><b>' + esc(l.cantidad) + ' × ' + esc(nombreProducto(l)) + '</b>' +
-    (l.tildado && activo ? '<span class="comprado">Comprado</span>' : '') +
+    (l.tildado && activo ? '<span class="comprado">Recibido</span>' : '') +     // Feli (2026-10-06): el tilde es "Recibido"
     (fuera && e !== 'Quitado' ? '<span class="fuera">Fuera del padrón</span>' : '') +
     (l.espera ? '<span class="espera">' + (APP.enLinea ? 'Guardando…' : '⏳') + '</span>' : '') +
     (nota ? '<div class="cambio">' + nota + '</div>' : '') +
@@ -1778,7 +1782,7 @@ function lineaVista(ref, id) {
 function tildar(ref, id) {
   const l = lineaVista(ref, id);
   if (!l) return;
-  bandeja.agregar('tildarProducto', [ref, id, !l.tildado], (l.tildado ? 'desmarcar "' : 'marcar como comprado "') + nombreProducto(l) + '"');
+  bandeja.agregar('tildarProducto', [ref, id, !l.tildado], (l.tildado ? 'desmarcar "' : 'marcar como recibido "') + nombreProducto(l) + '"');
   pintarTarjeta();
 }
 

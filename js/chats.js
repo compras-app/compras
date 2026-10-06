@@ -503,15 +503,20 @@ function pintarPanelChat() {
   const l = d.tarjetas || [];
   const cot = columnasTb().filter(function (c) { return c.seccion === 'Cotización'; }).map(function (c) { return c.columna; });
   p.innerHTML = (l.length ? l.map(function (t) {
-    return '<div class="ch-tj-b"><button type="button" class="ch-tj" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
+    return '<div class="ch-tj" role="button" tabindex="0" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
       esc([t.codigo, t.manual ? '✋ Gestión manual' : '', t.columna, t.proveedor ? 'pedido a ' + t.proveedor : ''].filter(String).join(' · ')) + '</small>' +
-      htmlComprasEnChat(t.compras) + '</button>' +
-      // Paso 5 (Feli, 2026-10-06): si se le confirmó por el chat, sin el cuadro
-      (cot.indexOf(t.columna) !== -1 ? '<button type="button" class="btn-chico ch-compra-b" data-compra-manual="' + esc(t.ref) + '">✅ Compra confirmada manualmente</button>' : '') + '</div>';
+      htmlComprasEnChat(t.compras) +
+      // Paso 5 (Feli, 2026-10-06): si se le confirmó por el chat, sin el cuadro (chiquito, adentro de la tarjeta)
+      (cot.indexOf(t.columna) !== -1 ? '<button type="button" class="ch-compra-b" data-compra-manual="' + esc(t.ref) + '">✅ Compra confirmada manualmente</button>' : '') + '</div>';
   }).join('') : '<p class="nota" style="margin:0">Este chat no tiene tarjetas abiertas.</p>') +
     '<button type="button" class="btn-chico" id="ch-sumar-manual">✋ Ver tarjetas de gestión manual</button>';
-  p.querySelectorAll('.ch-tj').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
-  p.querySelectorAll('[data-compra-manual]').forEach(function (b) { b.addEventListener('click', function () { compraManualUI(b.dataset.compraManual); }); });
+  p.querySelectorAll('.ch-tj').forEach(function (b) {
+    b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); });
+    b.addEventListener('keydown', function (e) { if (e.key === 'Enter') abrirTarjeta(b.dataset.ref); });
+  });
+  p.querySelectorAll('[data-compra-manual]').forEach(function (b) {
+    b.addEventListener('click', function (e) { e.stopPropagation(); compraManualUI(b.dataset.compraManual); });
+  });
   $('ch-sumar-manual').addEventListener('click', sumarAManual);
 }
 

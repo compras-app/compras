@@ -133,6 +133,8 @@ function pintarResultados() {
     const fin = x.servicio ? col === colFinalizadosServ() : terminadas.indexOf(col) !== -1;
     return '<button type="button" class="tarjeta resultado' + (fin ? ' terminado' : '') + '" data-ref="' + esc(x.ref) + '">' +
       '<div class="t">' + (x.servicio ? '🔧 ' : '') + esc(x.titulo || x.ref) + '</div>' +
+      // Feli (2026-10-06): por qué apareció, ej. "Radio Electron (proveedor, se le compró)"
+      ((x.coincide || []).length ? '<div class="bu-coincide">Se encontró: ' + x.coincide.map(esc).join(' · ') + '</div>' : '') +
       '<div class="pie"><span aria-label="' + esc(x.urgencia) + '">' + esc(emojiUrgencia(x.urgencia)) + '</span>' +
       '<span class="sitio">' + esc(x.sitio) + '</span>' +
       '<span class="bu-col' + (fin ? ' fin' : '') + '">' + esc(col) + '</span>' +

@@ -595,11 +595,20 @@ function pintarCompra() {
     '<div class="pr-msjs">' + (c.manual ? '<div class="pr-nota">✅ Confirmada a mano por el chat (la app no le mandó mensaje).</div>' : '') + (m ? (m.enviado ? '<div class="pr-nota">✅ La confirmación le llegó por WhatsApp.</div>'
                                                 : '<div class="pr-problema">El mensaje de confirmación no salió: mandalo desde el chat.</div>') : '') +
     (c.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(c.archivo) + '">Ver el presupuesto</button> ' : '') +
-    (c.chat ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') + '</div>';
+    (c.chat ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') +
+    // Feli (2026-10-06): a la vista, para anularla (es lo mismo que cancelar la tarjeta)
+    (columnasFinales().indexOf(d.pedido.columna) === -1 ? ' <button type="button" class="btn-chico" id="tj-anular">Anular la compra</button>' : '') + '</div>';
   $('tj-compra').querySelectorAll('[data-abrir-ref]').forEach(function (x) { x.addEventListener('click', function () { irPorAccesoDirecto(x.dataset.abrirRef); }); });
   $('tj-compra').querySelectorAll('[data-pr-chat]').forEach(function (x) { x.addEventListener('click', function () { irAlChat(x.dataset.prChat); }); });
   $('tj-compra').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
+  if ($('tj-anular')) $('tj-anular').addEventListener('click', function () {
+    const t = buscarEnVista(TB.abierta);
+    if (t) anularCompraUI(TB.abierta, t);
+  });
 }
+
+/** Las columnas de los terminados (Entregado y Cancelado). */
+function columnasFinales() { return [colEntregado(), colCancelado()]; }
 
 /**
  * Cancelar una tarjeta de seguimiento de una compra: se anula la compra (los productos vuelven a Decisión).

@@ -887,3 +887,8 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .cm-prods{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;margin-top:6px}
 .cm-prod{display:flex;align-items:center;gap:8px;font-size:14px}
 .cm-prod input{width:18px;height:18px;flex:none;margin:0}
+.bu-coincide{font-size:12px;color:var(--muted);margin:2px 0 4px}
+.ch-compra-b{align-self:flex-start;margin-top:4px;padding:2px 8px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:11px;cursor:pointer}
+.ch-compra-b:hover{color:var(--fg)}
+.tarjeta .sub-t{font-size:12px;font-weight:600;color:var(--accent);margin-top:2px}
+#tj-subtitulo{font-size:14px;font-weight:600;color:var(--accent);margin:-4px 0 8px}

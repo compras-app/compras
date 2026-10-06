@@ -20,9 +20,10 @@ function porNuestraUnidad(cantidad) {
   return 'por ' + u;
 }
 
-async function abrirCuadro(ref) {
+async function abrirCuadro(ref, modo) {
   if (!ref) return;
   if (CQ.ref !== ref) CQ.sel = {};
+  CQ.modo = modo === 'comprar' ? 'comprar' : 'ver';     // Feli (2026-10-06): primero se mira; "Realizar la compra" muestra lo de comprar
   const c = $('cuadro');
   if (c.parentNode !== document.body) document.body.appendChild(c);     // así, al imprimir, se imprime solo el cuadro
   CQ.datos = null;
@@ -139,8 +140,8 @@ function htmlNotas(col) {
 function pintarCuadro() {
   const q = CQ.datos;
   if (!q) return;
-  // Feli (2026-10-06): comparar y comprar son el mismo cuadro; los seleccionadores, solo si la tarjeta está en Cotización
-  CQ.modo = q.puedeComprar ? 'comprar' : 'ver';
+  // Feli (2026-10-06): comparar y comprar son el mismo cuadro; los seleccionadores, al tocar "Realizar la compra" (en Cotización)
+  if (!q.puedeComprar) CQ.modo = 'ver';
   $('cuadro-titulo').textContent = '📊 Cuadro comparativo de compra · ' + q.codigo + (q.titulo ? ' · ' + q.titulo : '');
   $('cuadro-sub').textContent = 'Armado por ' + q.armo + ' el ' + fechaHoraCorta(q.fecha);
   if (!q.columnas.length) {
@@ -187,8 +188,9 @@ function pintarCuadro() {
   if (q.anterior && q.anterior.quien) h += '<p class="cq-gris cq-al-pie no-imprimir">La vez anterior lo armó ' + esc(q.anterior.quien) + ' el ' + esc(fechaHoraCorta(q.anterior.cuando)) + '.</p>';
   // Arriba: el buscador y, para comprar, "Elegir el más barato en cada fila" (o pasar de mirar a comprar)
   const herramientas = q.sinProductos ? '' : CQ.modo === 'comprar'
-    ? '<button type="button" class="btn-chico" id="cq-baratos">Elegir el más barato en cada fila</button><button type="button" class="btn-chico" id="cq-limpiar">Sacar lo elegido</button>'
-    : '';
+    ? '<button type="button" class="btn-chico" id="cq-baratos">Elegir el más barato en cada fila</button><button type="button" class="btn-chico" id="cq-limpiar">Sacar lo elegido</button>' +
+      '<button type="button" class="btn-chico" id="cq-a-mirar">Dejar de comprar</button>'
+    : q.puedeComprar ? '<button type="button" class="btn-chico si" id="cq-a-comprar">🛒 Realizar la compra</button>' : '';
   $('cuadro-cuerpo').innerHTML = (q.sinProductos ? '' : '<div class="cq-buscar no-imprimir"><input type="search" id="cq-buscar" placeholder="🔍 Buscar un producto (por ejemplo, jabalina)" value="' +
     esc(CQ.buscar) + '"><span class="cq-gris" id="cq-buscar-n"></span>' + herramientas + '</div>') + h;
   const cuerpo = $('cuadro-cuerpo');
@@ -201,6 +203,8 @@ function pintarCuadro() {
   cuerpo.querySelectorAll('[data-cq-todo]').forEach(function (x) { x.addEventListener('click', function () { elegirTodo(x.dataset.cqTodo); }); });
   if ($('cq-baratos')) $('cq-baratos').addEventListener('click', elegirBaratos);
   if ($('cq-limpiar')) $('cq-limpiar').addEventListener('click', function () { CQ.sel = {}; pintarCuadro(); });
+  if ($('cq-a-comprar')) $('cq-a-comprar').addEventListener('click', function () { CQ.modo = 'comprar'; pintarCuadro(); });
+  if ($('cq-a-mirar')) $('cq-a-mirar').addEventListener('click', function () { CQ.modo = 'ver'; pintarCuadro(); });
   pintarBarraCompra();
   cuerpo.querySelectorAll('[data-cq-anotar]').forEach(function (x) { x.addEventListener('click', function () { anotar(x.dataset.cqAnotar); }); });
   cuerpo.querySelectorAll('[data-cq-quitar]').forEach(function (x) { x.addEventListener('click', function () { quitarNota(x.dataset.cqQuitar); }); });
@@ -334,9 +338,14 @@ function pintarBarraCompra() {
 /** El mensaje de confirmación para un proveedor: el texto de Ajustes con sus productos (como los escribió él, con lo corregido). */
 function mensajeCompra(g) {
   const q = CQ.datos, c = g.col.contacto;
+  // Feli (2026-10-06): "112 · {el producto como lo pedimos} · $ 2.289,79 c/u" (si vino partido, entre paréntesis lo que escribió el proveedor)
+  const nombre = {};
+  q.productos.forEach(function (p) { nombre[p.linea] = p.nombre; });
   const productos = g.lineas.map(function (l) {
-    return g.col.casilleros[l].renglones.map(function (r) {
-      return '- ' + [cantTexto(r.cant), r.unidad].filter(String).join(' ') + ' · ' + capital(r.texto) + (r.precio !== null ? ' · ' + plata(r.precio, r.moneda) + ' c/u' : '');
+    const rs = g.col.casilleros[l].renglones;
+    return rs.map(function (r) {
+      return '- ' + [cantTexto(r.cant), r.unidad && !/^(u|un|und|unid|unidad|unidades)\.?$/i.test(r.unidad) ? r.unidad : ''].filter(String).join(' ') + ' · ' +
+        nombre[l] + (rs.length > 1 ? ' (' + capital(r.texto) + ')' : '') + (r.precio !== null ? ' · ' + plata(Math.round(r.precio * 100) / 100, r.moneda) + ' c/u' : '');
     }).join('\n');
   }).join('\n');
   return q.msjCompra.replace(/[ \t]*\{contacto\}/g, c ? ' ' + c : '').split('{codigo}').join(q.codigo).split('{productos}').join(productos);
@@ -378,5 +387,5 @@ async function confirmarCompra() {
   if (!compradas) return;
   if (TB.abierta === ref) traerTarjeta(ref);
   cargarTablero();
-  abrirCuadro(ref);
+  abrirCuadro(ref, 'comprar');
 }
