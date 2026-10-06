@@ -882,3 +882,8 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .cq-resumen small{flex-basis:100%}
 .cuadro-compra .btn{width:auto;flex:none}
 #cq-msj{width:100%;box-sizing:border-box;font:inherit;font-size:14px}
+.ch-tj-b{display:flex;flex-direction:column;gap:4px}
+.ch-compra-b{align-self:flex-start}
+.cm-prods{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow-y:auto;margin-top:6px}
+.cm-prod{display:flex;align-items:center;gap:8px;font-size:14px}
+.cm-prod input{width:18px;height:18px;flex:none;margin:0}

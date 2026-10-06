@@ -385,14 +385,11 @@ function pintarPresupuestos() {
   b.hidden = !APP.yo.admin || TB.tipo === 'tarea' || !d || !d.pedido || (!l.length && !(d.solicitudes || []).length);
   if (b.hidden) return;
   const leidos = l.filter(function (x) { return ['Revisar', 'Para confirmar', 'Confirmado'].indexOf(x.estado) !== -1; });
-  const cot = columnasTb().filter(function (c) { return c.seccion === 'Cotización'; }).map(function (c) { return c.columna; });
-  const comprar = leidos.length && cot.indexOf(d.pedido.columna) !== -1;     // Paso 5: se compra desde Cotización
-  $('tj-presup').innerHTML = (leidos.length ? '<div class="pr-arriba"><button type="button" class="btn-chico pr-cuadro-b" id="pr-cuadro">📊 Armar cuadro comparativo</button>' +
-      (comprar ? '<button type="button" class="btn-chico si pr-cuadro-b" id="pr-comprar">🛒 Realizar la compra</button>' : '') + '</div>' : '') +
+  // Paso 5 (Feli, 2026-10-06): un solo botón para comparar y comprar
+  $('tj-presup').innerHTML = (leidos.length ? '<div class="pr-arriba"><button type="button" class="btn-chico si pr-cuadro-b" id="pr-cuadro">📊 Cuadro comparativo de compra</button></div>' : '') +
     (l.length ? presupuestosEnPartes(l).map(htmlPresupuesto).join('')
       : '<p class="nota" style="margin:0">Cuando llegue un presupuesto, cargalo desde el chat: en el menú del mensaje, "📥 Cargar en una tarjeta".</p>');
   if ($('pr-cuadro')) $('pr-cuadro').addEventListener('click', function () { abrirCuadro(TB.abierta); });
-  if ($('pr-comprar')) $('pr-comprar').addEventListener('click', function () { abrirCuadro(TB.abierta, 'comprar'); });
   $('tj-presup').querySelectorAll('[data-pr-repartir]').forEach(function (x) { x.addEventListener('click', function () { repartirUI(x.dataset.id, Number(x.dataset.prRepartir)); }); });
   $('tj-presup').querySelectorAll('[data-pr-uno]').forEach(function (x) {
     x.addEventListener('toggle', function () { if (x.open) PR.abiertos[x.dataset.prUno] = true; else delete PR.abiertos[x.dataset.prUno]; });
@@ -576,7 +573,7 @@ async function corregirPresupuestoUI(b) {
 
 /* ---------- Paso 5: la compra, en su tarjeta de seguimiento ---------- */
 
-/** El bloque "🛒 Compra" de una tarjeta de seguimiento que salió de "Realizar la compra". */
+/** El bloque "🛒 Compra" de una tarjeta de seguimiento que salió de una compra (del cuadro o confirmada a mano en el chat). */
 function pintarCompra() {
   const b = $('tj-compra-b');
   if (!b) return;
@@ -595,7 +592,7 @@ function pintarCompra() {
     }).join('') +
     (c.total !== null ? '<div class="pr-totales"><div><span>Total (sin IVA)</span><b>' + esc(plata(c.total, c.moneda)) + '</b></div></div>' : '') +
     (cond.length ? '<div class="pr-cond">' + cond.map(function (x) { return '<div><span>' + x[0] + ':</span> ' + esc(x[1]) + '</div>'; }).join('') + '</div>' : '') +
-    '<div class="pr-msjs">' + (m ? (m.enviado ? '<div class="pr-nota">✅ La confirmación le llegó por WhatsApp.</div>'
+    '<div class="pr-msjs">' + (c.manual ? '<div class="pr-nota">✅ Confirmada a mano por el chat (la app no le mandó mensaje).</div>' : '') + (m ? (m.enviado ? '<div class="pr-nota">✅ La confirmación le llegó por WhatsApp.</div>'
                                                 : '<div class="pr-problema">El mensaje de confirmación no salió: mandalo desde el chat.</div>') : '') +
     (c.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(c.archivo) + '">Ver el presupuesto</button> ' : '') +
     (c.chat ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') + '</div>';

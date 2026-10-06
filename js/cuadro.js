@@ -1,5 +1,5 @@
 /* ---------- El cuadro comparativo (Fase 4, Paso 4; Feli, 2026-10-05) ----------
-   "📊 Armar cuadro comparativo", en el bloque Presupuestos de la tarjeta abierta (solo admins). Una columna por
+   "📊 Cuadro comparativo de compra", en el bloque Presupuestos de la tarjeta abierta (solo admins; Paso 5: también para comprar). Una columna por
    proveedor (con sus partes) y una fila por producto pedido, en el orden de la tarjeta. Cada casillero: las
    unidades, el producto como lo escribió el proveedor, el precio unitario y el total; abajo, en gris, los avisos.
    El más barato de cada fila se marca con texto y color (en nuestra unidad y en la misma moneda). Abajo de cada
@@ -20,16 +20,15 @@ function porNuestraUnidad(cantidad) {
   return 'por ' + u;
 }
 
-async function abrirCuadro(ref, modo) {
+async function abrirCuadro(ref) {
   if (!ref) return;
   if (CQ.ref !== ref) CQ.sel = {};
-  CQ.modo = modo === 'comprar' ? 'comprar' : 'ver';
   const c = $('cuadro');
   if (c.parentNode !== document.body) document.body.appendChild(c);     // así, al imprimir, se imprime solo el cuadro
   CQ.datos = null;
   if (CQ.ref !== ref) CQ.buscar = '';
   CQ.ref = ref;
-  $('cuadro-titulo').textContent = '📊 Cuadro comparativo';
+  $('cuadro-titulo').textContent = '📊 Cuadro comparativo de compra';
   $('cuadro-sub').textContent = '';
   $('cuadro-cuerpo').innerHTML = '<p class="nota cq-cargando">Armando el cuadro…</p>';
   c.hidden = false;
@@ -140,8 +139,9 @@ function htmlNotas(col) {
 function pintarCuadro() {
   const q = CQ.datos;
   if (!q) return;
-  if (CQ.modo === 'comprar' && !q.puedeComprar) CQ.modo = 'ver';
-  $('cuadro-titulo').textContent = (CQ.modo === 'comprar' ? '🛒 Realizar la compra · ' : '📊 Cuadro comparativo · ') + q.codigo + (q.titulo ? ' · ' + q.titulo : '');
+  // Feli (2026-10-06): comparar y comprar son el mismo cuadro; los seleccionadores, solo si la tarjeta está en Cotización
+  CQ.modo = q.puedeComprar ? 'comprar' : 'ver';
+  $('cuadro-titulo').textContent = '📊 Cuadro comparativo de compra · ' + q.codigo + (q.titulo ? ' · ' + q.titulo : '');
   $('cuadro-sub').textContent = 'Armado por ' + q.armo + ' el ' + fechaHoraCorta(q.fecha);
   if (!q.columnas.length) {
     $('cuadro-cuerpo').innerHTML = '<p class="nota cq-cargando">Todavía no hay presupuestos leídos en esta tarjeta.</p>';
@@ -188,7 +188,7 @@ function pintarCuadro() {
   // Arriba: el buscador y, para comprar, "Elegir el más barato en cada fila" (o pasar de mirar a comprar)
   const herramientas = q.sinProductos ? '' : CQ.modo === 'comprar'
     ? '<button type="button" class="btn-chico" id="cq-baratos">Elegir el más barato en cada fila</button><button type="button" class="btn-chico" id="cq-limpiar">Sacar lo elegido</button>'
-    : q.puedeComprar ? '<button type="button" class="btn-chico si" id="cq-a-comprar">🛒 Realizar la compra</button>' : '';
+    : '';
   $('cuadro-cuerpo').innerHTML = (q.sinProductos ? '' : '<div class="cq-buscar no-imprimir"><input type="search" id="cq-buscar" placeholder="🔍 Buscar un producto (por ejemplo, jabalina)" value="' +
     esc(CQ.buscar) + '"><span class="cq-gris" id="cq-buscar-n"></span>' + herramientas + '</div>') + h;
   const cuerpo = $('cuadro-cuerpo');
@@ -201,7 +201,6 @@ function pintarCuadro() {
   cuerpo.querySelectorAll('[data-cq-todo]').forEach(function (x) { x.addEventListener('click', function () { elegirTodo(x.dataset.cqTodo); }); });
   if ($('cq-baratos')) $('cq-baratos').addEventListener('click', elegirBaratos);
   if ($('cq-limpiar')) $('cq-limpiar').addEventListener('click', function () { CQ.sel = {}; pintarCuadro(); });
-  if ($('cq-a-comprar')) $('cq-a-comprar').addEventListener('click', function () { CQ.modo = 'comprar'; pintarCuadro(); });
   pintarBarraCompra();
   cuerpo.querySelectorAll('[data-cq-anotar]').forEach(function (x) { x.addEventListener('click', function () { anotar(x.dataset.cqAnotar); }); });
   cuerpo.querySelectorAll('[data-cq-quitar]').forEach(function (x) { x.addEventListener('click', function () { quitarNota(x.dataset.cqQuitar); }); });
@@ -267,8 +266,8 @@ function filtrarCuadro() {
   if (t) t.textContent = palabras.length ? n + ' de ' + total + ' productos' : '';
 }
 
-/* ---------- Paso 5: "🛒 Realizar la compra" (Feli, 2026-10-06) ----------
-   El mismo cuadro, con seleccionadores: "Elegir todo de {proveedor}" arriba de cada columna, "Elegir" en cada casillero
+/* ---------- Paso 5: comprar desde el cuadro (Feli, 2026-10-06: "Cuadro comparativo de compra") ----------
+   El mismo cuadro, con seleccionadores (si la tarjeta está en Cotización): "Elegir todo de {proveedor}" arriba de cada columna, "Elegir" en cada casillero
    y "Elegir el más barato en cada fila". Cada producto, a un solo proveedor. Abajo, una barra con lo elegido y
    "Confirmar compra": el mensaje de cada proveedor, uno después del otro; cada uno, al confirmarlo, ya quedó comprado. */
 
@@ -379,5 +378,5 @@ async function confirmarCompra() {
   if (!compradas) return;
   if (TB.abierta === ref) traerTarjeta(ref);
   cargarTablero();
-  abrirCuadro(ref, 'comprar');
+  abrirCuadro(ref);
 }

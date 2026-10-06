@@ -501,13 +501,17 @@ function pintarPanelChat() {
   const d = CH.datos, p = $('ch-panel');
   if (!d) { p.innerHTML = ''; return; }
   const l = d.tarjetas || [];
+  const cot = columnasTb().filter(function (c) { return c.seccion === 'Cotización'; }).map(function (c) { return c.columna; });
   p.innerHTML = (l.length ? l.map(function (t) {
-    return '<button type="button" class="ch-tj" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
+    return '<div class="ch-tj-b"><button type="button" class="ch-tj" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
       esc([t.codigo, t.manual ? '✋ Gestión manual' : '', t.columna, t.proveedor ? 'pedido a ' + t.proveedor : ''].filter(String).join(' · ')) + '</small>' +
-      htmlComprasEnChat(t.compras) + '</button>';
+      htmlComprasEnChat(t.compras) + '</button>' +
+      // Paso 5 (Feli, 2026-10-06): si se le confirmó por el chat, sin el cuadro
+      (cot.indexOf(t.columna) !== -1 ? '<button type="button" class="btn-chico ch-compra-b" data-compra-manual="' + esc(t.ref) + '">✅ Compra confirmada manualmente</button>' : '') + '</div>';
   }).join('') : '<p class="nota" style="margin:0">Este chat no tiene tarjetas abiertas.</p>') +
     '<button type="button" class="btn-chico" id="ch-sumar-manual">✋ Ver tarjetas de gestión manual</button>';
   p.querySelectorAll('.ch-tj').forEach(function (b) { b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); }); });
+  p.querySelectorAll('[data-compra-manual]').forEach(function (b) { b.addEventListener('click', function () { compraManualUI(b.dataset.compraManual); }); });
   $('ch-sumar-manual').addEventListener('click', sumarAManual);
 }
 
@@ -621,3 +625,63 @@ setInterval(async function () {
   // La lista, como mucho cada 20 s (con el WhatsApp personal cambia muy seguido)
   if (r.lista !== CH.version.lista && Date.now() - CH.listaHora > 20000) cargarListaChats();
 }, 5000);
+
+/**
+ * "✅ Compra confirmada manualmente" (Feli, 2026-10-06): ya se le confirmó al proveedor por el chat, sin el cuadro.
+ * Se eligen los productos (vienen todos elegidos) y queda igual que una compra desde el cuadro: la tarjeta de
+ * seguimiento, "Comprado en…" y todo lo demás. No se le manda ningún mensaje.
+ */
+async function compraManualUI(ref) {
+  const chat = CH.abierto;
+  aviso('Buscando los productos…');
+  const r = await api('datosCompraManual', ref, chat);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
+  if (!r.productos.length) return aviso('Todos los productos de esta tarjeta ya están comprados.');
+  let prov = r.proveedores.length === 1 ? r.proveedores[0].id : '';
+  const elegidos = {};
+  const preelegir = function () {
+    // Todos elegidos: los que se le pidieron a este proveedor (o todos, si no se le pidió nada por la app)
+    const suyos = r.productos.filter(function (p) { return p.pedidoA.indexOf(prov) !== -1; });
+    Object.keys(elegidos).forEach(function (k) { delete elegidos[k]; });
+    (suyos.length ? suyos : r.productos).forEach(function (p) { elegidos[p.linea] = true; });
+  };
+  if (prov) preelegir();
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  const pintar = function () {
+    const n = Object.keys(elegidos).length;
+    cuerpo.innerHTML = '<p class="nota">Ya se lo confirmaste por el chat: no se le manda nada. Sale la tarjeta de seguimiento con lo que elijas' +
+      ' (con los precios de su presupuesto, si está cargado).</p>' +
+      (r.proveedores.length > 1 ? '<label>¿A qué proveedor?</label>' + (r.proveedores.length > 6
+        ? '<select id="cm-prov"><option value="">Elegí el proveedor</option>' + r.proveedores.map(function (p) {
+            return '<option value="' + esc(p.id) + '"' + (p.id === prov ? ' selected' : '') + '>' + esc(p.nombre) + '</option>'; }).join('') + '</select>'
+        : '<div class="opciones">' + r.proveedores.map(function (p) {
+            return '<button type="button" class="choice" data-cm-prov="' + esc(p.id) + '"' + (p.id === prov ? ' aria-current="true"' : '') + '>' + esc(p.nombre) + '</button>'; }).join('') + '</div>')
+        : '<p class="nota">Proveedor: <b>' + esc(r.proveedores[0] ? r.proveedores[0].nombre : '') + '</b></p>') +
+      (prov ? '<label>¿Qué productos le confirmaste? (' + n + ' de ' + r.productos.length + ')</label><div class="cm-prods">' + r.productos.map(function (p) {
+          return '<label class="cm-prod"><input type="checkbox" data-cm-linea="' + esc(p.linea) + '"' + (elegidos[p.linea] ? ' checked' : '') + '> ' +
+            esc(p.cantidad + ' · ' + p.nombre) + '</label>';
+        }).join('') + '</div>' : '');
+    cuerpo.querySelectorAll('[data-cm-prov]').forEach(function (b) { b.addEventListener('click', function () { prov = b.dataset.cmProv; preelegir(); pintar(); }); });
+    const sel = cuerpo.querySelector('#cm-prov');
+    if (sel) sel.addEventListener('change', function () { prov = sel.value; preelegir(); pintar(); });
+    cuerpo.querySelectorAll('[data-cm-linea]').forEach(function (x) {
+      x.addEventListener('change', function () { if (x.checked) elegidos[x.dataset.cmLinea] = true; else delete elegidos[x.dataset.cmLinea]; pintar(); });
+    });
+    const ok = $('cm-ok');
+    if (ok) ok.disabled = !(prov && n);
+  };
+  pintar();
+  const si = await dialogo({ titulo: '✅ Compra confirmada manualmente · ' + r.codigo, cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: false }, { texto: 'Registrar la compra', clase: 'btn', id: 'cm-ok', valor: true }],
+    alAbrir: function () { $('cm-ok').disabled = !(prov && Object.keys(elegidos).length); } });
+  if (!si || !prov) return;
+  const lineas = r.productos.filter(function (p) { return elegidos[p.linea]; }).map(function (p) { return p.linea; });
+  if (!lineas.length) return;
+  aviso('Registrando la compra…');
+  const c = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: prov, lineas: lineas, manual: true, chat: chat });
+  if (!c.ok) return aviso(c.sinConexion ? '📶 Poca señal: no se registró. Probá cuando vuelva.' : c.error, 'bad');
+  aviso('Listo: compra registrada. Salió la tarjeta de seguimiento.');
+  cargarTablero();
+  if (CH.abierto === chat) recargarChat();
+}
