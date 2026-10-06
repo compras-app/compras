@@ -54,7 +54,7 @@ $('ch-sel-x').addEventListener('click', terminarSeleccion);
 $('ch-sel-cargar').addEventListener('click', function () { if (PR.sel && PR.sel.length) cargarEnTarjeta(PR.sel.slice()); });
 
 /** Los proveedores posibles para las tarjetas elegidas: los que tienen en común las que tienen pedido de cotización;
-    en las ✋ manuales, el del chat primero y después cualquiera de los cargados. */
+    en las ✋ manuales, el del chat, o cualquiera de los cargados si el chat no es de un proveedor (el número de prueba). */
 function opcionesDeProveedor(elegidas, todos) {
   const auto = elegidas.filter(function (t) { return !t.manual; });
   if (auto.length) {
@@ -64,7 +64,7 @@ function opcionesDeProveedor(elegidas, todos) {
   }
   const delChat = [];
   elegidas.forEach(function (t) { (t.proveedores || []).forEach(function (p) { if (!delChat.some(function (x) { return x.id === p.id; })) delChat.push(p); }); });
-  return delChat.concat((todos || []).filter(function (p) { return !delChat.some(function (x) { return x.id === p.id; }); }));
+  return delChat.length ? delChat : (todos || []);       // el chat es de un proveedor: es él (Feli, 2026-10-06)
 }
 
 /** Las tarjetas (de las abiertas del chat; varias si el presupuesto es de dos pedidos) y el proveedor. Devuelve {refs, proveedor} o null. */
@@ -196,6 +196,7 @@ function htmlAntes(r, moneda) {
     if (a.que === 'agregado') t = 'Agregado a mano' + cuando;
     else if (a.que === 'quitado') t = 'Quitado a mano' + cuando;
     else if (a.que === 'repartido') t = 'Repartido' + cuando + (a.antes ? '. Antes: ' + esc(a.antes) + ' para este pedido' : '');
+    else if (a.que === 'ajustado') t = (a.cant ? 'Cambiaste la cantidad a ' + esc(a.cant) : 'Volviste a la cantidad del presupuesto') + cuando + (a.antes ? ' (antes: ' + esc(a.antes) + ')' : '');
     else t = 'Corregido' + cuando + '. Antes: ' + esc(textoRenglon(a.antes, moneda) || '(vacío)') + (a.antes && a.antes.producto ? ' · iba a «' + esc(a.antes.producto) + '»' : '');
     return '<div class="pr-antes">' + t + '</div>';
   }).join('');
@@ -208,9 +209,10 @@ function htmlRenglonPresup(r, moneda, idPresup, editable) {
     '<span>' + esc([cantTexto(r.cant), r.unidad].filter(String).join(' ')) + '</span> · ' + esc(capital(r.texto)) +
     (r.precio !== null ? ' · ' + esc(plata(r.precio, r.moneda || moneda)) : '') + (r.importe !== null ? ' · <b>' + esc(plata(r.importe, r.moneda || moneda)) + '</b>' : '') +
     (r.contenido && r.contenido !== 1 ? ' <small>(1 ' + esc(r.unidad || 'unidad') + ' = ' + esc(cantTexto(r.contenido)) + ')</small>' : '') +
-    (r.repartido !== null && r.repartido !== undefined && r.linea ? '<div class="pr-nota">Para este pedido: ' + esc(cantTexto(r.cantAca)) + ' ' + esc(r.unidad || '') +
+    (r.cantAca !== r.cant && (r.linea || r.ajustada !== null) ? '<div class="pr-nota pr-este-r">Para este pedido: ' + esc(cantTexto(r.cantAca)) + ' ' + esc(r.unidad || '') +
       (r.importeAca !== null ? ' · ' + esc(plata(r.importeAca, r.moneda || moneda)) : '') +
-      (editable ? ' <button type="button" class="btn-chico" data-pr-repartir="' + r.n + '" data-id="' + esc(idPresup) + '">Cambiar el reparto</button>' : '') + '</div>' : '') +
+      (r.ajustada !== null && r.ajustada !== undefined ? ' (cambiaste la cantidad)' : ' (repartido)') +
+      (editable && r.repartido !== null && r.ajustada === null ? ' <button type="button" class="btn-chico" data-pr-repartir="' + r.n + '" data-id="' + esc(idPresup) + '">Cambiar el reparto</button>' : '') + '</div>' : '') +
     (r.problema ? '<div class="pr-problema">' + esc(r.problema) +
       (editable && r.revisable ? ' <button type="button" class="btn-chico" data-pr-bien="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">✓ Está bien</button>' : '') +
       (editable && r.repartir ? ' <button type="button" class="btn-chico" data-pr-repartir="' + r.n + '" data-id="' + esc(idPresup) + '">Repartir</button>' : '') + '</div>' : '') +
@@ -235,13 +237,20 @@ function htmlAntesEncabezado(b) {
   return l.length ? '<div class="pr-antes-enc">' + l.join('') + '</div>' : '';
 }
 
-function htmlPresupuesto(b) {
+const PR_ORDINAL = ['', 'Primera', 'Segunda', 'Tercera', 'Cuarta', 'Quinta'];
+function nombreParte(n) { return (PR_ORDINAL[n] || 'Parte ' + n) + (PR_ORDINAL[n] ? ' parte' : ''); }
+
+/** "$ 1.234,56 (sin IVA)": el total del título (Feli, 2026-10-06). */
+function htmlResumenTotal(t, moneda) {
+  if (!t) return '';
+  return esc(plata(t.monto, moneda)) + ' <small>(' + esc(t.que) + (t.calculado ? ', calculado' : '') + ')</small>';
+}
+
+/** Lo de un presupuesto (o de una de sus partes) adentro del desplegable. */
+function htmlCuerpoPresupuesto(b) {
   const porN = {};
   b.renglones.forEach(function (r) { porN[r.n] = r; });
   const est = b.estado;
-  const cabeza = '<summary><b>' + esc(b.nombre) + '</b>' +
-    (b.parte && b.parte.de > 1 ? ' <span class="pr-parte">Parte ' + b.parte.n + ' · ' + esc(fechaCorta(b.fecha)) + '</span>' : '') + ' <span class="pr-estado e-' + esc(est.replace(/\s+/g, '-').toLowerCase()) + '">' + (PR_ICONO[est] || '') + ' ' + esc(est) + '</span>' +
-    (b.total !== null ? ' <span class="pr-total">' + esc(plata(b.total, b.moneda)) + '</span>' : '') + '</summary>';
   let h = '';
   if (est === 'Leyendo') h += '<p class="nota">La IA lo está leyendo. Tarda hasta un minuto; si se cortó, lo termina el reloj solo.</p>';
   if ((b.tambienEn || []).length) h += '<p class="pr-nota">Este presupuesto está cargado también en ' + b.tambienEn.map(function (x) { return esc(x.codigo); }).join(' y ') +
@@ -262,7 +271,8 @@ function htmlPresupuesto(b) {
     if (b.noPedido.length) h += '<div class="pr-prod"><div class="pr-pedido">' + (b.sinProductos ? 'Renglones del presupuesto' : 'No pedido') + '</div>' +
       b.noPedido.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda, b.id, editable) : ''; }).join('') + '</div>';
     if (b.delOtro) h += '<div class="pr-nota">Además trae ' + b.delOtro + ' renglón' + (b.delOtro === 1 ? '' : 'es') + ' de ' +
-      (b.tambienEn || []).map(function (x) { return esc(x.codigo); }).join(' y ') + ' (se ven en esa tarjeta).</div>';
+      (b.tambienEn || []).map(function (x) { return esc(x.codigo); }).join(' y ') + ' (se ven en esa tarjeta)' +
+      (b.noPedidoEn ? '. Lo que cotizó sin que se lo pidiéramos está en ' + esc(b.noPedidoEn) : '') + '.</div>';
   }
   if ((b.quitados || []).length) {
     h += '<div class="pr-prod"><div class="pr-pedido">Quitados a mano</div>' + b.quitados.map(function (r) {
@@ -272,8 +282,26 @@ function htmlPresupuesto(b) {
   const iva = b.conIva === 'si' ? '(precios con IVA)' : b.conIva === 'no' ? '(precios sin IVA)' : '(sin dato de IVA)';
   const tot = [['Subtotal', b.subtotal], ['Descuento', b.descuento], ['IVA', b.iva], ['Otros impuestos', b.otros || null], ['Flete y otros cargos', b.cargos || null], ['Total', b.total]]
     .filter(function (x) { return x[1] !== null && x[1] !== undefined; });
-  if (tot.length) h += '<div class="pr-totales">' + tot.map(function (x) { return '<div><span>' + x[0] + '</span><b>' + esc(plata(x[1], b.moneda)) + '</b></div>'; }).join('') +
-    '<div class="pr-nota">' + iva + (b.suma !== null && b.subtotal === null ? ' · suma de renglones ' + esc(plata(b.suma, b.moneda)) : '') + '</div></div>';
+  if (tot.length) {
+    h += '<div class="pr-totales">' + tot.map(function (x) { return '<div><span>' + x[0] + '</span><b>' + esc(plata(x[1], b.moneda)) + '</b></div>'; }).join('') +
+      '<div class="pr-nota">' + iva + '</div></div>';
+  } else if (b.suma !== null && b.suma !== undefined && est !== 'Leyendo') {
+    // Sin totales en el presupuesto: los suma la app (Feli, 2026-10-06)
+    h += '<div class="pr-totales"><div><span>Suma de los renglones</span><b>' + esc(plata(b.suma, b.moneda)) + '</b></div>' +
+      '<div class="pr-nota">El presupuesto no trae totales: la suma la hizo la app (los precios de los productos son sin IVA).</div></div>';
+  }
+  // Lo que vale para este pedido, si cambiaste cantidades o se repartió con otro pedido (Feli, 2026-10-06)
+  const a = b.paraEste;
+  if (a) {
+    const fila = function (t, v) { return v === null || v === undefined ? '' : '<div><span>' + t + '</span><span>' + esc(plata(v, b.moneda)) + '</span></div>'; };
+    const motivos = [];
+    if (b.renglones.some(function (r) { return r.ajustada !== null && r.ajustada !== undefined; })) motivos.push('con las cantidades que cambiaste');
+    if ((b.tambienEn || []).length) motivos.push('sin lo de ' + b.tambienEn.map(function (x) { return x.codigo; }).join(' y '));
+    h += '<div class="pr-totales pr-este"><div class="pr-este-t">Para este pedido' + (motivos.length ? ' (' + esc(motivos.join(', ')) + ')' : '') + '</div>' +
+      fila('Subtotal', a.subtotal) + fila('Descuento', a.descuento) + fila('IVA', a.iva) + fila('Otros impuestos', a.otros) + fila('Flete y otros cargos', a.cargos) +
+      '<div><span>Total</span><b>' + esc(plata(a.total, b.moneda)) + '</b></div>' +
+      (a.ivaProporcional ? '<div class="pr-nota">El IVA, en la misma proporción que en el presupuesto. Lo calculó la app.</div>' : '') + '</div>';
+  }
   const cond = [['Validez', b.validez], ['Forma de pago', b.formaPago], ['Plazo de entrega', b.plazo], ['Entrega', b.entrega], ['Flete', b.flete], ['Observaciones', b.observaciones]]
     .filter(function (x) { return x[1]; });
   if (cond.length) h += '<div class="pr-cond">' + cond.map(function (x) { return '<div><span>' + x[0] + ':</span> ' + esc(x[1]) + '</div>'; }).join('') + '</div>';
@@ -294,7 +322,53 @@ function htmlPresupuesto(b) {
   h += '<div class="pr-acciones">' + bs.map(function (x) {
     return '<button type="button" class="btn-chico' + (x[0] === 'confirmar' ? ' si' : '') + '" data-pr="' + x[0] + '" data-id="' + esc(b.id) + '">' + x[1] + '</button>';
   }).join('') + '</div>';
+  return h;
+}
+
+/** El estado de un presupuesto en partes: el de la parte más atrasada. */
+function estadoDePartes(partes) {
+  const orden = ['Leyendo', 'No se pudo leer', 'Revisar', 'Para confirmar', 'Confirmado'];
+  return partes.map(function (b) { return b.estado; }).sort(function (a, c) { return orden.indexOf(a) - orden.indexOf(c); })[0];
+}
+
+/**
+ * Un presupuesto en la tarjeta: un solo desplegable por proveedor, con sus partes adentro, una después de la otra
+ * (Feli, 2026-10-06). En el título, el total sin IVA si se sabe (y la marca), y lo que vale para este pedido si cambia.
+ */
+function htmlPresupuesto(partes) {
+  const b = partes[0], est = partes.length > 1 ? estadoDePartes(partes) : b.estado;
+  // El total del título: el de cada parte (o lo que vale para este pedido), sumado si tienen la misma marca
+  const montos = partes.map(function (x) { return x.paraEste ? { monto: x.paraEste.sinIva, que: x.paraEste.que || 'sin IVA', calculado: true } : x.resumen; });
+  let total = '', paraEste = '';
+  if (partes.length === 1) {
+    total = htmlResumenTotal(b.resumen, b.moneda);
+    if (b.paraEste) paraEste = 'para este pedido: ' + esc(plata(b.paraEste.sinIva, b.moneda)) + ' (' + esc(b.paraEste.que || 'sin IVA') + ')';
+  } else if (montos.every(function (m) { return m; }) && montos.every(function (m) { return m.que === montos[0].que; })) {
+    total = htmlResumenTotal({ monto: Math.round(montos.reduce(function (s, m) { return s + m.monto; }, 0) * 100) / 100, que: montos[0].que,
+                               calculado: montos.some(function (m) { return m.calculado; }) }, b.moneda);
+    paraEste = 'las ' + partes.length + ' partes juntas';
+  }
+  const cabeza = '<summary><b>' + esc(b.nombre) + '</b>' + (partes.length > 1 ? ' <span class="pr-parte">' + partes.length + ' partes</span>' : '') +
+    ' <span class="pr-estado e-' + esc(est.replace(/\s+/g, '-').toLowerCase()) + '">' + (PR_ICONO[est] || '') + ' ' + esc(est) + '</span>' +
+    (total ? ' <span class="pr-total">' + total + (paraEste ? '<small class="pr-total-este">' + paraEste + '</small>' : '') + '</span>' : '') + '</summary>';
+  const h = partes.map(function (x, i) {
+    if (partes.length === 1) return htmlCuerpoPresupuesto(x);
+    return '<div class="pr-parte-b"><div class="pr-parte-t">' + esc(nombreParte(i + 1)) + ' · ' + esc(fechaCorta(x.fecha)) +
+      ' <span class="pr-estado e-' + esc(x.estado.replace(/\s+/g, '-').toLowerCase()) + '">' + (PR_ICONO[x.estado] || '') + ' ' + esc(x.estado) + '</span>' +
+      (x.resumen ? ' <span class="pr-total">' + htmlResumenTotal(x.resumen, x.moneda) + '</span>' : '') + '</div>' + htmlCuerpoPresupuesto(x) + '</div>';
+  }).join('');
   return '<details class="pr-uno" data-pr-uno="' + esc(b.id) + '"' + (PR.abiertos[b.id] ? ' open' : '') + '>' + cabeza + '<div class="pr-cuerpo">' + h + '</div></details>';
+}
+
+/** Los presupuestos de la tarjeta, juntando las partes de cada uno (vienen ordenados: el primero y después sus partes). */
+function presupuestosEnPartes(l) {
+  const grupos = [], de = {};
+  l.forEach(function (b) {
+    const k = (b.parte && b.parte.principal) || b.id;
+    if (!de[k]) { de[k] = []; grupos.push(de[k]); }
+    de[k].push(b);
+  });
+  return grupos;
 }
 
 function pintarPresupuestos() {
@@ -305,7 +379,7 @@ function pintarPresupuestos() {
   if (b.hidden) return;
   const leidos = l.filter(function (x) { return ['Revisar', 'Para confirmar', 'Confirmado'].indexOf(x.estado) !== -1; });
   $('tj-presup').innerHTML = (leidos.length ? '<button type="button" class="btn-chico pr-cuadro-b" id="pr-cuadro">📊 Armar cuadro comparativo</button>' : '') +
-    (l.length ? l.map(htmlPresupuesto).join('')
+    (l.length ? presupuestosEnPartes(l).map(htmlPresupuesto).join('')
       : '<p class="nota" style="margin:0">Cuando llegue un presupuesto, cargalo desde el chat: en el menú del mensaje, "📥 Cargar en una tarjeta".</p>');
   if ($('pr-cuadro')) $('pr-cuadro').addEventListener('click', function () { abrirCuadro(TB.abierta); });
   $('tj-presup').querySelectorAll('[data-pr-repartir]').forEach(function (x) { x.addEventListener('click', function () { repartirUI(x.dataset.id, Number(x.dataset.prRepartir)); }); });
@@ -379,7 +453,7 @@ async function renglonEstaBien(idPresup, idRenglon) {
   const b = presupuestoAbierto(idPresup);
   const r = b && b.renglones.filter(function (x) { return x.id === idRenglon; })[0];
   if (!r) return;
-  const res = await api('corregirPresupuesto', idPresup, { renglones: [{ id: r.id, linea: r.linea, texto: r.texto, cant: r.cant, unidad: r.unidad,
+  const res = await api('corregirPresupuesto', idPresup, { renglones: [{ id: r.id, linea: r.linea, texto: r.texto, cant: r.ajustada !== null ? r.ajustada : r.cant, unidad: r.unidad,
                                                                         precio: r.precio, importe: r.importe, contenido: r.contenido }] });
   if (!res.ok) return aviso(res.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : res.error, 'bad');
   ponerPresupuesto(res.presupuesto);
@@ -422,6 +496,9 @@ async function repartirUI(idPresup, n) {
 
 function numEnInput(n) { return n === null || n === undefined ? '' : String(n).replace('.', ','); }
 
+/** La cantidad que se ve al corregir: la que cambió una persona, o la del presupuesto. */
+function cantVista(r) { return r && r.ajustada !== null && r.ajustada !== undefined ? r.ajustada : r && r.cant; }
+
 /** La ventana para corregir: cada renglón (a qué producto va, cantidad, precio, importe), agregar renglones, totales y condiciones. */
 async function corregirPresupuestoUI(b) {
   const cuerpo = document.createElement('div');
@@ -435,7 +512,7 @@ async function corregirPresupuestoUI(b) {
       '<div class="pr-ed-n">' + (r.n ? 'Renglón ' + r.n : 'Renglón nuevo') + (r.otras && r.otras.length && !r.linea ? ' <small>(de ' + esc(r.otras.join(' y ')) + ')</small>' : '') + '<label class="pr-ed-q"><input type="checkbox" data-c="quitar"> Quitar</label></div>' +
       '<label>Producto que pedimos<select data-c="linea">' + opciones + '</select></label>' +
       '<label>Cómo lo escribió<input data-c="texto" value="' + esc(r.texto || '') + '"></label>' +
-      '<div class="pr-ed-g"><label>Cantidad<input data-c="cant" inputmode="decimal" value="' + esc(numEnInput(r.cant)) + '"></label>' +
+      '<div class="pr-ed-g"><label>Cantidad<input data-c="cant" inputmode="decimal" value="' + esc(numEnInput(cantVista(r))) + '"></label>' +
       '<label>Unidad<input data-c="unidad" value="' + esc(r.unidad || '') + '"></label>' +
       '<label title="Cuántas de nuestras unidades trae una (un rollo = 100 m)">Trae<input data-c="contenido" inputmode="decimal" value="' + esc(numEnInput(r.contenido)) + '"></label></div>' +
       '<div class="pr-ed-g"><label>Precio unitario<input data-c="precio" inputmode="decimal" value="' + esc(numEnInput(r.precio)) + '"></label>' +
@@ -444,7 +521,8 @@ async function corregirPresupuestoUI(b) {
   const tot = [['subtotal', 'Subtotal', b.subtotal], ['descuento', 'Descuento', b.descuento], ['iva', 'IVA', b.iva], ['cargos', 'Flete y otros cargos', b.cargos || null], ['total', 'Total', b.total]];
   const cond = [['validez', 'Validez', b.validez], ['formaPago', 'Forma de pago', b.formaPago], ['plazo', 'Plazo de entrega', b.plazo], ['entrega', 'Entrega (retira o envío)', b.entrega],
                 ['flete', 'Flete', b.flete], ['observaciones', 'Observaciones', b.observaciones]];
-  cuerpo.innerHTML = '<p class="nota">Los números como en el presupuesto (1.234,56). Las cuentas las vuelve a hacer la app.</p>' +
+  cuerpo.innerHTML = '<p class="nota">Los números como en el presupuesto (1.234,56). Las cuentas las vuelve a hacer la app. ' +
+    'Si cambiás solo la cantidad (sin tocar el precio ni el importe), queda como un cambio tuyo para este pedido: el presupuesto sigue diciendo lo suyo y la app calcula el importe nuevo.</p>' +
     '<div id="pr-ed-filas">' + b.renglones.map(fila).join('') + '</div>' +
     '<button type="button" class="btn-chico" id="pr-ed-mas">＋ Agregar un renglón</button>' +
     '<h4>Totales</h4><div class="pr-ed-g">' + tot.map(function (x) { return '<label>' + x[1] + '<input data-t="' + x[0] + '" inputmode="decimal" value="' + esc(numEnInput(x[2])) + '"></label>'; }).join('') + '</div>' +
@@ -464,7 +542,7 @@ async function corregirPresupuestoUI(b) {
       const nuevo = { id: id, linea: v('linea'), texto: v('texto'), cant: v('cant'), unidad: v('unidad'), contenido: v('contenido'), precio: v('precio'), importe: v('importe'), quitar: v('quitar') };
       if (!id && !nuevo.quitar && !nuevo.texto && !nuevo.importe && !nuevo.precio) return;   // renglón nuevo vacío
       if (ant && !nuevo.quitar && nuevo.linea === (ant.linea || '') && nuevo.texto === (ant.texto || '') && nuevo.unidad === (ant.unidad || '') &&
-          nuevo.cant === numEnInput(ant.cant) && nuevo.precio === numEnInput(ant.precio) && nuevo.importe === numEnInput(ant.importe) &&
+          nuevo.cant === numEnInput(cantVista(ant)) && nuevo.precio === numEnInput(ant.precio) && nuevo.importe === numEnInput(ant.importe) &&
           nuevo.contenido === numEnInput(ant.contenido)) return;                              // sin cambios
       cambios.renglones.push(nuevo);
     });

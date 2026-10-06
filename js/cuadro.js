@@ -7,7 +7,7 @@
    rehecho después de cualquier cambio; quedan guardados los tildes de "controlado" y las anotaciones.
    "🖨️ Imprimir" lo imprime o lo guarda como PDF, apaisado y con todas las columnas. Todo necesita señal. */
 
-const CQ = { datos: null };
+const CQ = { datos: null, buscar: '' };
 
 /** "= $ 655,83 el metro": nuestra unidad, sacada de la cantidad pedida ("3200 mts"). */
 function porNuestraUnidad(cantidad) {
@@ -25,6 +25,8 @@ async function abrirCuadro(ref) {
   const c = $('cuadro');
   if (c.parentNode !== document.body) document.body.appendChild(c);     // así, al imprimir, se imprime solo el cuadro
   CQ.datos = null;
+  if (CQ.ref !== ref) CQ.buscar = '';
+  CQ.ref = ref;
   $('cuadro-titulo').textContent = '📊 Cuadro comparativo';
   $('cuadro-sub').textContent = '';
   $('cuadro-cuerpo').innerHTML = '<p class="nota cq-cargando">Armando el cuadro…</p>';
@@ -67,8 +69,11 @@ function htmlCasillero(col, p) {
     return '<td class="cq-cas' + (c.noSePidio ? ' cq-nopedido' : '') + '">' + h + '</td>';
   }
   if (c.masBarato) h += '<div class="cq-barato">Más barato</div>';
+  if (c.parte > 1) h += '<div class="cq-parte-b">' + esc(nombreParte(c.parte)) + (c.fechaParte ? ' · ' + esc(fechaCorta(c.fechaParte)) : '') + '</div>';
   h += c.renglones.map(function (r) {
     return '<div class="cq-ren"><span class="cq-cant">' + esc([cantTexto(r.cant), r.unidad].filter(String).join(' ')) + '</span> ' + esc(capital(r.texto)) +
+      (r.cantDoc !== null && r.cantDoc !== undefined && !c.avisos.some(function (x) { return /^Cambiaste/.test(x); })
+        ? '<div class="cq-gris">El presupuesto dice ' + esc(cantTexto(r.cantDoc)) + ' (repartido con otro pedido)</div>' : '') +
       (r.precio !== null ? '<div class="cq-precios">' + esc(plata(r.precio, r.moneda)) + (r.importe !== null ? ' · <b>' + esc(plata(r.importe, r.moneda)) + '</b>' : '') + '</div>'
         : r.importe !== null ? '<div class="cq-precios"><b>' + esc(plata(r.importe, r.moneda)) + '</b></div>' : '') + '</div>';
   }).join('');
@@ -83,15 +88,21 @@ function htmlTotalesColumna(col) {
   const fila = function (t, v, m, fuerte) { return v === null || v === undefined ? '' : '<div class="cq-tot"><span>' + t + '</span>' + (fuerte ? '<b>' : '<span>') + esc(plata(v, m)) + (fuerte ? '</b>' : '</span>') + '</div>'; };
   let h = col.partes.map(function (e) {
     const iva = e.conIva === 'si' ? '(precios con IVA)' : e.conIva === 'no' ? '(precios sin IVA)' : '(sin dato de IVA)';
-    return (col.partes.length > 1 ? '<div class="cq-parte">Presupuesto ' + e.n + ' (' + esc(fechaCorta(e.fecha)) + ')</div>' : '') +
-      fila('Subtotal', e.subtotal, e.moneda) + fila('Descuento', e.descuento, e.moneda) + fila('IVA', e.iva, e.moneda) + fila('Otros impuestos', e.otros, e.moneda) +
-      fila('Flete y otros cargos', e.cargos, e.moneda) + fila('Total', e.total, e.moneda, true) + '<div class="cq-gris">' + iva + '</div>' +
+    const tiene = [e.subtotal, e.iva, e.total].some(function (v) { return v !== null && v !== undefined; });
+    const a = e.paraEste;
+    return (col.partes.length > 1 ? '<div class="cq-parte">' + esc(nombreParte(e.n)) + ' (' + esc(fechaCorta(e.fecha)) + ')</div>' : '') +
+      (tiene ? fila('Subtotal', e.subtotal, e.moneda) + fila('Descuento', e.descuento, e.moneda) + fila('IVA', e.iva, e.moneda) + fila('Otros impuestos', e.otros, e.moneda) +
+               fila('Flete y otros cargos', e.cargos, e.moneda) + fila('Total', e.total, e.moneda, true) + '<div class="cq-gris">' + iva + '</div>'
+             : e.sumaRenglones !== null && e.sumaRenglones !== undefined ? fila('Suma de los renglones', e.sumaRenglones, e.moneda, true) +
+               '<div class="cq-gris">No trae totales: la suma la hizo la app (sin IVA)</div>' : '<div class="cq-gris">Sin totales</div>') +
+      (a ? '<div class="cq-este">' + '<div class="cq-gris">Para este pedido (con tus cambios o sin lo de otro pedido):</div>' + fila('Subtotal', a.subtotal, e.moneda) +
+           fila('IVA', a.iva, e.moneda) + fila('Total', a.total, e.moneda, true) + '</div>' : '') +
       (e.flete ? '<div class="cq-gris">Flete: ' + esc(e.flete) + '</div>' : '');
   }).join('');
-  if (col.suma) {
-    const m = col.partes[0].moneda;
-    h += '<div class="cq-parte">Suma de los ' + col.partes.length + ' presupuestos</div>' + fila('Subtotal', col.suma.subtotal, m) + fila('IVA', col.suma.iva, m) + fila('Total', col.suma.total, m, true) +
-      (col.repite ? '<div class="cq-cambio">Ojo: un presupuesto repite productos de otro, y la suma los cuenta dos veces. Para comparar, mirá el total comparable.</div>' : '');
+  if (col.partes.length > 1) {
+    h += col.suma ? '<div class="cq-parte">Las ' + col.partes.length + ' partes juntas</div>' + fila('Total (' + col.suma.que + ')', col.suma.monto, col.partes[0].moneda, true) +
+      (col.repite ? '<div class="cq-cambio">Ojo: una parte repite productos de otra, y la suma los cuenta dos veces. Para comparar, mirá el total comparable.</div>' : '')
+      : '<div class="cq-gris">Las partes no se pueden sumar: no dicen lo mismo del IVA.</div>';
   }
   return h + htmlControl(col.proveedor + '|_totales', col.huella, col.control);
 }
@@ -100,7 +111,7 @@ function htmlCondiciones(col) {
   return col.partes.map(function (e) {
     const l = [['Validez', e.validez], ['Forma de pago', e.formaPago], ['Plazo de entrega', e.plazo], ['Entrega', e.entrega], ['Observaciones', e.observaciones]]
       .filter(function (x) { return x[1]; });
-    return (col.partes.length > 1 ? '<div class="cq-parte">Presupuesto ' + e.n + '</div>' : '') +
+    return (col.partes.length > 1 ? '<div class="cq-parte">' + esc(nombreParte(e.n)) + '</div>' : '') +
       (l.length ? l.map(function (x) { return '<div><span class="cq-gris">' + x[0] + ':</span> ' + esc(x[1]) + '</div>'; }).join('') : '<div class="cq-gris">No dice.</div>');
   }).join('');
 }
@@ -129,10 +140,14 @@ function pintarCuadro() {
   };
   let h = '<table class="cq-tabla"><thead><tr><th class="cq-fija">' + (q.sinProductos ? 'Presupuesto' : 'Pediste') + '</th>' + cols.map(function (c) {
     return '<th><div class="cq-prov">' + esc(c.nombre) + '</div>' + (c.sinConfirmar ? '<div class="cq-sin">Sin confirmar</div>' : '') +
-      (c.partes.length > 1 ? '<div class="cq-gris">' + c.partes.map(function (e) { return 'Presupuesto ' + e.n + ' (' + esc(fechaCorta(e.fecha)) + ')'; }).join(' · ') + '</div>' : '') + '</th>';
+      (c.partes.length > 1 ? '<div class="cq-gris">En ' + c.partes.length + ' partes: ' + c.partes.map(function (e) { return esc(fechaCorta(e.fecha)); }).join(' y ') + '</div>' : '') + '</th>';
   }).join('') + '</tr></thead><tbody>';
   q.productos.forEach(function (p) {
-    h += '<tr><th class="cq-fija"><span class="cq-cant">' + esc(p.cantidad) + '</span> ' + esc(p.nombre) + (p.nota ? '<div class="cq-gris">' + esc(p.nota) + '</div>' : '') + '</th>' +
+    // Para el buscador: lo pedido y lo que escribió cada proveedor
+    const texto = [p.cantidad, p.nombre, p.nota].concat([].concat.apply([], cols.map(function (c) {
+      return ((c.casilleros[p.linea] || {}).renglones || []).map(function (r) { return r.texto; });
+    }))).join(' ');
+    h += '<tr class="cq-fila" data-cq-buscar="' + esc(sinTildes(texto)) + '"><th class="cq-fija"><span class="cq-cant">' + esc(p.cantidad) + '</span> ' + esc(p.nombre) + (p.nota ? '<div class="cq-gris">' + esc(p.nota) + '</div>' : '') + '</th>' +
       cols.map(function (c) { return htmlCasillero(c, p); }).join('') + '</tr>';
   });
   const renglones = function (l) {
@@ -155,8 +170,13 @@ function pintarCuadro() {
   h += fila('Anotaciones', htmlNotas, 'cq-pie');
   h += '</tbody></table>';
   if (q.anterior && q.anterior.quien) h += '<p class="cq-gris cq-al-pie no-imprimir">La vez anterior lo armó ' + esc(q.anterior.quien) + ' el ' + esc(fechaHoraCorta(q.anterior.cuando)) + '.</p>';
-  $('cuadro-cuerpo').innerHTML = h;
+  $('cuadro-cuerpo').innerHTML = (q.sinProductos ? '' : '<div class="cq-buscar no-imprimir"><input type="search" id="cq-buscar" placeholder="🔍 Buscar un producto (por ejemplo, jabalina)" value="' +
+    esc(CQ.buscar) + '"><span class="cq-gris" id="cq-buscar-n"></span></div>') + h;
   const cuerpo = $('cuadro-cuerpo');
+  if ($('cq-buscar')) {
+    $('cq-buscar').addEventListener('input', function () { CQ.buscar = this.value; filtrarCuadro(); });
+    filtrarCuadro();
+  }
   cuerpo.querySelectorAll('[data-cq-control]').forEach(function (x) { x.addEventListener('change', function () { controlarCasillero(x); }); });
   cuerpo.querySelectorAll('[data-cq-anotar]').forEach(function (x) { x.addEventListener('click', function () { anotar(x.dataset.cqAnotar); }); });
   cuerpo.querySelectorAll('[data-cq-quitar]').forEach(function (x) { x.addEventListener('click', function () { quitarNota(x.dataset.cqQuitar); }); });
@@ -203,4 +223,21 @@ async function quitarNota(id) {
   if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
   CQ.datos.columnas.forEach(function (c) { if (c.notas.some(function (n) { return n.id === id; })) c.notas = r.notas; });
   pintarCuadro();
+}
+
+/** Sin tildes ni mayúsculas, para buscar. */
+function sinTildes(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+
+/** El buscador del cuadro (Feli, 2026-10-06): deja solo los productos que tienen lo que se escribió (en lo pedido o en lo que escribió algún proveedor). */
+function filtrarCuadro() {
+  const palabras = sinTildes(CQ.buscar).split(/\s+/).filter(String);
+  let n = 0, total = 0;
+  document.querySelectorAll('#cuadro-cuerpo .cq-fila').forEach(function (tr) {
+    total++;
+    const si = palabras.every(function (w) { return tr.dataset.cqBuscar.indexOf(w) !== -1; });
+    tr.hidden = !si;
+    if (si) n++;
+  });
+  const t = $('cq-buscar-n');
+  if (t) t.textContent = palabras.length ? n + ' de ' + total + ' productos' : '';
 }
