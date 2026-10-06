@@ -514,6 +514,16 @@
     <p class="visor-carga" id="visor-carga">Cargando la foto…</p>
   </div>
 
+  <!-- Fase 4, Paso 4: el cuadro comparativo, en grande (cuadro.js). Al abrirlo pasa a ser hijo de <body>, para imprimir solo el cuadro -->
+  <div class="cuadro" id="cuadro" hidden>
+    <div class="cuadro-barra">
+      <div class="cuadro-tit"><b id="cuadro-titulo"></b><span id="cuadro-sub"></span></div>
+      <button type="button" class="btn-chico no-imprimir" id="cuadro-imprimir">🖨️ Imprimir</button>
+      <button type="button" class="icono no-imprimir" id="cuadro-x" aria-label="Cerrar el cuadro">×</button>
+    </div>
+    <div class="cuadro-cuerpo" id="cuadro-cuerpo"></div>
+  </div>
+
   <!-- Diálogos (mover, quién retiró, responsable, cancelar) -->
   <div class="modal encima" id="dialogo" hidden>
     <div class="panel chico" role="dialog" aria-modal="true" aria-labelledby="dg-titulo">
@@ -533,6 +543,7 @@
 <script src="js/recepcion.js"></script>
 <script src="js/chats.js"></script>
 <script src="js/presupuestos.js"></script>
+<script src="js/cuadro.js"></script>
 <script src="js/tareas.js"></script>
 <script src="js/servicios.js"></script>
 <script src="js/notificaciones.js"></script>
