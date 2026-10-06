@@ -7,7 +7,8 @@
    cotizado producto por producto, los avisos, "No pedido", totales y condiciones; corregir a mano,
    confirmar, volver a revisar, volver a leer y quitar. Todo necesita señal (va directo, no por la bandeja). */
 
-const PR = { sel: null };       // "Seleccionar varios": los IDs de los mensajes marcados (null: no se está eligiendo)
+const PR = { sel: null,        // "Seleccionar varios": los IDs de los mensajes marcados (null: no se está eligiendo)
+             abiertos: {} };   // los presupuestos que se desplegaron (vienen cerrados; Feli, 2026-10-05)
 
 /* ---------- En el chat ---------- */
 
@@ -185,7 +186,7 @@ function htmlPresupuesto(b) {
   h += '<div class="pr-acciones">' + bs.map(function (x) {
     return '<button type="button" class="btn-chico' + (x[0] === 'confirmar' ? ' si' : '') + '" data-pr="' + x[0] + '" data-id="' + esc(b.id) + '">' + x[1] + '</button>';
   }).join('') + '</div>';
-  return '<details class="pr-uno"' + (est !== 'Confirmado' ? ' open' : '') + '>' + cabeza + '<div class="pr-cuerpo">' + h + '</div></details>';
+  return '<details class="pr-uno" data-pr-uno="' + esc(b.id) + '"' + (PR.abiertos[b.id] ? ' open' : '') + '>' + cabeza + '<div class="pr-cuerpo">' + h + '</div></details>';
 }
 
 function pintarPresupuestos() {
@@ -196,6 +197,9 @@ function pintarPresupuestos() {
   if (b.hidden) return;
   $('tj-presup').innerHTML = l.length ? l.map(htmlPresupuesto).join('')
     : '<p class="nota" style="margin:0">Cuando llegue un presupuesto, cargalo desde el chat: en el menú del mensaje, "📥 Cargar en una tarjeta".</p>';
+  $('tj-presup').querySelectorAll('[data-pr-uno]').forEach(function (x) {
+    x.addEventListener('toggle', function () { if (x.open) PR.abiertos[x.dataset.prUno] = true; else delete PR.abiertos[x.dataset.prUno]; });
+  });
   $('tj-presup').querySelectorAll('[data-pr-chat]').forEach(function (x) { x.addEventListener('click', function () { irAlChat(x.dataset.prChat); }); });
   $('tj-presup').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
   $('tj-presup').querySelectorAll('[data-pr]').forEach(function (x) { x.addEventListener('click', function () { accionPresupuesto(x.dataset.pr, x.dataset.id); }); });
