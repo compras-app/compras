@@ -243,6 +243,20 @@ async function abrirPedirCotizacion(refs) {
   aviso(APP.enLinea ? '📤 Mandando el pedido de cotización…' : '📶 Poca señal: el pedido de cotización se manda solo cuando vuelva.');
 }
 
+/* Fase 4, Paso 6: los recordatorios al proveedor que no contestó, y "Sin respuesta" (solo acá, en la tarjeta: Feli). */
+function htmlRecordatorio(r) {
+  if (!r) return '';
+  const cuando = function (iso) {
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.getDate() + '/' + (d.getMonth() + 1) + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  };
+  const l = [];
+  if (r.enviados && r.enviados.length) l.push(esc('⏰ ' + (r.enviados.length === 1 ? 'Recordatorio: ' : 'Recordatorios: ') + r.enviados.map(cuando).join(' y ')));
+  if (r.sinRespuesta) l.push('<b>😶 Sin respuesta</b>');
+  else if (r.proximo) l.push(esc((r.ultimo ? 'Si no contesta, queda "Sin respuesta" el ' : 'Próximo recordatorio: ') + cuando(r.proximo)));
+  return l.length ? '<div class="sub recordatorio' + (r.sinRespuesta ? ' sin-resp' : '') + '">' + l.join(' · ') + '</div>' : '';
+}
+
 /* ---------- El bloque Cotizaciones de la tarjeta abierta ---------- */
 function pintarCotizaciones() {
   const ref = TB.abierta, d = TB.detalle, b = $('tj-cot-b');
@@ -267,6 +281,7 @@ function pintarCotizaciones() {
         (s.prueba ? ' · 🧪 prueba' : '') + '</small></div>' +
         '<div class="sub">' + esc(s.productos.join(', ')) + '</div>' +
         '<div class="sub">' + esc(e) + (s.notas ? ' · ' + esc(s.notas) : '') + '</div>' +
+        htmlRecordatorio(s.recordatorio) +                                         // Fase 4, Paso 6
         (APP.yo.admin && s.estado === 'No salió' && !reintento[s.id] ? '<button type="button" class="btn-chico" data-reintentar="' + esc(s.id) + '">Reintentar</button>' : '') +
         (veChats() && s.chat ? '<button type="button" class="btn-chico" data-ir-chat="' + esc(s.chat) + '">💬 Chat' + (s.prueba ? ' (número de prueba)' : '') + '</button>' : '') + '</div>';   // Fase 4, Paso 2
     }).join('') : (esperan.length ? '' : '<p class="nota" style="margin:0">Todavía no se pidió cotización.</p>'));

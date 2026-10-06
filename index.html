@@ -321,6 +321,8 @@
         <div class="campo"><label for="aj-numero">Número de prueba</label><input type="tel" id="aj-numero" inputmode="numeric" placeholder="Solo los números, con 549 adelante"></div>
         <div class="campo"><label for="aj-msj-cot">Pedido de cotización</label><textarea id="aj-msj-cot" rows="7"></textarea>
           <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto. {contacto}: el nombre del contacto del proveedor (si no tiene, se saltea).</small></div>
+        <div class="campo"><label for="aj-msj-recprov">Recordatorio al proveedor</label><textarea id="aj-msj-recprov" rows="3"></textarea>
+          <small class="nota">Si el proveedor no contestó el pedido de cotización: al día hábil siguiente, a la misma hora (de 8 a 18), y otro al otro día; después queda "Sin respuesta". Va citando el pedido. {codigo} y {contacto}.</small></div>
         <div class="campo"><label for="aj-msj-conf">Confirmación de la compra</label><textarea id="aj-msj-conf" rows="5"></textarea>
           <small class="nota">Le llega a cada proveedor al comprarle ("🛒 Realizar la compra"); antes de mandarlo se puede cambiar. {codigo}, {contacto} y {productos}: los productos como los escribió el proveedor, con las cantidades a comprar.</small></div>
         <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>

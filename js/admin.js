@@ -337,6 +337,7 @@ function pintarAjustes() {
     $('aj-numero').value = a.cotizar.numeroPrueba || '';
     $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';
     $('aj-msj-conf').value = a.cotizar.msjConfirmar || '';
+    $('aj-msj-recprov').value = a.cotizar.msjRecordatorioProv || '';         // Fase 4, Paso 6
     $('aj-msj-recep').value = a.cotizar.msjRecepcion || '';                 // Fase 4, Paso 1-bis
     pintarPredisenados(a.cotizar.predisenados || []);                       // Fase 4, Paso 2
     $('aj-msj-recep2').value = a.cotizar.msjRecepcionRecordatorio || '';
@@ -438,6 +439,7 @@ $('aj-cot-ok').addEventListener('click', async function () {
     numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
     msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined,
     msjRecepcion: a_siHay('aj-msj-recep'), msjRecepcionRecordatorio: a_siHay('aj-msj-recep2'),
+    msjRecordatorioProv: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.msjRecordatorioProv !== undefined ? $('aj-msj-recprov').value : undefined,
     chatsVen: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.admins ? Array.prototype.map.call(document.querySelectorAll('#aj-chats-ven input:checked'), function (x) { return x.value; }) : undefined,
     predisenados: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.predisenados !== undefined ? leerPredisenados() : undefined
   });
