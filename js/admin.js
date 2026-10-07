@@ -229,7 +229,7 @@ function pintarProveedores() {
   $('pv-lista').innerHTML = l.map(function (p) {
     return '<button type="button" class="ad-item ad-fila' + (p.activo ? '' : ' baja') + '" data-id="' + esc(p.id) + '">' +
       '<span class="ad-nom"><b>' + esc(p.nombre) + '</b>' +
-      '<small>' + (p.contacto ? esc(p.contacto) + ' · ' : '') + (p.telefono ? esc(p.telefono) : '⚠️ Sin teléfono') + (p.activo ? '' : ' · Desactivado') + '</small>' +
+      '<small>' + (p.telefono ? esc(p.telefono) : '⚠️ Sin teléfono') + (p.activo ? '' : ' · Desactivado') + '</small>' +
       (p.rubros.length ? '<span class="ad-chips">' + p.rubros.map(function (c) { return '<span class="chip">' + esc(c) + '</span>'; }).join('') + '</span>'
                        : '<small>Sin rubros</small>') + '</span><span class="ad-flecha" aria-hidden="true">›</span></button>';
   }).join('') || '<p class="nota">No hay proveedores con eso.</p>';
@@ -255,7 +255,6 @@ async function editarProveedor(p, previo) {
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = campoDlg('pr-nombre', 'Nombre', v.nombre, { max: 80 }) +
     campoDlg('pr-tel', 'Teléfono (WhatsApp)', v.telefono, { tipo: 'tel', max: 20, inputmode: 'tel', placeholder: '5493525415029', nota: NOTA_TELEFONO + ' Ahí le van a llegar los pedidos de cotización.' }) +
-    campoDlg('pr-contacto', 'Contacto (opcional)', v.contacto, { max: 60, placeholder: 'Ej: Juan', nota: 'La persona con la que se habla. El pedido de cotización la saluda: "Hola Juan,".' }) +
     campoDlg('pr-mail', 'Mail (opcional)', v.email, { tipo: 'email', max: 120 }) +
     campoDlg('pr-notas', 'Notas (opcional)', v.notas, { area: true, max: 1000 }) +
     '<div class="campo"><label>Rubros</label><p class="nota">A qué rubros se le pide cotización. Hasta ' + max + ' proveedores por rubro.</p>' +
@@ -265,7 +264,7 @@ async function editarProveedor(p, previo) {
     titulo: p ? p.nombre : 'Agregar proveedor', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
       return { id: p ? p.id : '', nombre: $('pr-nombre').value.trim(), telefono: $('pr-tel').value.trim(), email: $('pr-mail').value.trim(),
-               notas: $('pr-notas').value.trim(), contacto: $('pr-contacto').value.trim(), activo: $('pr-activo').checked,
+               notas: $('pr-notas').value.trim(), contacto: undefined, activo: $('pr-activo').checked,
                rubros: Object.keys(elegidos).filter(function (c) { return elegidos[c]; }).sort() };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
@@ -395,7 +394,7 @@ async function granjaOp(op, texto) {
 
 $('aj-granja-nueva').addEventListener('click', async function () {
   if (!AD.ajustes) return;
-  const nombre = await pedirNombre('Agregar granja', '', 'Aparece en el formulario y en los filtros.');
+  const nombre = await pedirNombre('Agregar sitio', '', 'Aparece en el formulario y en los filtros.');
   if (nombre) granjaOp({ accion: 'agregar', nombre: nombre }, function () { return 'Listo: se agregó ' + nombre + '.'; });
 });
 
@@ -409,7 +408,7 @@ async function renombrarGranja(viejo) {
 
 async function sacarGranja(nombre) {
   const si = await dialogo({ titulo: '¿Sacar ' + nombre + '?', texto: 'Deja de aparecer en el formulario y en los filtros. Los pedidos viejos quedan como están. Se puede volver a agregar.',
-    botones: [{ texto: 'Sí, sacarla', clase: 'btn peligro-btn', valor: true }, { texto: 'Volver', valor: null }] });
+    botones: [{ texto: 'Sí, sacarlo', clase: 'btn peligro-btn', valor: true }, { texto: 'Volver', valor: null }] });
   if (si) granjaOp({ accion: 'sacar', nombre: nombre }, function () { return 'Listo: se sacó ' + nombre + '.'; });
 }
 
@@ -491,7 +490,7 @@ function mostrarMasivo() {
   if (!m.sitiosArmados) {
     m.sitiosArmados = true;
     const actual = $('ma-sitio').value;
-    $('ma-sitio').innerHTML = '<option value="">Elegí la granja</option>' + (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+    $('ma-sitio').innerHTML = '<option value="">Elegí el sitio</option>' + (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
     $('ma-sitio').value = actual;
   }
   const urg = APP.config.urgencias || [];

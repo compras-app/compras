@@ -143,7 +143,7 @@
             <button type="button" id="tb-mios" aria-pressed="false">Mis pedidos</button>
             <button type="button" id="tb-todos" aria-pressed="false">Todos</button>
           </div>
-          <label class="filtro" id="tb-sitio-l" hidden><span>Granja</span><select id="tb-sitio"></select></label>
+          <label class="filtro" id="tb-sitio-l" hidden><span>Sitio</span><select id="tb-sitio"></select></label>
           <label class="filtro" id="tb-resp-l" hidden><span>Responsable</span><select id="tb-resp"></select></label>
         </div>
       </div>
@@ -162,7 +162,7 @@
             <button type="button" id="sv-mios" aria-pressed="false">Mis servicios</button>
             <button type="button" id="sv-todos" aria-pressed="true">Todos</button>
           </div>
-          <label class="filtro" id="sv-sitio-l" hidden><span>Granja</span><select id="sv-sitio"></select></label>
+          <label class="filtro" id="sv-sitio-l" hidden><span>Sitio</span><select id="sv-sitio"></select></label>
           <label class="filtro" id="sv-resp-l" hidden><span>Responsable</span><select id="sv-resp"></select></label>
           <button type="button" class="refrescar" id="sv-refrescar" aria-label="Actualizar los servicios"><span class="ic">↻</span> <span id="sv-hace"></span></button>
         </div>
@@ -235,7 +235,7 @@
 
     <section id="s-buscar" hidden>
       <form class="buscar-caja" id="bu-form" role="search">
-        <input type="search" id="bu-q" placeholder="Producto, granja, proveedor, ref…" aria-label="Buscar pedidos" autocomplete="off" enterkeyhint="search" maxlength="200">
+        <input type="search" id="bu-q" placeholder="Producto, sitio, proveedor, ref…" aria-label="Buscar pedidos" autocomplete="off" enterkeyhint="search" maxlength="200">
         <button type="submit" class="btn" id="bu-ir">Buscar</button>
       </form>
       <div class="filtros bu-filtros">
@@ -259,7 +259,7 @@
           <button type="button" id="bu-mios" aria-pressed="false">Mis pedidos</button>
           <button type="button" id="bu-todos" aria-pressed="false">De todos</button>
         </div>
-        <label class="filtro"><span>Granja</span><select id="bu-sitio"></select></label>
+        <label class="filtro"><span>Sitio</span><select id="bu-sitio"></select></label>
         <label class="filtro"><span>Cargados</span><select id="bu-periodo">
           <option value="">Siempre</option><option value="mes">Último mes</option><option value="3meses">Últimos 3 meses</option><option value="anio">Último año</option>
         </select></label>
@@ -274,7 +274,7 @@
       <div class="ad-menu">
         <button type="button" class="ad-op" data-ir="personas"><span class="ic" aria-hidden="true">👥</span><b>Personas y dispositivos</b><small>Altas, bajas, roles y dónde tiene abierta la app cada uno</small></button>
         <button type="button" class="ad-op" data-ir="proveedores"><span class="ic" aria-hidden="true">🏪</span><b>Proveedores</b><small>Teléfonos, rubros, activar o desactivar</small></button>
-        <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Granjas y aviso de la Tanda verde</small></button>
+        <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Sitios y aviso de la Tanda verde</small></button>
         <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Un pedido o un servicio con título, descripción y PDF, para compartir con quien elijas</small></button>
         <button type="button" class="ad-op" data-ir="padron"><span class="ic" aria-hidden="true">🗂️</span><b>Padrón</b><small>Los productos, sus variantes, cuándo se pidieron y a quién se cotizó</small></button>
       </div>
@@ -305,7 +305,7 @@
 
     <section id="s-ajustes" hidden>
       <div class="caja">
-        <div class="act-h"><h2>Granjas</h2><button type="button" class="btn-chico" id="aj-granja-nueva">＋ Agregar granja</button></div>
+        <div class="act-h"><h2>Sitios</h2><button type="button" class="btn-chico" id="aj-granja-nueva">＋ Agregar sitio</button></div>
         <p class="nota">Son las que aparecen en el formulario y en los filtros. Si le cambiás el nombre a una, cambia también en los pedidos viejos.</p>
         <div id="aj-granjas" class="ad-lista"></div>
       </div>
@@ -320,11 +320,11 @@
         <label class="aj-prueba"><input type="checkbox" id="aj-prueba"> <span><b>🧪 Modo prueba</b><br><small>Todos los pedidos de cotización le llegan al número de prueba, no a los proveedores. Se apaga cuando la app entra en uso.</small></span></label>
         <div class="campo"><label for="aj-numero">Número de prueba</label><input type="tel" id="aj-numero" inputmode="numeric" placeholder="Solo los números, con 549 adelante"></div>
         <div class="campo"><label for="aj-msj-cot">Pedido de cotización</label><textarea id="aj-msj-cot" rows="7"></textarea>
-          <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto. {contacto}: el nombre del contacto del proveedor (si no tiene, se saltea).</small></div>
+          <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto.</small></div>
         <div class="campo"><label for="aj-msj-recprov">Recordatorio al proveedor</label><textarea id="aj-msj-recprov" rows="3"></textarea>
-          <small class="nota">Si el proveedor no contestó el pedido de cotización: al día hábil siguiente, a la misma hora (de 8 a 18), y otro al otro día; después queda "Sin respuesta". Va citando el pedido. {codigo} y {contacto}.</small></div>
+          <small class="nota">Si el proveedor no contestó el pedido de cotización: al día hábil siguiente, a la misma hora (de 8 a 18), y otro al otro día; después queda "Sin respuesta". Va citando el pedido. {codigo}: el código del pedido.</small></div>
         <div class="campo"><label for="aj-msj-conf">Confirmación de la compra</label><textarea id="aj-msj-conf" rows="5"></textarea>
-          <small class="nota">Le llega a cada proveedor al comprarle ("🛒 Realizar la compra"); antes de mandarlo se puede cambiar. {codigo}, {contacto} y {productos}: los productos como los escribió el proveedor, con las cantidades a comprar.</small></div>
+          <small class="nota">Le llega a cada proveedor al comprarle ("🛒 Realizar la compra"); antes de mandarlo se puede cambiar. {codigo} y {productos}: los productos como los escribió el proveedor, con las cantidades a comprar.</small></div>
         <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>
           <small class="nota">Le llega el WhatsApp de "📨 Mandar a aprobar" (en Decisión) y aprueba desde la tarjeta.</small></div>
         <div class="campo"><label>Ven los chats</label><div id="aj-chats-ven" class="aj-chats-ven"></div>
@@ -348,7 +348,7 @@
         <div class="campo"><label>¿Qué es?</label><div class="urgencias-el" id="ma-tipo">
           <button type="button" data-tipo="pedido" aria-pressed="true">📦 Pedido</button><button type="button" data-tipo="servicio" aria-pressed="false">🔧 Servicio</button></div></div>
         <div class="campo"><label for="ma-titulo">Título</label><input type="text" id="ma-titulo" maxlength="200" autocomplete="off" placeholder="Ej: Materiales obra silos PAB"></div>
-        <div class="campo"><label for="ma-sitio">Granja</label><select id="ma-sitio"></select></div>
+        <div class="campo"><label for="ma-sitio">Sitio</label><select id="ma-sitio"></select></div>
         <div class="campo"><label>Urgencia</label><div class="urgencias-el" id="ma-urg"></div></div>
         <div class="campo"><label for="ma-razon">Razón <small>(opcional)</small></label><input type="text" id="ma-razon" maxlength="2000" autocomplete="off" placeholder="Ej: obra nueva, reposición del mes…"></div>
         <div class="campo"><label for="ma-desc">Descripción</label>

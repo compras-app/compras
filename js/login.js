@@ -87,6 +87,7 @@ async function refrescarInicio() {
   if (r.ok) {
     aplicarInicio(r);
     if (!$('app').hidden) pintarBarra();
+    if (typeof rearmarOpcionesFiltros === 'function' && TB.filtros) rearmarOpcionesFiltros();
     pintarSinRed();
   } else if (r.sinSesion) {
     sesionPerdida(r.error);

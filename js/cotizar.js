@@ -42,17 +42,18 @@ function colDecision() {
 }
 function sePuedeCotizarAbierta(t) { return sePuedeCotizar(t) || (!!t && !t.trabajo && !t.manual && t.columna === colDecision()); }
 
-/** La marca de la tarjeta en el tablero, en Por cotizar. */
+/**
+ * La marca de la tarjeta en el tablero, en Por cotizar: solo dice a cuántos se les pidió. El botón "📤 Pedir cotización"
+ * ya no está en el tablero (Feli, 2026-10-07): se pide desde la tarjeta abierta.
+ */
 function htmlMarcaCotizar(t) {
   if (!sePuedeCotizar(t)) return '';
   const espera = bandeja.lista().some(function (m) { return m.fn === 'pedirCotizacion' && m.args[0] === t.ref; });
   let txt;
   if (espera) txt = '⏳ Pidiendo cotización…';
-  else if (!t.pedidoA) txt = '📤 Pedir cotización';
-  else txt = '⏳ Pedido a ' + t.pedidoA + (t.pedidoA === 1 ? ' proveedor' : ' proveedores') + (t.sinPedir ? ' · 📤 ' + t.sinPedir + ' sin pedir' : '');
-  const admin = APP.yo && APP.yo.admin;
-  return admin ? '<button type="button" class="marca-cot btn-chico si" data-cotizar="' + esc(t.ref) + '">' + esc(txt) + '</button>'
-               : '<div class="marca-cot">' + esc(txt) + '</div>';
+  else if (t.pedidoA) txt = '⏳ Pedido a ' + t.pedidoA + (t.pedidoA === 1 ? ' proveedor' : ' proveedores') + (t.sinPedir ? ' · ' + t.sinPedir + ' sin pedir' : '');
+  else return '';
+  return '<div class="marca-cot">' + esc(txt) + '</div>';
 }
 
 /* ---------- La ventana "Pedir cotización" ----------

@@ -252,6 +252,12 @@ function htmlResumenTotal(t, moneda) {
   return esc(plata(t.monto, moneda)) + ' <small>(' + esc(t.que) + (t.calculado ? ', calculado' : '') + ')</small>';
 }
 
+/** "3 un · Martillo galponero": el encabezado de un renglón no pedido (Feli, 2026-10-07). */
+function textoRenglonCorto(r) {
+  const t = String(r.texto || '').toLowerCase();
+  return [r.cant === null || r.cant === undefined ? '' : String(r.cant).replace('.', ','), t.charAt(0).toUpperCase() + t.slice(1)].filter(String).join(' · ');
+}
+
 /** Lo de un presupuesto (o de una de sus partes) adentro del desplegable. */
 function htmlCuerpoPresupuesto(b) {
   const porN = {};
@@ -271,12 +277,19 @@ function htmlCuerpoPresupuesto(b) {
   if (b.renglones.length || b.productos.length) {
     h += '<div class="pr-prods">' + b.productos.map(function (p) {
       return '<div class="pr-prod"><div class="pr-pedido">' + esc(p.cantidad) + ' · ' + esc(p.nombre) +
+        (p.noPedido ? ' <span class="pr-np">No pedido</span>' : '') +
         (p.comprado ? ' <span class="pr-comprado' + (p.comprado.aEste ? ' aca' : '') + '">🛒 Comprado en ' + esc(p.comprado.proveedor) + '</span>' : '') + '</div>' +
         p.renglones.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda, b.id, editable) : ''; }).join('') +
         (p.avisos.length ? '<div class="pr-aviso">' + p.avisos.map(esc).join(' · ') + '</div>' : '') + '</div>';
     }).join('') + '</div>';
-    if (b.noPedido.length) h += '<div class="pr-prod"><div class="pr-pedido">' + (b.sinProductos ? 'Renglones del presupuesto' : 'No pedido') + '</div>' +
+    // Lo no pedido, como un producto más (Feli, 2026-10-07): se compra desde el cuadro
+    if (b.noPedido.length && b.sinProductos) h += '<div class="pr-prod"><div class="pr-pedido">Renglones del presupuesto</div>' +
       b.noPedido.map(function (n) { return porN[n] ? htmlRenglonPresup(porN[n], b.moneda, b.id, editable) : ''; }).join('') + '</div>';
+    else h += b.noPedido.map(function (n) {
+      const r = porN[n];
+      return r ? '<div class="pr-prod"><div class="pr-pedido">' + esc(textoRenglonCorto(r)) + ' <span class="pr-np">No pedido</span></div>' +
+        htmlRenglonPresup(r, b.moneda, b.id, editable) + '</div>' : '';
+    }).join('');
     if (b.delOtro) h += '<div class="pr-nota">Además trae ' + b.delOtro + ' renglón' + (b.delOtro === 1 ? '' : 'es') + ' de ' +
       (b.tambienEn || []).map(function (x) { return esc(x.codigo); }).join(' y ') + ' (se ven en esa tarjeta)' +
       (b.noPedidoEn ? '. Lo que cotizó sin que se lo pidiéramos está en ' + esc(b.noPedidoEn) : '') + '.</div>';

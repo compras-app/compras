@@ -163,6 +163,7 @@ function pintarCuadro() {
       return ((c.casilleros[p.linea] || {}).renglones || []).map(function (r) { return r.texto; });
     }))).join(' ');
     h += '<tr class="cq-fila" data-cq-buscar="' + esc(sinTildes(texto)) + '"><th class="cq-fija"><span class="cq-cant">' + esc(p.cantidad) + '</span> ' + esc(p.nombre) + (p.nota ? '<div class="cq-gris">' + esc(p.nota) + '</div>' : '') +
+      (p.noPedido ? '<div class="cq-np">No pedido · lo cotizó ' + esc(p.noPedido) + '</div>' : '') +          // Feli (2026-10-07)
       (p.comprado ? '<div class="cq-comprado">🛒 Comprado en ' + esc(p.comprado) + '</div>' : '') + '</th>' +
       cols.map(function (c) { return htmlCasillero(c, p); }).join('') + '</tr>';
   });
@@ -289,7 +290,8 @@ function elegirCasillero(linea, pid) {
 function elegirTodo(pid) {
   const col = columnaDe(pid);
   let n = 0;
-  CQ.datos.productos.forEach(function (p) { if (sePuedeElegir(col, p.linea)) { CQ.sel[p.linea] = pid; n++; } });
+  // Lo no pedido se elige uno por uno (Feli, 2026-10-07: que no entre sin querer)
+  CQ.datos.productos.forEach(function (p) { if (!p.noPedido && sePuedeElegir(col, p.linea)) { CQ.sel[p.linea] = pid; n++; } });
   pintarCuadro();
   aviso(n ? 'Elegidos ' + n + ' producto' + (n === 1 ? '' : 's') + ' de ' + col.nombre + '.' : col.nombre + ' no tiene productos para elegir.');
 }
@@ -299,7 +301,7 @@ function elegirBaratos() {
   let sinElegir = 0;
   CQ.datos.productos.forEach(function (p) {
     const cs = CQ.datos.columnas.filter(function (col) { return sePuedeElegir(col, p.linea); });
-    if (!cs.length || p.comprado) return;
+    if (!cs.length || p.comprado || p.noPedido) return;                 // lo no pedido, uno por uno
     const barato = cs.filter(function (col) { return col.casilleros[p.linea].masBarato; })[0];
     if (barato) CQ.sel[p.linea] = barato.proveedor;
     else if (cs.length === 1) CQ.sel[p.linea] = cs[0].proveedor;
@@ -366,16 +368,24 @@ async function confirmarCompra() {
                                    botones: [{ texto: 'Volver', valor: false }, { texto: 'Comprar igual', clase: 'btn', valor: true }] });
         if (!si) break;
       }
+      // Lo no pedido de una tarjeta de la tanda (varios pedidos): a cuál va
+      const pedidos = CQ.datos.pedidos || [];
+      const conNP = g.lineas.some(function (l) { return /^NP\|/.test(l); }) && pedidos.length > 1;
       const cuerpo = document.createElement('div');
       cuerpo.className = 'cuerpo';
-      cuerpo.innerHTML = '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') + (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
+      cuerpo.innerHTML = (conNP ? '<div class="campo"><label for="cq-pedido-np">Lo que no se pidió va al pedido</label><select id="cq-pedido-np">' +
+        pedidos.map(function (p) { return '<option value="' + esc(p.ref) + '">' + esc([p.sitio, p.titulo || p.ref].filter(String).join(' · ')) + '</option>'; }).join('') + '</select></div>' : '') +
+        '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') + (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
         '. Al tocar "Comprar y mandar", ya queda comprado: sale la tarjeta de seguimiento y le llega este mensaje por WhatsApp. Lo podés cambiar.</p>' +
         '<textarea id="cq-msj" rows="10">' + esc(mensajeCompra(g)) + '</textarea>';
       const texto = await dialogo({ titulo: 'Comprarle a ' + g.col.nombre + (grupos.length > 1 ? ' (' + (i + 1) + ' de ' + grupos.length + ')' : ''), cuerpo: cuerpo,
-        botones: [{ texto: 'Volver', valor: null }, { texto: '🛒 Comprar y mandar', clase: 'btn', valor: function () { return $('cq-msj').value.trim(); } }] });
+        botones: [{ texto: 'Volver', valor: null }, { texto: '🛒 Comprar y mandar', clase: 'btn', valor: function () {
+          if ($('cq-pedido-np')) g.pedidoNP = $('cq-pedido-np').value;
+          return $('cq-msj').value.trim();
+        } }] });
       if (!texto) break;
       aviso('Comprando a ' + g.col.nombre + '…');
-      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: texto });
+      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: texto, pedidoNP: g.pedidoNP || '' });
       if (!r.ok) { aviso(r.sinConexion ? '📶 Poca señal: no se pudo comprar a ' + g.col.nombre + '. Probá cuando vuelva.' : r.error, 'bad'); break; }
       compradas++;
       g.lineas.forEach(function (l) { delete CQ.sel[l]; });

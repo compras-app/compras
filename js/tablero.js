@@ -159,6 +159,15 @@ function armarFiltros() {
   }
   pintarFiltros();
 }
+/** Las opciones de granja y responsable con la lista nueva (al volver a la app: alguien dado de baja ya no sale), sin perder lo elegido. */
+function rearmarOpcionesFiltros() {
+  if (!APP.yo || !APP.yo.admin || !$('tb-resp')) return;
+  $('tb-sitio').innerHTML = '<option value="">Ver todos</option>' + (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+  $('tb-resp').innerHTML = '<option value="">Ver todos</option><option value="-">Sin responsable</option>' +
+    (APP.config.admins || []).map(function (a) { return '<option>' + esc(a) + '</option>'; }).join('');
+  if (TB.filtros.resp && TB.filtros.resp !== '-' && (APP.config.admins || []).indexOf(TB.filtros.resp) === -1) TB.filtros.resp = '';
+  pintarFiltros();
+}
 function pintarFiltros() {
   $('tb-mios').setAttribute('aria-pressed', String(TB.filtros.mios));
   $('tb-todos').setAttribute('aria-pressed', String(!TB.filtros.mios));
@@ -274,9 +283,6 @@ function pintarTablero() {
   cont.innerHTML = html.join('');
   cont.scrollLeft = scroll;
   cont.querySelectorAll('.lista').forEach(function (l) { if (listas[l.dataset.columna]) l.scrollTop = listas[l.dataset.columna]; });
-  cont.querySelectorAll('[data-cotizar]').forEach(function (b) {
-    b.addEventListener('click', function (e) { e.stopPropagation(); if (!TB.recienArrastrada) abrirPedirCotizacion(b.dataset.cotizar); });
-  });
   cont.querySelectorAll('[data-orden-col]').forEach(function (b) {
     b.addEventListener('click', function () { cambiarOrden(b.dataset.ordenCol); pintarTablero(); });
   });
@@ -1674,6 +1680,7 @@ function htmlProducto(l, admin, mio, extra) {
   // Lo que escribió el encargado, solo si el producto no estaba en el padrón (si lo eligió de la lista, no hace falta)
   if (!l.enPadron && l.familia && l.texto && l.texto.toLowerCase() !== l.familia.toLowerCase()) sub.push(esc('Escribió: "' + l.texto + '"'));
   const provs = l.proveedores || [];
+  if (l.noPedido) sub.push('<span class="np">No pedido · lo cotizó ' + esc(l.noPedido) + '</span>');     // Feli, 2026-10-07
   if (provs.length) sub.push('<span class="prov">🎯 Va solo a ' + esc(provs.map(function (x) { return x.nombre; }).join(', ')) + '</span>');
   else if (l.canal) sub.push(esc('Rubro: ' + l.canal));
   else sub.push(esc('Sin rubro'));
