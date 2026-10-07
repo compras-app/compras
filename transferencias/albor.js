@@ -1781,13 +1781,16 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total){
   await elegirOpcion(pg, '#ID_Punto_Stock_Origen', b.origen_id, 'Origen', charla);
   await elegirOpcion(pg, '#ID_Punto_Stock_Destino', b.destino_id, 'Destino', charla);
   await ponerFecha(pg, b.fecha, charla);
+  // La campaña también en las transferencias (Feli, 2026-10-07), después de la fecha
+  var campania = b.campania ? await ponerCampania(pg, b.campania, charla) : '';
 
   var aMano = [['el origen', b.origen_id], ['el destino', b.destino_id]]
     .filter(function(x){ return ['', '?'].indexOf(String(x[1] == null ? '' : x[1]).trim()) >= 0; })
     .map(function(x){ return x[0]; });
   var grilla = await esperarGrilla(pg);
 
-  var cabecera = '   Origen:  ' + b.origen_nombre + '\n   Destino: ' + b.destino_nombre + '\n   Fecha:   ' + b.fecha;
+  var cabecera = '   Origen:  ' + b.origen_nombre + '\n   Destino: ' + b.destino_nombre + '\n   Fecha:   ' + b.fecha +
+                 (b.campania ? '\n   Campaña: ' + (campania || 'SIN ELEGIR') : '');
   // Un solo control, después de cargar todo (Feli, 2026-10-02). Antes de
   // cargar solo frena si hay algo que el programa no pudo completar.
   if(aMano.length || !grilla){
@@ -2148,12 +2151,15 @@ async function centrosDeUnidad(pg, unidad, charla, limite){
   return ops;
 }
 
-/* Lo que ofrece Albor en un comprobante nuevo de esa empresa. */
-async function listasDeEmpresa(pg, empresa, actual, charla, unidades){
+/* Lo que ofrece Albor en un comprobante nuevo de esa empresa. soloTransferencia: el control antes de
+   transferir solo mira los puntos de stock, sin pasar el comprobante a Egreso (Feli, 2026-10-07: "se va a
+   egresos dos veces y después recién hace la transferencia" en La Colorada, que usa dos empresas). */
+async function listasDeEmpresa(pg, empresa, actual, charla, unidades, soloTransferencia){
   actual = await irAEmpresa(pg, empresa, actual, charla);
   await nuevoComprobante(pg);
   await elegirOpcion(pg, '#ID_Tipo_Comprobante', TIPO_TRANSFERENCIA, 'Tipo de comprobante', charla);
   var r = { origen: await opcionesDe(pg, '#ID_Punto_Stock_Origen'), destino: await opcionesDe(pg, '#ID_Punto_Stock_Destino') };
+  if(soloTransferencia) return { actual: actual, listas: r };
   await elegirOpcion(pg, '#ID_Tipo_Comprobante', TIPO_EGRESO, 'Tipo de comprobante', charla);
   r.egreso = await opcionesDe(pg, '#ID_Punto_Stock_Origen');
   r.unidades = await opcionesDe(pg, '#ID_IT_Dimension_3');
@@ -2228,7 +2234,7 @@ async function revisarAntes(pg, lista, egreso, charla){
   for(var i = 0; i < orden.length; i++){
     var cs = porEmpresa[orden[i]], unidades = [];
     if(egreso) cs.forEach(function(c){ var u = String(c.unidad_negocio || '').trim(); if(u && unidades.indexOf(u) < 0) unidades.push(u); });
-    var r = await listasDeEmpresa(pg, orden[i], actual, charla, egreso ? unidades : []);
+    var r = await listasDeEmpresa(pg, orden[i], actual, charla, egreso ? unidades : [], !egreso);
     actual = r.actual;
     var L = r.listas;
     for(var k = 0; k < cs.length; k++){
@@ -2542,21 +2548,25 @@ function hora(){ var d = new Date(); return ('0' + d.getHours()).slice(-2) + 'h'
 
 /* Lo común a transferencias y egresos: las planillas de la operación (en
    Descargas, "Programa de Compras/…"), la sesión y la carga. */
-function cargar(hacer, base, etiqueta, archivos){
+function cargar(hacer, base, etiqueta, archivos, alFinal){
   pedirPermisoAvisos();        // todavía dentro del toque en "Cargar en Albor"
   return trabajo('__alborLog', async function(){
     var carpeta = null;
     var nombreCarpeta = 'Programa de Compras/' + base + '/' + (etiqueta || 'sin nombre') + ' (' + hora() + ')';
-    for(var i = 0; i < (archivos || []).length; i++){
-      var a = archivos[i];
-      if(!a) continue;
-      try{
-        var id = await Mano.pedirSeguro('guardar', { carpeta: nombreCarpeta, nombre: a.nombre, base64: a.base64 }, 30000);
-        if(carpeta == null) carpeta = id;
-      }catch(e){
-        avisar('[!] No pude guardar ' + a.nombre + ' en Descargas (' + primeraLinea(e) + '). Sigo igual.');
+    async function guardarArchivos(){
+      for(var i = 0; i < (archivos || []).length; i++){
+        var a = archivos[i];
+        if(!a) continue;
+        try{
+          var id = await Mano.pedirSeguro('guardar', { carpeta: nombreCarpeta, nombre: a.nombre, base64: a.base64 }, 30000);
+          if(carpeta == null) carpeta = id;
+        }catch(e){
+          avisar('[!] No pude guardar ' + a.nombre + ' en Descargas (' + primeraLinea(e) + ').');
+        }
       }
     }
+    // Transferencias: las planillas se guardan después de transferir (Feli, 2026-10-07); egresos, antes
+    if(!alFinal) await guardarArchivos();
 
     M.cancelar = false;
     var charla = new Charla(function(t){ anotar(t); avisar(t); }, preguntar, function(){ return M.cancelar; });
@@ -2564,6 +2574,7 @@ function cargar(hacer, base, etiqueta, archivos){
     try{
       var a2 = await alborConSesion();
       await hacer(a2.pg, charla, hechos);
+      if(alFinal && hechos.length) await guardarArchivos();
       // Terminó bien: se cierra la pestaña de Albor y se vuelve a la app
       // (Feli, 2026-10-01). Si algo falló o se canceló, queda abierta.
       await a2.cerrar();
@@ -2573,6 +2584,7 @@ function cargar(hacer, base, etiqueta, archivos){
                   '. Mirá el resumen en la app.', false);
       return { ok: true, hechos: hechos, carpeta: carpeta };
     }catch(e){
+      if(alFinal && hechos.length && carpeta == null){ try{ await guardarArchivos(); }catch(e2){} }    // lo que sí se transfirió
       if(e instanceof Cancelado)
         return { ok: false, cancelado: true, hechos: hechos, carpeta: carpeta,
                  motivo: 'Cancelaste la carga. Lo que ya estaba en Albor quedó cargado.' };
@@ -2599,7 +2611,7 @@ function cargar_transferencia(bloques, archivos, etiqueta){
   return cargar(async function(pg, charla, hechos){
     await revisarAntes(pg, bloques, false, charla);
     return transferir(pg, bloques, charla, hechos);
-  }, 'Transferencias', etiqueta, archivos);
+  }, 'Transferencias', etiqueta, archivos, true);
 }
 
 function cargar_egresos(comprobantes, archivos, etiqueta){
