@@ -608,27 +608,6 @@
     .obsprint{display:block;font-size:9pt;min-height:14mm}
   }
 
-  /* ---------- Planilla de armado en papel (Feli, 2026-10-07) ---------- */
-  #impresion{display:none}
-  @media print{
-    html.imprimiendo body > *:not(#impresion){display:none !important}
-    html.imprimiendo #impresion{display:block !important}
-    #impresion, #impresion *{color:#000 !important;background:#fff !important}
-    #impresion .imp-hoja{break-after:page;page-break-after:always}
-    #impresion .imp-hoja:last-child{break-after:auto;page-break-after:auto}
-    #impresion h1{font-size:14pt;margin:0 0 6px}
-    #impresion .imp-datos{display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;font-size:9.5pt;margin-bottom:8px;
-                          border-bottom:1.5px solid #000;padding-bottom:6px}
-    #impresion table{width:100%;border-collapse:collapse;font-size:9.5pt;border:1px solid #000}
-    #impresion th{background:#e8e8e8 !important;border:1px solid #000;padding:4px 6px;text-align:left;
-                  -webkit-print-color-adjust:exact;print-color-adjust:exact}
-    #impresion td{border:1px solid #777;padding:4px 6px}
-    #impresion .n{text-align:right;white-space:nowrap}
-    #impresion td.caja{width:24mm;border-left:1.5px solid #000}
-    #impresion thead{display:table-header-group}
-    #impresion tr{break-inside:avoid;page-break-inside:avoid}
-    #impresion .imp-firma{margin-top:14mm;font-size:10pt;break-inside:avoid}
-  }
   /* Al imprimir cualquier planilla: negro sobre blanco aunque la pantalla esté en oscuro (antes salía clarito) */
   @media print{
     :root, :root[data-theme="dark"], :root:not([data-theme="light"]){
@@ -789,8 +768,8 @@
       <label class="field">Responsable <input type="text" id="resp" placeholder="nombre" autocomplete="off"></label>
       <span class="contado" id="contado"></span>
       <span class="botones">
-        <button class="btn" id="excel">Exportar a Excel</button>
-        <button class="btn" id="print">Imprimir / PDF</button>
+        <button class="btn" id="excel">Bajar en PDF</button>
+        <button class="btn" id="print">Imprimir</button>
         <button class="btn" id="conteoguardar" title="El conteo real queda en esta computadora; esto lo guarda también en la planilla (2 meses)">Guardar en el historial</button>
       </span>
       <span class="aviso" id="conteoaviso"></span>
@@ -875,7 +854,7 @@
       <span class="sep"></span>
       <span class="botones">
         <button class="btn" id="pcarga">Archivo para Albor</button>
-        <button class="btn" id="ppend">Pendientes a Excel</button>
+        <button class="btn" id="ppend">Planilla de pendientes</button>
         <button class="btn" id="pprint">Planilla de armado</button>
       </span>
     </div>
@@ -892,8 +871,7 @@
       </div>
       <div id="ptablehost"></div>
       <div class="firmas">
-        <span>Preparó: _______________________</span>
-        <span>Recibió: _______________________</span>
+        <span>Firma: _______________________<br><br>Aclaración: _______________________</span>
       </div>
     </div>
   </section>
@@ -1540,55 +1518,41 @@
     return $('vergranjas').checked ? DATA.oficinas.concat(DATA.granjas) : DATA.oficinas;
   }
 
-  /* ============ Exportar a Excel ============ */
-
-  /* CSV con ; como separador y coma decimal: así Excel en español lo abre
-     ya separado en columnas, sin pasar por el asistente de importación. */
-  function exportarExcel(){
+  /* ============ Planilla de conteo en PDF ============
+     Feli (2026-10-07): todas las planillas en PDF. Lo que se ve en pantalla, con el conteo real,
+     los comentarios y las observaciones. Con muchas columnas, apaisada y con letra más chica. */
+  async function exportarConteoPDF(){
     var items = visibles();
     var puntos = DATA.oficinas;
     var granjas = $('vergranjas').checked ? DATA.granjas : [];
-    var sep = ';';
-
-    function celda(v){
-      v = String(v == null ? '' : v);
-      return /[";\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
-    }
-    function nro(v){ return String(v).replace('.', ','); }
-
-    var out = [];
-    out.push(['Planilla de conteo de stock'].map(celda).join(sep));
-    out.push(['Fecha', $('fecha').value ? $('fecha').value.split('-').reverse().join('/') : ''].map(celda).join(sep));
-    out.push(['Responsable', $('resp').value.trim()].map(celda).join(sep));
-    out.push('');
-
     var pc = $('difcasa').checked ? puntosCasaLC() : null;
     var cab = ['Categoría', 'Insumo'].concat(puntos)
       .concat([granjas.length ? 'Total oficinas' : 'Total', 'Conteo real', 'Diferencia'])
       .concat(pc ? ['Casa − LC 50'] : []).concat(granjas).concat(['Comentario']);
-    out.push(cab.map(celda).join(sep));
-
-    items.forEach(function(it){
+    var filas = items.map(function(it){
       var fila = [it.cat, it.nombre];
-      puntos.forEach(function(p){ fila.push(p in it.por ? nro(it.por[p]) : ''); });
-      fila.push(nro(it.total));
-      var escrito = CONTEO[clave(it.cod)] || '';
-      var v = numEscrito(escrito);
-      fila.push(v === null ? '' : nro(v));
-      fila.push(v === null ? '' : nro(v - it.total));
-      if(pc) fila.push(nro(difCasaLC(it, pc)));
-      granjas.forEach(function(p){ fila.push(p in it.por ? nro(it.por[p]) : ''); });
+      puntos.forEach(function(p){ fila.push(p in it.por ? celdaNum(it.por[p]) : ''); });
+      fila.push(celdaNum(it.total));
+      var v = numEscrito(CONTEO[clave(it.cod)] || '');
+      fila.push(v === null ? '' : celdaNum(v));
+      fila.push(v === null ? '' : celdaNum(Math.round((v - it.total) * 1000) / 1000));
+      if(pc) fila.push(celdaNum(difCasaLC(it, pc)));
+      granjas.forEach(function(p){ fila.push(p in it.por ? celdaNum(it.por[p]) : ''); });
       fila.push(NOTAS[clave(it.cod)] || '');
-      out.push(fila.map(celda).join(sep));
+      return fila;
     });
-    if($('conteoobs').value.trim()){
-      out.push('');
-      out.push(['Observaciones', $('conteoobs').value.trim()].map(celda).join(sep));
-    }
-
-    var texto = '\uFEFF' + out.join('\r\n');   // BOM: Excel respeta los acentos
-    var fecha = ($('fecha').value || 'sin-fecha');
-    descargar('Conteo de stock ' + fecha + '.csv', texto, 'text/csv;charset=utf-8');
+    var numeros = [];
+    for(var i = 2; i < cab.length - 1; i++) numeros.push(i);
+    var fecha = $('fecha').value ? $('fecha').value.split('-').reverse().join('/') : '';
+    try{
+      var datos = await armarPDF([{
+        titulo: 'Planilla de conteo de stock',
+        datos: [['Fecha:', fecha], ['Responsable:', $('resp').value.trim()]],
+        tablas: [{ cabecera: cab, filas: filas, numeros: numeros }],
+        notas: ['Observaciones', $('conteoobs').value.trim()]
+      }], { apaisado: cab.length > 7, letra: cab.length > 12 ? 6.5 : cab.length > 9 ? 7.5 : 9 });
+      await descargar(limpiarNombre('Conteo de stock ' + ($('fecha').value || 'sin-fecha')) + '.pdf', datos, 'application/pdf');
+    }catch(e){ mostrarError(e.message || String(e)); }
   }
 
   /* Dos caminos según dónde esté corriendo el programa:
@@ -2035,7 +1999,7 @@
     ta.addEventListener('blur', function(){ cerrar(true); });
   });
   $('conteoobs').addEventListener('input', function(){ escribirGuardado(CLAVE_OBS, this.value); syncObs(); });
-  $('excel').addEventListener('click', exportarExcel);
+  $('excel').addEventListener('click', exportarConteoPDF);
 
   $('q').addEventListener('input', render);
   $('hidezero').addEventListener('change', render);
@@ -2751,204 +2715,163 @@
     $('ptablewrap').classList.add('on');
   }
 
-  /* ---------- Escribir un .xlsx de verdad ----------
-     Un .xlsx es un ZIP con XML adentro. Se arma a mano y se guardan las
-     entradas sin comprimir (método 0 del ZIP), que es lo único que Excel
-     necesita para abrirlo. Sale una planilla con anchos de columna,
-     títulos en negrita y números que son números, en vez de un CSV crudo. */
-
-  var CRC_TABLA = null;
-  function crc32(bytes){
-    if(!CRC_TABLA){
-      CRC_TABLA = new Uint32Array(256);
-      for(var n = 0; n < 256; n++){
-        var c = n;
-        for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-        CRC_TABLA[n] = c >>> 0;
-      }
+  /* ---------- Planillas en PDF (Feli, 2026-10-07: todas las planillas en PDF, no en Excel) ----------
+     jsPDF y su complemento de tablas (cdnjs) se bajan una vez, al abrir la página.
+     Una planilla son una o varias partes, cada una desde una hoja nueva:
+       { titulo, datos: [[rótulo, valor], …], tablas: [{ titulo, cabecera, filas, pie, numeros: [columnas a la derecha],
+         anchos: {columna: mm}, alto: mm por renglón }], notas: [rótulo, texto], firma: true }
+     Con firma, al final: "Firma: ____" y abajo "Aclaración: ____". Abajo de cada hoja: la parte y "hoja n de m". */
+  var PDF_LIBS = ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+                  'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'];
+  var _librosPDF = null;
+  function librosPDF(){
+    if(window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return Promise.resolve(window.jspdf.jsPDF);
+    if(!_librosPDF){
+      _librosPDF = PDF_LIBS.reduce(function(p, src){
+        return p.then(function(){
+          return new Promise(function(ok, mal){
+            var s = document.createElement('script');
+            s.src = src; s.onload = ok;
+            s.onerror = function(){ s.remove(); mal(new Error('No se pudo bajar lo que hace falta para armar el PDF. Revisá la conexión y probá de nuevo.')); };
+            document.head.appendChild(s);
+          });
+        });
+      }, Promise.resolve()).then(function(){ return window.jspdf.jsPDF; });
+      _librosPDF.catch(function(){ _librosPDF = null; });
     }
-    var r = 0xFFFFFFFF;
-    for(var i = 0; i < bytes.length; i++) r = CRC_TABLA[(r ^ bytes[i]) & 0xFF] ^ (r >>> 8);
-    return (r ^ 0xFFFFFFFF) >>> 0;
+    return _librosPDF;
   }
 
-  function armarZip(archivos){
-    var utf8 = new TextEncoder();
-    var entradas = archivos.map(function(a){
-      var datos = utf8.encode(a.texto);
-      return { nombre: utf8.encode(a.nombre), datos: datos, crc: crc32(datos) };
-    });
-
-    var tamLocal = entradas.reduce(function(s,e){ return s + 30 + e.nombre.length + e.datos.length; }, 0);
-    var tamCentral = entradas.reduce(function(s,e){ return s + 46 + e.nombre.length; }, 0);
-    var buf = new Uint8Array(tamLocal + tamCentral + 22);
-    var v = new DataView(buf.buffer);
-    var p = 0, offsets = [];
-
-    entradas.forEach(function(e){
-      offsets.push(p);
-      v.setUint32(p, 0x04034b50, true);
-      v.setUint16(p + 4, 20, true);
-      v.setUint16(p + 6, 0x0800, true);   // nombres en UTF-8
-      v.setUint16(p + 8, 0, true);        // sin comprimir
-      v.setUint16(p + 10, 0, true);
-      v.setUint16(p + 12, 0x2821, true);  // fecha fija: no aporta nada
-      v.setUint32(p + 14, e.crc, true);
-      v.setUint32(p + 18, e.datos.length, true);
-      v.setUint32(p + 22, e.datos.length, true);
-      v.setUint16(p + 26, e.nombre.length, true);
-      v.setUint16(p + 28, 0, true);
-      p += 30;
-      buf.set(e.nombre, p); p += e.nombre.length;
-      buf.set(e.datos, p);  p += e.datos.length;
-    });
-
-    var inicioCentral = p;
-    entradas.forEach(function(e, i){
-      v.setUint32(p, 0x02014b50, true);
-      v.setUint16(p + 4, 20, true);
-      v.setUint16(p + 6, 20, true);
-      v.setUint16(p + 8, 0x0800, true);
-      v.setUint16(p + 10, 0, true);
-      v.setUint16(p + 12, 0, true);
-      v.setUint16(p + 14, 0x2821, true);
-      v.setUint32(p + 16, e.crc, true);
-      v.setUint32(p + 20, e.datos.length, true);
-      v.setUint32(p + 24, e.datos.length, true);
-      v.setUint16(p + 28, e.nombre.length, true);
-      v.setUint16(p + 30, 0, true);
-      v.setUint16(p + 32, 0, true);
-      v.setUint16(p + 34, 0, true);
-      v.setUint16(p + 36, 0, true);
-      v.setUint32(p + 38, 0, true);
-      v.setUint32(p + 42, offsets[i], true);
-      p += 46;
-      buf.set(e.nombre, p); p += e.nombre.length;
-    });
-
-    v.setUint32(p, 0x06054b50, true);
-    v.setUint16(p + 8, entradas.length, true);
-    v.setUint16(p + 10, entradas.length, true);
-    v.setUint32(p + 12, p - inicioCentral, true);
-    v.setUint32(p + 16, inicioCentral, true);
-    return buf;
-  }
-
-  function xesc(s){
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c];
-    }).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-  }
-
-  function letraCol(n){          // 0 -> A, 26 -> AA
+  // El mismo contenido da el mismo archivo (sin la hora adentro): así planillasNuevas() lo reconoce.
+  function idPDF(texto){
     var s = '';
-    n += 1;
-    while(n > 0){ var r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = (n - r - 1) / 26; }
-    return s;
+    for(var k = 0; k < 4; k++){
+      var h = 2166136261 ^ k;
+      for(var i = 0; i < texto.length; i++){ h ^= texto.charCodeAt(i); h = Math.imul(h, 16777619); }
+      s += ('0000000' + (h >>> 0).toString(16)).slice(-8);
+    }
+    return s.toUpperCase();
   }
 
-  /* Estilos: 0 normal · 1 cabecera · 2 título · 3 negrita */
-  var XLSX_ESTILOS =
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-    '<fonts count="3">' +
-      '<font><sz val="11"/><name val="Calibri"/></font>' +
-      '<font><b/><sz val="11"/><name val="Calibri"/></font>' +
-      '<font><b/><sz val="14"/><name val="Calibri"/></font>' +
-    '</fonts>' +
-    '<fills count="3">' +
-      '<fill><patternFill patternType="none"/></fill>' +
-      '<fill><patternFill patternType="gray125"/></fill>' +
-      '<fill><patternFill patternType="solid"><fgColor rgb="FFE7E7E1"/><bgColor indexed="64"/></patternFill></fill>' +
-    '</fills>' +
-    '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
-      '<border><left/><right/><top/><bottom style="thin"><color rgb="FF808080"/></bottom><diagonal/></border></borders>' +
-    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-    '<cellXfs count="4">' +
-      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
-      '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>' +
-      '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
-      '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
-    '</cellXfs>' +
-    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
-    '</styleSheet>';
+  // Un número como en la pantalla (1.234,5); lo que no es número, tal cual.
+  function celdaNum(v){
+    if(v === '' || v == null) return '';
+    var n = Number(v);
+    return isNaN(n) ? String(v) : fmt(n);
+  }
 
-  /* filas: cada celda es un texto, un número, o {v, s} para elegir el estilo. */
-  /* Una hoja: filas (cada celda un texto, un número o {v, s}), anchos y filas fijas arriba. */
-  function hojaXLSX(opciones, primera){
-    var filas = opciones.filas, anchos = opciones.anchos || [];
-    var xmlFilas = filas.map(function(fila, f){
-      var celdas = fila.map(function(celda, c){
-        if(celda == null || celda === '') return '';
-        var estilo = 0, valor = celda;
-        if(typeof celda === 'object'){ estilo = celda.s || 0; valor = celda.v; }
-        var ref = letraCol(c) + (f + 1);
-        var s = estilo ? ' s="' + estilo + '"' : '';
-        if(typeof valor === 'number' && isFinite(valor)){
-          return '<c r="' + ref + '"' + s + '><v>' + valor + '</v></c>';
+  /* La letra del PDF (Helvetica) no tiene todos los caracteres: los que no tiene salían como basura. */
+  var PDF_EXTRAS = '\u20ac\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u017d\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u017e\u0178';
+  function textoPDF(v){
+    if(v == null) return '';
+    if(typeof v !== 'string') return v;
+    return v.replace(/[\u2212\u2010\u2011]/g, '-').replace(/\u2192/g, '->').replace(/[\u00a0\u202f]/g, ' ')
+            .replace(/[^\u0000-\u00ff]/g, function(c){ return PDF_EXTRAS.indexOf(c) >= 0 ? c : '?'; });
+  }
+  function limpiarParaPDF(x){
+    if(Array.isArray(x)) return x.map(limpiarParaPDF);
+    if(x && typeof x === 'object'){
+      var o = {};
+      Object.keys(x).forEach(function(k){ o[k] = limpiarParaPDF(x[k]); });
+      return o;
+    }
+    return textoPDF(x);
+  }
+
+  async function armarPDF(partes, opciones){
+    var jsPDF = await librosPDF();
+    opciones = opciones || {};
+    partes = limpiarParaPDF(partes);
+    var doc = new jsPDF({ orientation: opciones.apaisado ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+    var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    doc.setCreationDate(hoy);
+    doc.setFileId(idPDF(JSON.stringify(partes)));
+    doc.setProperties({ title: partes[0].titulo });
+    var ancho = doc.internal.pageSize.getWidth(), alto = doc.internal.pageSize.getHeight();
+    var M = 12, ABAJO = 14, letra = opciones.letra || 9;
+    var desde = [];
+
+    partes.forEach(function(p, n){
+      if(n) doc.addPage();
+      desde.push(doc.internal.getNumberOfPages());
+      doc.setTextColor(0); doc.setDrawColor(0);
+      var y = M + 5;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+      doc.text(p.titulo, M, y);
+      y += 7;
+      doc.setFontSize(10);
+      (p.datos || []).forEach(function(d){
+        doc.setFont('helvetica', 'bold');
+        doc.text(d[0], M, y);
+        var x = M + doc.getTextWidth(d[0]) + 1.5;   // medido en negrita, antes de cambiar la letra
+        doc.setFont('helvetica', 'normal');
+        doc.text(String(d[1] == null ? '' : d[1]), x, y);
+        y += 5;
+      });
+      doc.setLineWidth(0.4);
+      doc.line(M, y - 2, ancho - M, y - 2);
+      y += 3;
+
+      (p.tablas || []).forEach(function(t){
+        if(t.titulo){
+          if(y + 20 > alto - ABAJO){ doc.addPage(); y = M + 4; }
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+          doc.text(t.titulo, M, y + 2);
+          y += 5;
         }
-        return '<c r="' + ref + '"' + s + ' t="inlineStr"><is><t>' + xesc(valor) + '</t></is></c>';
-      }).join('');
-      return '<row r="' + (f + 1) + '">' + celdas + '</row>';
-    }).join('');
+        var numeros = t.numeros || [], cols = {};
+        numeros.forEach(function(i){ cols[i] = { halign: 'right' }; });
+        Object.keys(t.anchos || {}).forEach(function(i){ (cols[i] = cols[i] || {}).cellWidth = t.anchos[i]; });
+        doc.autoTable({
+          startY: y, head: [t.cabecera], body: t.filas, foot: t.pie ? [t.pie] : undefined, showFoot: 'lastPage',
+          theme: 'grid', margin: { left: M, right: M, top: M, bottom: ABAJO },
+          styles: { font: 'helvetica', fontSize: letra, textColor: 0, lineColor: 110, lineWidth: 0.2, cellPadding: 1.5,
+                    overflow: 'linebreak', minCellHeight: t.alto || 0, valign: 'middle' },
+          headStyles: { fillColor: 225, textColor: 0, fontStyle: 'bold', lineColor: 0, lineWidth: 0.3 },
+          footStyles: { fillColor: 240, textColor: 0, fontStyle: 'bold', lineColor: 0, lineWidth: 0.3, minCellHeight: 0 },
+          columnStyles: cols,
+          didParseCell: function(c){
+            if(c.section !== 'body' && numeros.indexOf(c.column.index) >= 0) c.cell.styles.halign = 'right';
+          }
+        });
+        y = doc.lastAutoTable.finalY + 7;
+      });
 
-    var cols = anchos.length
-      ? '<cols>' + anchos.map(function(a, i){
-          return '<col min="' + (i+1) + '" max="' + (i+1) + '" width="' + a + '" customWidth="1"/>';
-        }).join('') + '</cols>'
-      : '';
+      if(p.notas && p.notas[1]){
+        var lineas = doc.setFont('helvetica', 'normal').setFontSize(10).splitTextToSize(p.notas[1], ancho - 2 * M);
+        if(y + 6 + lineas.length * 5 > alto - ABAJO){ doc.addPage(); y = M + 4; }
+        doc.setFont('helvetica', 'bold');
+        doc.text(p.notas[0], M, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(lineas, M, y + 5);
+        y += 7 + lineas.length * 5;
+      }
 
-    var congelar = opciones.congelarHasta
-      ? '<pane ySplit="' + opciones.congelarHasta + '" topLeftCell="A' + (opciones.congelarHasta + 1) +
-        '" activePane="bottomLeft" state="frozen"/>'
-      : '';
+      if(p.firma){
+        if(y + 34 > alto - ABAJO){ doc.addPage(); y = M + 4; }
+        y += 14;
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setLineWidth(0.3);
+        doc.text('Firma:', M, y);
+        doc.line(M + 24, y, M + 110, y);
+        y += 13;
+        doc.text('Aclaración:', M, y);
+        doc.line(M + 24, y, M + 110, y);
+      }
+    });
 
-    // Al imprimir: A4, todo el ancho en una hoja y las filas fijas repetidas arriba de cada hoja
-    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
-      '<sheetViews><sheetView' + (primera ? ' tabSelected="1"' : '') + ' workbookViewId="0">' + congelar + '</sheetView></sheetViews>' +
-      '<sheetFormatPr defaultRowHeight="15"/>' + cols +
-      '<sheetData>' + xmlFilas + '</sheetData>' +
-      '<pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>' +
-      '<pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/></worksheet>';
+    var total = doc.internal.getNumberOfPages();
+    desde.push(total + 1);
+    partes.forEach(function(p, n){
+      var cuantas = desde[n + 1] - desde[n];
+      for(var i = desde[n]; i < desde[n + 1]; i++){
+        doc.setPage(i);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(60);
+        doc.text(p.titulo + ' · hoja ' + (i - desde[n] + 1) + ' de ' + cuantas, ancho - M, alto - 7, { align: 'right' });
+      }
+    });
+    return doc.output('arraybuffer');
   }
-
-  /* Un libro de Excel: opciones = {hoja, filas, anchos, congelarHasta} o {hojas: [ {hoja, filas, ...}, ... ]} (varias hojas). */
-  function armarXLSX(opciones){
-    var hojas = opciones.hojas || [opciones];
-    var nombres = hojas.map(function(h, i){ return xesc((h.hoja || ('Hoja' + (i + 1))).slice(0, 31).replace(/[\\\/\?\*\[\]:]/g, ' ')); });
-    var archivos = [
-      { nombre: '[Content_Types].xml', texto:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-        '<Default Extension="xml" ContentType="application/xml"/>' +
-        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
-        hojas.map(function(h, i){ return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('') +
-        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
-        '</Types>' },
-      { nombre: '_rels/.rels', texto:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
-        '</Relationships>' },
-      { nombre: 'xl/workbook.xml', texto:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
-        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-        '<sheets>' + nombres.map(function(n, i){ return '<sheet name="' + n + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join('') + '</sheets></workbook>' },
-      { nombre: 'xl/_rels/workbook.xml.rels', texto:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-        hojas.map(function(h, i){ return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join('') +
-        '<Relationship Id="rId' + (hojas.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
-        '</Relationships>' },
-      { nombre: 'xl/styles.xml', texto: XLSX_ESTILOS }
-    ];
-    hojas.forEach(function(h, i){ archivos.push({ nombre: 'xl/worksheets/sheet' + (i + 1) + '.xml', texto: hojaXLSX(h, i === 0) }); });
-    return armarZip(archivos);
-  }
+  librosPDF().catch(function(){});   // se bajan ya: al terminar una carga en Albor no hay que esperarlos
 
   // Windows no acepta estos caracteres en un nombre de archivo.
   function limpiarNombre(s){
@@ -3003,14 +2926,14 @@
 
     // Junto con el archivo para Albor sale la planilla de papel: es la que se
     // imprime para armar el pedido y la que queda de registro firmada.
-    await planillaTransferencia();
+    try{ await planillaTransferencia(); }catch(e){ errorP(e.message || String(e)); }
   }
 
   /* La planilla que se imprime, se cuenta y se firma. El archivo para Albor
      se borra después de cargarlo; esto es lo que queda. */
   async function planillaTransferencia(){
-    var l = libroTransferencia();
-    await descargar(l.nombre, l.datos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    var l = await libroTransferencia();
+    await descargar(l.nombre, l.datos, 'application/pdf');
   }
 
   /* Lo de la planilla de armado, de la transferencia que se está armando. */
@@ -3027,72 +2950,47 @@
     };
   }
 
-  /* La planilla de armado (Feli, 2026-10-07): primero las hojas de armado (con "Preparó" y la columna
-     "Armado" para lo contado) y después las de recibido, iguales pero con "Recibió". En La Colorada
-     (envío doble), una columna por granja. d = datosArmadoActual() o lo mismo armado desde el historial. */
-  function libroArmado(d){
-    function hoja(titulo, columna, firma){
-      var filas = [];
-      filas.push([{v:titulo, s:2}]);
-      filas.push(['Origen:', {v:d.origen, s:3}]);
-      filas.push(['Destino:', {v:d.destino, s:3}]);
-      filas.push(['Fecha contable:', {v:d.fechaContable || '', s:3}]);
-      filas.push(['Fecha de transferencia:', {v:d.fechaTransferencia || '', s:3}]);
-      filas.push([]);
-      var cab = ['C\u00f3digo', 'Insumo'].concat(d.columnas || []).concat(['Transferido', columna]);
-      filas.push(cab.map(function(c){ return {v:c, s:1}; }));
-      d.items.forEach(function(it){ filas.push([it.cod, it.nombre].concat(it.porBloque || []).concat([it.total, ''])); });
-      filas.push([]);
-      var tot = ['', {v:d.items.length + ' insumos', s:3}];
-      (d.columnas || []).forEach(function(){ tot.push(''); });
-      tot.push({v: Math.round(d.items.reduce(function(s, i){ return s + (Number(i.total) || 0); }, 0) * 1000) / 1000, s:3}, '');
-      filas.push(tot);
-      filas.push([]);
-      filas.push([]);
-      filas.push([{v:firma + ':', s:3}, '______________________________']);
-      filas.push([]);
-      filas.push(['Firma:', '______________________________']);
-      var anchos = [22, 44].concat((d.columnas || []).map(function(){ return 16; })).concat([13, 13]);
-      return { hoja: columna, filas: filas, anchos: anchos, congelarHasta: 7 };
+  /* La planilla de armado (Feli, 2026-10-07), en PDF: primero las hojas de armado (columna "Armado" para lo
+     contado) y después las de recibido, iguales pero con la columna "Recibió". Cada parte termina con
+     "Firma" y abajo "Aclaración". En La Colorada (envío doble), una columna por granja.
+     d = datosArmadoActual() o lo mismo armado desde el historial. */
+  async function libroArmado(d){
+    var columnas = d.columnas || [];
+    var total = Math.round(d.items.reduce(function(s, i){ return s + (Number(i.total) || 0); }, 0) * 1000) / 1000;
+    function parte(titulo, columna){
+      var cab = ['Código', 'Insumo'].concat(columnas).concat(['Transferido', columna]);
+      var numeros = [], anchos = {};
+      for(var i = 2; i < cab.length - 1; i++){ numeros.push(i); anchos[i] = 22; }
+      anchos[0] = 24; anchos[cab.length - 1] = 26;
+      return {
+        titulo: titulo,
+        datos: [['Origen:', d.origen], ['Destino:', d.destino], ['Fecha contable:', d.fechaContable || ''],
+                ['Fecha de transferencia:', d.fechaTransferencia || '']],
+        tablas: [{
+          cabecera: cab, numeros: numeros, anchos: anchos, alto: 7,
+          filas: d.items.map(function(it){
+            return [it.cod, it.nombre].concat((it.porBloque || []).map(celdaNum)).concat([celdaNum(it.total), '']);
+          }),
+          pie: ['', d.items.length + ' insumos'].concat(columnas.map(function(){ return ''; })).concat([celdaNum(total), ''])
+        }],
+        firma: true
+      };
     }
     return {
-      nombre: limpiarNombre('Planilla de armado ' + (d.fechaContable || '').split('/').reverse().join('-') + ' ' + d.envio) + '.xlsx',
-      datos: armarXLSX({ hojas: [hoja('Planilla de armado', 'Armado', 'Prepar\u00f3'), hoja('Planilla de armado \u00b7 recibido', 'Recibi\u00f3', 'Recibi\u00f3')] })
+      nombre: limpiarNombre('Planilla de armado ' + (d.fechaContable || '').split('/').reverse().join('-') + ' ' + d.envio) + '.pdf',
+      datos: await armarPDF([parte('Planilla de armado', 'Armado'), parte('Planilla de armado · recibido', 'Recibió')])
     };
-  }
-  /* La planilla de armado en papel (Feli, 2026-10-07): las hojas de armado y después las de recibido, en negro
-     sobre blanco (antes salía clarita y tapada por la caja gris). Se imprime solo esto. */
-  function imprimirArmado(d){
-    function seccion(titulo, columna, firma){
-      var cab = ['C\u00f3digo', 'Insumo'].concat(d.columnas || []).concat(['Transferido', columna]);
-      return '<section class="imp-hoja"><h1>' + esc(titulo) + '</h1>' +
-        '<div class="imp-datos"><div><b>Origen:</b> ' + esc(d.origen) + '</div><div><b>Destino:</b> ' + esc(d.destino) + '</div>' +
-        '<div><b>Fecha contable:</b> ' + esc(d.fechaContable || '') + '</div><div><b>Fecha de transferencia:</b> ' + esc(d.fechaTransferencia || '') + '</div></div>' +
-        '<table><thead><tr>' + cab.map(function(c, n){ return '<th' + (n > 1 ? ' class="n"' : '') + '>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
-        d.items.map(function(it){
-          return '<tr><td>' + esc(it.cod) + '</td><td>' + esc(it.nombre) + '</td>' +
-            (it.porBloque || []).map(function(c){ return '<td class="n">' + esc(fmt(Number(c) || 0)) + '</td>'; }).join('') +
-            '<td class="n"><b>' + esc(fmt(Number(it.total) || 0)) + '</b></td><td class="caja"></td></tr>';
-        }).join('') + '</tbody></table>' +
-        '<div class="imp-firma"><b>' + esc(firma) + ':</b> ______________________________ &nbsp;&nbsp; <b>Firma:</b> ______________________________</div></section>';
-    }
-    var caja = $('impresion');
-    if(!caja){ caja = document.createElement('div'); caja.id = 'impresion'; document.body.appendChild(caja); }
-    caja.innerHTML = seccion('Planilla de armado', 'Armado', 'Prepar\u00f3') + seccion('Planilla de armado \u00b7 recibido', 'Recibi\u00f3', 'Recibi\u00f3');
-    document.documentElement.classList.add('imprimiendo');
-    var fin = function(){ document.documentElement.classList.remove('imprimiendo'); window.removeEventListener('afterprint', fin); };
-    window.addEventListener('afterprint', fin);
-    window.print();
-    setTimeout(fin, 1500);
   }
 
   function libroTransferencia(){ return libroArmado(datosArmadoActual()); }
 
-  function exportarPendientes(){
+  async function exportarPendientes(){
     if(!ANALISIS){ errorP('Todavía no hay un pedido cargado.'); return; }
-    var l = libroPendientes();
-    if(!l){ errorP('No hay pendientes: el pedido entra completo con el stock que hay.'); return; }
-    descargar(l.nombre, l.datos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    try{
+      var l = await libroPendientes();
+      if(!l){ errorP('No hay pendientes: el pedido entra completo con el stock que hay.'); return; }
+      await descargar(l.nombre, l.datos, 'application/pdf');
+    }catch(e){ errorP(e.message || String(e)); }
   }
 
   /* Los pendientes de la transferencia que se está armando ([] si no falta nada). */
@@ -3102,25 +3000,24 @@
     });
   }
 
-  /* La planilla de pendientes (también desde el historial). null si no falta nada. */
-  function libroPendientesDe(envio, fecha, pend){
+  /* La planilla de pendientes, en PDF (también desde el historial). null si no falta nada. */
+  async function libroPendientesDe(envio, fecha, pend){
     if(!pend || !pend.length) return null;
-    var filas = [];
-    filas.push([{v:'Pendientes de compra', s:2}]);
-    filas.push(['Env\u00edo:', {v:envio, s:3}]);
-    filas.push(['Fecha contable:', {v:fecha, s:3}]);
-    filas.push([]);
-    filas.push(['C\u00f3digo','Insumo','Pedido','A transferir','Falta comprar','Cuenta']
-               .map(function(c){ return {v:c, s:1}; }));
-    pend.forEach(function(it){
-      filas.push([it.cod, it.nombre, it.pedido, it.total, it.pendiente, it.cuenta]);
-    });
-    filas.push([]);
-    filas.push(['', {v:'Total a comprar', s:3}, '', '',
-                {v: pend.reduce(function(s,i){ return s + (Number(i.pendiente) || 0); }, 0), s:3}, '']);
+    var total = pend.reduce(function(s, i){ return s + (Number(i.pendiente) || 0); }, 0);
     return {
-      nombre: limpiarNombre('Pendientes ' + String(fecha || 'sin-fecha').split('/').reverse().join('-') + ' ' + envio) + '.xlsx',
-      datos: armarXLSX({ hoja: 'Pendientes', filas: filas, anchos: [14, 42, 10, 13, 14, 13], congelarHasta: 5 })
+      nombre: limpiarNombre('Pendientes ' + String(fecha || 'sin-fecha').split('/').reverse().join('-') + ' ' + envio) + '.pdf',
+      datos: await armarPDF([{
+        titulo: 'Pendientes de compra',
+        datos: [['Envío:', envio], ['Fecha contable:', fecha || '']],
+        tablas: [{
+          cabecera: ['Código', 'Insumo', 'Pedido', 'A transferir', 'Falta comprar', 'Cuenta'],
+          numeros: [2, 3, 4], anchos: { 0: 24, 2: 20, 3: 22, 4: 24 },
+          filas: pend.map(function(it){
+            return [it.cod, it.nombre, celdaNum(it.pedido), celdaNum(it.total), celdaNum(it.pendiente), it.cuenta || ''];
+          }),
+          pie: ['', 'Total a comprar', '', '', celdaNum(total), '']
+        }]
+      }])
     };
   }
   function libroPendientes(){ return libroPendientesDe(ANALISIS.dest.nombre, fechaAlbor(), pendientesActuales()); }
@@ -3223,9 +3120,9 @@
   $('psolova').addEventListener('change', pintarPedido);
   $('pcarga').addEventListener('click', function(){ motor() ? cargarTransferenciaEnAlbor() : exportarCarga(); });
   $('ppend').addEventListener('click', exportarPendientes);
-  $('pprint').addEventListener('click', function(){
+  $('pprint').addEventListener('click', async function(){
     if(!ANALISIS || !ANALISIS.hay){ errorP('No hay nada para transferir todavía.'); return; }
-    imprimirArmado(datosArmadoActual());
+    try{ await planillaTransferencia(); }catch(e){ errorP(e.message || String(e)); }
   });
 
 
@@ -3629,7 +3526,7 @@
               '﻿' + out.join('\r\n') + '\r\n', 'text/csv;charset=utf-8');
 
     // El archivo para Albor se borra después de cargarlo; esto es lo que queda.
-    await planillaEgresos();
+    try{ await planillaEgresos(); }catch(e){ errorG(e.message || String(e)); }
 
     analizarEgresos();
   }
@@ -3637,54 +3534,42 @@
   /* La planilla de control: qué se dio por consumido en cada granja, con el
      tipo de insumo al que pertenece cada renglón. */
   async function planillaEgresos(){
-    var l = libroEgresos();
-    await descargar(l.nombre, l.datos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    var l = await libroEgresos();
+    await descargar(l.nombre, l.datos, 'application/pdf');
   }
 
-  function libroEgresos(){
+  /* En PDF (Feli, 2026-10-07), apaisada: son 8 columnas. */
+  async function libroEgresos(){
     var fecha = ($('gfecha').value || '').split('-').reverse().join('/');
-
-    var filas = [];
-    filas.push([{v:'Egresos de fin de mes — control', s:2}]);
-    filas.push(['Fecha:', {v:fecha, s:3}]);
-    filas.push(['Comprobantes:', {v:EGRESOS.comprobantes.length, s:3}]);
-    filas.push([]);
-    filas.push(['Punto de stock','Tipo de insumo','Código','Insumo','Cantidad','Unidad','Cuenta','Comprobante']
-               .map(function(c){ return {v:c, s:1}; }));
-
-    var total = 0;
+    var total = 0, filas = [];
     EGRESOS.comprobantes.forEach(function(c){
       c.items.forEach(function(it){
         total += it.cant;
-        filas.push([c.granja.nombre, it.tipo, it.cod, it.nombre, it.cant, it.unidad, c.cuenta, c.numero]);
+        filas.push([c.granja.nombre, it.tipo, it.cod, it.nombre, celdaNum(it.cant), it.unidad, c.cuenta, c.numero]);
       });
     });
-
-    filas.push([]);
-    filas.push(['', '', '', {v:EGRESOS.insumos + ' insumos', s:3}, {v:total, s:3}, '', '', '']);
-
-    if(EGRESOS.sinCuenta.length){
-      filas.push([]);
-      filas.push([{v:'Quedaron afuera (su tipo no se egresa)', s:3}]);
-      filas.push(['Punto de stock','Tipo de insumo','Código','Insumo','Cantidad']
-                 .map(function(c){ return {v:c, s:1}; }));
-      EGRESOS.sinCuenta.forEach(function(s){
-        filas.push([s.granja, s.tipo, s.cod, s.nombre, s.cant]);
+    var tablas = [{
+      cabecera: ['Punto de stock', 'Tipo de insumo', 'C\u00f3digo', 'Insumo', 'Cantidad', 'Unidad', 'Cuenta', 'Comprobante'],
+      numeros: [4], filas: filas,
+      pie: ['', '', '', EGRESOS.insumos + ' insumos', celdaNum(Math.round(total * 1000) / 1000), '', '', '']
+    }];
+    function aparte(titulo, lista){
+      if(!lista.length) return;
+      tablas.push({
+        titulo: titulo, numeros: [4],
+        cabecera: ['Punto de stock', 'Tipo de insumo', 'C\u00f3digo', 'Insumo', 'Cantidad'],
+        filas: lista.map(function(x){ return [x.granja, x.tipo, x.cod, x.nombre, celdaNum(x.cant)]; })
       });
     }
-    if(EGRESOS.excluidos.length){
-      filas.push([]);
-      filas.push([{v:'No se egresan (productos excluidos)', s:3}]);
-      filas.push(['Punto de stock','Tipo de insumo','Código','Insumo','Cantidad']
-                 .map(function(c){ return {v:c, s:1}; }));
-      EGRESOS.excluidos.forEach(function(s){
-        filas.push([s.granja, s.tipo, s.cod, s.nombre, s.cant]);
-      });
-    }
-
+    aparte('Quedaron afuera (su tipo no se egresa)', EGRESOS.sinCuenta);
+    aparte('No se egresan (productos excluidos)', EGRESOS.excluidos);
     return {
-      nombre: limpiarNombre('Planilla egresos ' + ($('gfecha').value || 'sin-fecha')) + '.xlsx',
-      datos: armarXLSX({ hoja:'Egresos', filas:filas, anchos:[22, 22, 14, 42, 11, 11, 13, 13], congelarHasta:5 })
+      nombre: limpiarNombre('Planilla egresos ' + ($('gfecha').value || 'sin-fecha')) + '.pdf',
+      datos: await armarPDF([{
+        titulo: 'Egresos de fin de mes \u2014 control',
+        datos: [['Fecha:', fecha], ['Comprobantes:', EGRESOS.comprobantes.length]],
+        tablas: tablas
+      }], { apaisado: true })
     };
   }
 
@@ -3951,9 +3836,11 @@
   async function bajarPlanillaHistorial(que){
     var d = HIST.datosPlanillas;
     if(!d) return;
-    var l = que === 'armado' ? libroArmado(d) : libroPendientesDe(d.envio, d.fechaContable, d.pendientes);
-    if(!l){ errorH('No quedaron pendientes en esa transferencia.'); return; }
-    await descargar(l.nombre, l.datos, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    try{
+      var l = que === 'armado' ? await libroArmado(d) : await libroPendientesDe(d.envio, d.fechaContable, d.pendientes);
+      if(!l){ errorH('No quedaron pendientes en esa transferencia.'); return; }
+      await descargar(l.nombre, l.datos, 'application/pdf');
+    }catch(e){ errorH(e.message || String(e)); }
   }
 
   async function guardarNotaHistorial(){
@@ -5453,8 +5340,9 @@
     limpiarErrorP();
 
     var pedido = PEDIDO_ELEGIDO;
-    var archivos = [archivoParaPython(libroTransferencia()), archivoParaPython(libroPendientes())]
-                   .filter(Boolean);
+    var archivos;
+    try{ archivos = [archivoParaPython(await libroTransferencia()), archivoParaPython(await libroPendientes())].filter(Boolean); }
+    catch(e){ errorP(e.message || String(e)); return; }
     abrirAlbor('Transferencia a ' + dest.nombre + ' · ' + renglones + ' renglones');
     archivos = planillasNuevas(archivos);
     archivos.forEach(function(a){ anotarBajada(a.base64, a.nombre); });
@@ -5535,7 +5423,9 @@
     limpiarErrorG();
 
     abrirAlbor('Egresos de fin de mes · ' + comps.length + ' comprobantes');
-    var planillas = planillasNuevas([archivoParaPython(libroEgresos())]);
+    var planillas;
+    try{ planillas = planillasNuevas([archivoParaPython(await libroEgresos())]); }
+    catch(e){ errorG(e.message || String(e)); return; }
     planillas.forEach(function(a){ anotarBajada(a.base64, a.nombre); });
     alborLog('Abriendo Albor…');
 
