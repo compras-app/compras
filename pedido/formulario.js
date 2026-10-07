@@ -57,9 +57,11 @@ function buscar(q){
   return [...best.values()].map(r=>({...r,score:r.score+Math.log(FAM[r.fi][2]+1)*12}))
     .sort((a,b)=>b.score-a.score).slice(0,7);
 }
-// lo que el encargado escribió de más (ej. "bulon 3/4" -> "3/4") se sugiere como especificación
+// lo que el encargado escribió de más (ej. "bulon 3/4" -> "3/4") se sugiere como especificación.
+// Lo que escribió para buscar nunca es la medida: ni las palabras del producto ni las de la forma de escribirlo
+// con la que se encontró ("bul" encuentra Brida por una forma que dice "bulón": Feli, 2026-10-06)
 function resto(q,fi,ej){
-  const fw=famWords[fi].concat(String(ej||'').split(' ').slice(0,1)); const stop=new Set(['de','del','la','el','los','las','para','x']);
+  const fw=famWords[fi].concat(norm(String(ej||'')).split(/\s+/).filter(Boolean)); const stop=new Set(['de','del','la','el','los','las','para','x']);
   const out=[]; let started=false;
   for(const raw of String(q).trim().split(/\s+/)){
     const t=norm(raw); if(!t){continue;}
