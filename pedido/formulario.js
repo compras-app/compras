@@ -57,23 +57,6 @@ function buscar(q){
   return [...best.values()].map(r=>({...r,score:r.score+Math.log(FAM[r.fi][2]+1)*12}))
     .sort((a,b)=>b.score-a.score).slice(0,7);
 }
-// lo que el encargado escribió de más (ej. "bulon 3/4" -> "3/4") se sugiere como especificación.
-// Lo que escribió para buscar nunca es la medida: ni las palabras del producto ni las de la forma de escribirlo
-// con la que se encontró ("bul" encuentra Brida por una forma que dice "bulón": Feli, 2026-10-06)
-function resto(q,fi,ej){
-  const fw=famWords[fi].concat(norm(String(ej||'')).split(/\s+/).filter(Boolean)); const stop=new Set(['de','del','la','el','los','las','para','x']);
-  const out=[]; let started=false;
-  for(const raw of String(q).trim().split(/\s+/)){
-    const t=norm(raw); if(!t){continue;}
-    // Lo que escribió para buscar el producto no es la medida: "bu" (de bulón) tampoco, aunque sea corto
-    const esFam = (/^[a-z]+$/.test(t) && fw.some(w=>w.startsWith(t))) ||
-      (/[a-z]/.test(t) && t.length>=3 && fw.some(w=>w.startsWith(t.slice(0,4))||t.startsWith(w.slice(0,4))||(t.length>=4&&lev(t,w)<=(t.length>=7?2:1))));
-    if(esFam) continue;
-    if(!started && stop.has(t)) continue;
-    started=true; out.push(raw);
-  }
-  return out.join(' ');
-}
 
 /* ---------- estado ---------- */
 let S = {tipo:'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[],servicio:'',obs:'',adj:[]};
@@ -203,7 +186,7 @@ function card(p,i){
   const elegir=j=>{
     const q=inp.value.trim();
     if(j<res.length){ const fi=res[j].fi; p.fi=fi; p.libre=false; p.texto=q;
-      if(!p.espec){ p.espec=resto(q,fi,res[j].ej); el.querySelector(`#p${p.id}-e`).value=p.espec; if(p.espec) limpiarErrEl(el.querySelector('[data-f="espec"]')); }
+      // La medida nunca se completa sola: la escribe el encargado (Feli, 2026-10-06)
       inp.value=FAM[fi][0];
     } else { p.fi=null; p.libre=true; p.texto=q; }
     st.innerHTML=estadoTag(p); cerrar(); limpiarErrEl(el.querySelector('[data-f="prod"]')); guardar();
