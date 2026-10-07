@@ -170,3 +170,12 @@ PedidosGuardados.procesar();
 
 /** Los chats son del WhatsApp de Feli: los ven solo los admins de "Ven los chats" (Admin → Ajustes; Feli, 2026-10-06). */
 function veChats() { return !!(APP.yo && APP.yo.admin && APP.yo.chats !== false); }
+
+/** Paso 7: ¿ese chat es de uno de sus WhatsApp? (un chat de otra línea termina en "#clave"). Sin el dato (servidor viejo), sí. */
+function chatEsMio(chat) {
+  if (!veChats() || !chat) return false;
+  const l = APP.yo.lineas;
+  if (!l) return true;
+  const i = String(chat).indexOf('#');
+  return l.indexOf(i === -1 ? (APP.yo.lineaLegado || '') : String(chat).slice(i + 1)) !== -1;
+}

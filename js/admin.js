@@ -245,7 +245,8 @@ $('pv-nuevo').addEventListener('click', function () { if (AD.provs) editarProvee
 /** Alta (p = null) o cambio de un proveedor, con sus rubros. */
 async function editarProveedor(p, previo) {
   const v = previo || { nombre: p ? p.nombre : '', telefono: p ? p.telefono : '', email: p ? p.email : '', notas: p ? p.notas : '',
-                        contacto: p ? (p.contacto || '') : '', activo: p ? p.activo : true, rubros: p ? p.rubros.slice() : [] };
+                        contacto: p ? (p.contacto || '') : '', activo: p ? p.activo : true, rubros: p ? p.rubros.slice() : [],
+                        otros: p ? (p.otros || []).join(', ') : '' };
   const elegidos = {};
   v.rubros.forEach(function (c) { elegidos[c] = true; });
   const max = AD.provs.maximo;
@@ -255,6 +256,8 @@ async function editarProveedor(p, previo) {
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = campoDlg('pr-nombre', 'Nombre', v.nombre, { max: 80 }) +
     campoDlg('pr-tel', 'Teléfono (WhatsApp)', v.telefono, { tipo: 'tel', max: 20, inputmode: 'tel', placeholder: '5493525415029', nota: NOTA_TELEFONO + ' Ahí le van a llegar los pedidos de cotización.' }) +
+    // Paso 7 (Feli, 2026-10-07): otros números del proveedor (para cargar sus presupuestos desde ese chat; no se le piden cotizaciones ahí)
+    campoDlg('pr-otros', 'Otros números (opcional)', v.otros, { max: 200, inputmode: 'tel', placeholder: '5493525415029, 5493515551234', nota: 'Separados por coma. Sirven para cargar sus presupuestos desde esos chats; las cotizaciones se piden al de arriba.' }) +
     campoDlg('pr-mail', 'Mail (opcional)', v.email, { tipo: 'email', max: 120 }) +
     campoDlg('pr-notas', 'Notas (opcional)', v.notas, { area: true, max: 1000 }) +
     '<div class="campo"><label>Rubros</label><p class="nota">A qué rubros se le pide cotización. Hasta ' + max + ' proveedores por rubro.</p>' +
@@ -264,7 +267,7 @@ async function editarProveedor(p, previo) {
     titulo: p ? p.nombre : 'Agregar proveedor', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
       return { id: p ? p.id : '', nombre: $('pr-nombre').value.trim(), telefono: $('pr-tel').value.trim(), email: $('pr-mail').value.trim(),
-               notas: $('pr-notas').value.trim(), contacto: undefined, activo: $('pr-activo').checked,
+               notas: $('pr-notas').value.trim(), contacto: undefined, otros: $('pr-otros').value.trim(), activo: $('pr-activo').checked,
                rubros: Object.keys(elegidos).filter(function (c) { return elegidos[c]; }).sort() };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
@@ -344,6 +347,11 @@ function pintarAjustes() {
     if (a.cotizar.aprobador && ps.indexOf(a.cotizar.aprobador) === -1) ps.unshift(a.cotizar.aprobador);
     $('aj-aprobador').innerHTML = ps.map(function (n) { return '<option>' + esc(n) + '</option>'; }).join('');
     $('aj-aprobador').value = a.cotizar.aprobador || '';
+    // Paso 7: con los WhatsApp de cada comprador cargados, cada uno ve el suyo (y ya no hace falta "Ven los chats")
+    const lineas = a.cotizar.lineas || [];
+    $('aj-lineas-c').hidden = !lineas.length;
+    $('aj-chats-ven-c').hidden = !!lineas.length;
+    $('aj-lineas').innerHTML = lineas.map(function (l) { return '<div>📱 ' + esc(l.nombre) + (l.principal ? ' <small>(principal)</small>' : '') + '</div>'; }).join('');
     // Quiénes ven los chats (Feli, 2026-10-06)
     const ven = a.cotizar.chatsVen || [], ads = (a.cotizar.admins || []).slice();
     ven.forEach(function (n) { if (ads.indexOf(n) === -1) ads.push(n); });
@@ -439,7 +447,7 @@ $('aj-cot-ok').addEventListener('click', async function () {
     msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined,
     msjRecepcion: a_siHay('aj-msj-recep'), msjRecepcionRecordatorio: a_siHay('aj-msj-recep2'),
     msjRecordatorioProv: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.msjRecordatorioProv !== undefined ? $('aj-msj-recprov').value : undefined,
-    chatsVen: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.admins ? Array.prototype.map.call(document.querySelectorAll('#aj-chats-ven input:checked'), function (x) { return x.value; }) : undefined,
+    chatsVen: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.admins && !(AD.ajustes.cotizar.lineas || []).length ? Array.prototype.map.call(document.querySelectorAll('#aj-chats-ven input:checked'), function (x) { return x.value; }) : undefined,
     predisenados: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.predisenados !== undefined ? leerPredisenados() : undefined
   });
   if (!r.ok) return aviso(textoDeError(r), 'bad');

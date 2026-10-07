@@ -290,8 +290,7 @@ function elegirCasillero(linea, pid) {
 function elegirTodo(pid) {
   const col = columnaDe(pid);
   let n = 0;
-  // Lo no pedido se elige uno por uno (Feli, 2026-10-07: que no entre sin querer)
-  CQ.datos.productos.forEach(function (p) { if (!p.noPedido && sePuedeElegir(col, p.linea)) { CQ.sel[p.linea] = pid; n++; } });
+  CQ.datos.productos.forEach(function (p) { if (sePuedeElegir(col, p.linea)) { CQ.sel[p.linea] = pid; n++; } });   // también lo no pedido (Feli, 2026-10-07)
   pintarCuadro();
   aviso(n ? 'Elegidos ' + n + ' producto' + (n === 1 ? '' : 's') + ' de ' + col.nombre + '.' : col.nombre + ' no tiene productos para elegir.');
 }
@@ -301,7 +300,7 @@ function elegirBaratos() {
   let sinElegir = 0;
   CQ.datos.productos.forEach(function (p) {
     const cs = CQ.datos.columnas.filter(function (col) { return sePuedeElegir(col, p.linea); });
-    if (!cs.length || p.comprado || p.noPedido) return;                 // lo no pedido, uno por uno
+    if (!cs.length || p.comprado) return;                               // lo no pedido también (lo cotizó uno solo: ese)
     const barato = cs.filter(function (col) { return col.casilleros[p.linea].masBarato; })[0];
     if (barato) CQ.sel[p.linea] = barato.proveedor;
     else if (cs.length === 1) CQ.sel[p.linea] = cs[0].proveedor;

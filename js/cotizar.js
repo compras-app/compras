@@ -42,18 +42,11 @@ function colDecision() {
 }
 function sePuedeCotizarAbierta(t) { return sePuedeCotizar(t) || (!!t && !t.trabajo && !t.manual && t.columna === colDecision()); }
 
-/**
- * La marca de la tarjeta en el tablero, en Por cotizar: solo dice a cuántos se les pidió. El botón "📤 Pedir cotización"
- * ya no está en el tablero (Feli, 2026-10-07): se pide desde la tarjeta abierta.
- */
+/** En el tablero, nada de pedir cotización (Feli, 2026-10-07): ni el botón ni "Pedido a N proveedores". Solo "Pidiendo…" mientras sale. */
 function htmlMarcaCotizar(t) {
   if (!sePuedeCotizar(t)) return '';
   const espera = bandeja.lista().some(function (m) { return m.fn === 'pedirCotizacion' && m.args[0] === t.ref; });
-  let txt;
-  if (espera) txt = '⏳ Pidiendo cotización…';
-  else if (t.pedidoA) txt = '⏳ Pedido a ' + t.pedidoA + (t.pedidoA === 1 ? ' proveedor' : ' proveedores') + (t.sinPedir ? ' · ' + t.sinPedir + ' sin pedir' : '');
-  else return '';
-  return '<div class="marca-cot">' + esc(txt) + '</div>';
+  return espera ? '<div class="marca-cot">⏳ Pidiendo cotización…</div>' : '';
 }
 
 /* ---------- La ventana "Pedir cotización" ----------
@@ -87,12 +80,15 @@ async function abrirPedirCotizacion(refs) {
   const nombreProv = function (id) { return (provs[id] || {}).nombre || id; };
   const prod = {};
   r.productos.forEach(function (x) { prod[x.id] = x; });
+  // Paso 7 (Feli, 2026-10-07): a quiénes ya se les pidió (quién y cuándo); se puede pedir de nuevo, avisado
+  const yaPedidas = [].concat.apply([], partes.map(function (pt) { return (pt.solicitudes || []).filter(function (s) { return s.estado !== 'No salió'; }); }));
+  let deNuevo = false;
   const puntual = {};             // ID Línea → [proveedores], solo esta vez ("🎯 Proveedores para varios")
   const fuera = {};               // ID Línea → true: destildado (no va en este envío)
   const abiertos = {};            // bloques con "ver cuáles" abierto
   let varios = null;              // el panel de "Proveedores para varios": {lineas: {}, provs: {}, q}
   const provsDe = function (x) { return puntual[x.id] || x.sugeridos; };
-  const pendientes = function (x) { return provsDe(x).filter(function (p) { return !x.ya[p] && provs[p] && provs[p].activo !== false; }); };
+  const pendientes = function (x) { return provsDe(x).filter(function (p) { return (deNuevo || !x.ya[p]) && provs[p] && provs[p].activo !== false; }); };
   const bloqueDe = function (x) {
     const c = varias ? x.cref + '|' : '';          // con varias tarjetas, cada una con sus bloques
     if (puntual[x.id]) return { clave: c + 'u:' + puntual[x.id].slice().sort().join(','), titulo: '🎯 ' + puntual[x.id].map(nombreProv).join(', '), sub: 'Solo esta vez', provs: puntual[x.id], puntual: true };
@@ -125,7 +121,14 @@ async function abrirPedirCotizacion(refs) {
       if (!porClave[b.clave]) { porClave[b.clave] = Object.assign(b, { productos: [] }); bloques.push(porClave[b.clave]); }
       porClave[b.clave].productos.push(x);
     });
+    const desde = r0.desde || null;
     let html = (r.prueba.si ? '<p class="estado warn">🧪 Modo prueba: todos los mensajes le llegan al número de prueba (' + esc(r.prueba.numero) + '), no a los proveedores.</p>' : '') +
+      // Paso 7: desde qué WhatsApp sale
+      (desde && !desde.propio && desde.usuario ? '<p class="estado warn">📱 Este pedido se va a mandar desde el número de ' + esc(desde.usuario) + '.</p>'
+        : desde && desde.varias ? '<p class="nota">📱 Sale desde tu WhatsApp.</p>' : '') +
+      (yaPedidas.length ? '<div class="estado warn"><b>Ya se pidió cotización a:</b> ' + yaPedidas.map(function (s) {
+          return esc(s.nombre) + ' <small>(' + esc([s.pidio, fechaCorta(s.fechaEnvio || s.fecha)].filter(String).join(', ')) + ')</small>';
+        }).join(' · ') + '<br><button type="button" class="linkbtn" id="cz-denuevo">' + (deNuevo ? 'No pedirles de nuevo' : 'Pedirles de nuevo a ellos también') + '</button></div>' : '') +
       (varias ? '<p class="nota">' + (partes.length === 1 ? '1 tarjeta' : partes.length + ' tarjetas') + ' de la tanda. A cada proveedor le llega un mensaje por tarjeta, con su código y los productos iguales sumados.</p>'
               : '<p class="nota">' + esc(r.titulo) + ' · ' + esc(r.sitio) + (r.codigo ? ' · Código ' + esc(r.codigo) : '') + '</p>');
     let ultimaTarjeta = '';
@@ -196,6 +199,7 @@ async function abrirPedirCotizacion(refs) {
       });
     });
     if ($('cz-varios')) $('cz-varios').addEventListener('click', function () { varios = { lineas: {}, provs: {}, q: '' }; pintar(); });
+    if ($('cz-denuevo')) $('cz-denuevo').addEventListener('click', function () { deNuevo = !deNuevo; pintar(); });
     if (varios) {
       cuerpo.querySelectorAll('[data-vl]').forEach(function (el) {
         el.addEventListener('click', function () { const id = el.dataset.vl; if (varios.lineas[id]) delete varios.lineas[id]; else varios.lineas[id] = true; pintar(); });
@@ -236,7 +240,7 @@ async function abrirPedirCotizacion(refs) {
     r.productos.forEach(function (x) { if (x.cref === e.ref) huellas[x.id] = x.huella; });
     const pt = partes.filter(function (x) { return x.ref === e.ref; })[0] || {};
     const t = buscarEnVista(e.ref) || { titulo: pt.titulo };
-    bandeja.agregar('pedirCotizacion', [e.ref, { id: 'Q' + nuevoId(), mensajes: e.mensajes, huellas: huellas }],
+    bandeja.agregar('pedirCotizacion', [e.ref, { id: 'Q' + nuevoId(), mensajes: e.mensajes, huellas: huellas, deNuevo: deNuevo }],
       'pedir cotización de "' + (t.titulo || e.ref) + '" a ' + e.mensajes.length + (e.mensajes.length === 1 ? ' proveedor' : ' proveedores'));
   });
   pintarTablero();
@@ -280,11 +284,12 @@ function pintarCotizaciones() {
       const e = reintento[s.id] ? '⏳ Reintentando…' : (ESTADO_COT[s.estado] || s.estado);
       return '<div class="cot-fila' + (s.estado === 'No salió' ? ' mal' : '') + '"><div><b>' + esc(s.nombre) + '</b> <small>· ' + esc(s.codigo) + ' · ' + esc(fechaCorta(s.fecha)) +
         (s.prueba ? ' · 🧪 prueba' : '') + '</small></div>' +
+        (s.pidio ? '<div class="sub">Cotización pedida por ' + esc(s.pidio) + (s.desde && s.desde !== 'WhatsApp de ' + s.pidio && s.desde !== 'WhatsApp de la app' ? ' (desde el ' + esc(s.desde) + ')' : '') + '</div>' : '') +   // Paso 7
         '<div class="sub">' + esc(s.productos.join(', ')) + '</div>' +
         '<div class="sub">' + esc(e) + (s.notas ? ' · ' + esc(s.notas) : '') + '</div>' +
         htmlRecordatorio(s.recordatorio) +                                         // Fase 4, Paso 6
         (APP.yo.admin && s.estado === 'No salió' && !reintento[s.id] ? '<button type="button" class="btn-chico" data-reintentar="' + esc(s.id) + '">Reintentar</button>' : '') +
-        (veChats() && s.chat ? '<button type="button" class="btn-chico" data-ir-chat="' + esc(s.chat) + '">💬 Chat' + (s.prueba ? ' (número de prueba)' : '') + '</button>' : '') + '</div>';   // Fase 4, Paso 2
+        (chatEsMio(s.chat) ? '<button type="button" class="btn-chico" data-ir-chat="' + esc(s.chat) + '">💬 Chat' + (s.prueba ? ' (número de prueba)' : '') + '</button>' : '') + '</div>';   // Fase 4, Paso 2
     }).join('') : (esperan.length ? '' : '<p class="nota" style="margin:0">Todavía no se pidió cotización.</p>'));
   $('tj-cot').querySelectorAll('[data-ir-chat]').forEach(function (btn) { btn.addEventListener('click', function () { irAlChat(btn.dataset.irChat); }); });
   $('tj-cot').querySelectorAll('[data-reintentar]').forEach(function (btn) {

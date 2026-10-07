@@ -327,7 +327,9 @@
           <small class="nota">Le llega a cada proveedor al comprarle ("🛒 Realizar la compra"); antes de mandarlo se puede cambiar. {codigo} y {productos}: los productos como los escribió el proveedor, con las cantidades a comprar.</small></div>
         <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>
           <small class="nota">Le llega el WhatsApp de "📨 Mandar a aprobar" (en Decisión) y aprueba desde la tarjeta.</small></div>
-        <div class="campo"><label>Ven los chats</label><div id="aj-chats-ven" class="aj-chats-ven"></div>
+        <div class="campo" id="aj-lineas-c" hidden><label>WhatsApp de cada comprador</label><div id="aj-lineas"></div>
+          <small class="nota">Cada uno ve solo los chats de su WhatsApp. Del principal salen los mensajes al equipo (el código para entrar, las menciones, "¿Recibiste este pedido?" y "Mandar a aprobar"). Se agregan desde el editor (agregarLineaWhatsApp).</small></div>
+        <div class="campo" id="aj-chats-ven-c"><label>Ven los chats</label><div id="aj-chats-ven" class="aj-chats-ven"></div>
           <small class="nota">Los chats son los del WhatsApp conectado a la app. Solo los admins tildados ven la pestaña 💬 Chats y los botones "💬 Chat". Sin ninguno tildado, los ven todos los admins. Los presupuestos cargados y el cuadro los ven todos los admins.</small></div>
         <div class="campo"><label>Mensajes prediseñados del chat</label>
           <div id="aj-predis"></div>

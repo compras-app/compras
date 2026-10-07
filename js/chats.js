@@ -70,8 +70,10 @@ function pintarListaChats() {
   cont.innerHTML = l.slice(0, CH_MAX_LISTA).map(function (c) {
     return '<button type="button" class="ch-item' + (c.chat === CH.abierto ? ' abierto' : '') + '" data-chat="' + esc(c.chat) + '">' +
       '<span class="ch-av" aria-hidden="true">' + (c.grupo ? '👥' : esc(inicial(c.nombre) || '#')) + '</span>' +
-      '<span class="ch-it"><span class="ch-l1"><b>' + esc(c.nombre) + '</b><small>' + esc(horaChat(c.ultimo)) + '</small></span>' +
-      '<span class="ch-l2"><span class="ch-ul">' + (c.proveedor && c.proveedor !== c.nombre ? '🏪 ' + esc(c.proveedor) + ' · ' : '') + esc(c.texto || '') + '</span>' +
+      // Feli (2026-10-07): el nombre como está agendado, al lado el proveedor del padrón, y abajo el último mensaje
+      '<span class="ch-it"><span class="ch-l1"><span class="ch-nom"><b>' + esc(c.nombre) + '</b>' +
+        (c.proveedor && c.proveedor !== c.nombre ? '<span class="ch-delpadron">' + esc(c.proveedor) + ' (del padrón)</span>' : '') + '</span><small>' + esc(horaChat(c.ultimo)) + '</small></span>' +
+      '<span class="ch-l2"><span class="ch-ul">' + esc(c.texto || '') + '</span>' +
       (c.cotizando || (c.cotizando === undefined && c.pedidos) ? '<span class="ch-ped" title="Tarjetas cotizando">📋 ' + (c.cotizando || c.pedidos) + '</span>' : '') +
       (c.seguimiento ? '<span class="ch-ped" title="Compras en seguimiento de entrega">📦 ' + c.seguimiento + '</span>' : '') +
       (c.noLeidos ? '<span class="ch-n">' + c.noLeidos + '</span>' : '') + '</span></span></button>';
@@ -329,7 +331,11 @@ function pintarChat(alFondo) {
   if (!chat) return;
   const info = (d && d.chat) || (CH.lista || []).filter(function (c) { return c.chat === chat; })[0] || { nombre: chat };
   $('ch-nombre').textContent = info.nombre || chat;
-  $('ch-sub').textContent = info.proveedor ? '🏪 ' + info.proveedor : (info.grupo || /@g\.us$/.test(chat) ? 'Grupo' : '+' + chat.replace(/@.*/, ''));
+  // Paso 7: el proveedor del padrón; si no está, "➕ Agregar al padrón de proveedores"
+  const grupo = info.grupo || /@g\.us/.test(chat);
+  $('ch-sub').innerHTML = info.proveedor ? esc(info.proveedor) + ' (del padrón)' :
+    (grupo ? 'Grupo' : esc('+' + chat.replace(/@.*/, '')) + (d ? ' · <button type="button" class="linkbtn" id="ch-padron">➕ Agregar al padrón de proveedores</button>' : ''));
+  if ($('ch-padron')) $('ch-padron').addEventListener('click', agregarAlPadronUI);
   const tarjetas = ((d && d.tarjetas) || []).concat((d && d.seguimiento) || []);   // también lo comprado, en seguimiento
   $('ch-ver-tarjetas').textContent = '📋 Tarjetas' + (tarjetas.length ? ' (' + tarjetas.length + ')' : '');
   pintarPanelChat();
@@ -509,6 +515,7 @@ function pintarPanelChat() {
   p.innerHTML = (l.length ? l.map(function (t) {
     return '<div class="ch-tj" role="button" tabindex="0" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
       esc([t.codigo, t.manual ? '✋ Gestión manual' : '', t.columna, t.proveedor ? 'pedido a ' + t.proveedor : ''].filter(String).join(' · ')) + '</small>' +
+      (t.asignadaPor ? '<small class="ch-asignada">Asignada por ' + esc(t.asignadaPor) + '</small>' : '') +          // Paso 7: la asignó el otro comprador
       htmlComprasEnChat(t.compras) +
       // Paso 5 (Feli, 2026-10-06): si se le confirmó por el chat, sin el cuadro (chiquito, adentro de la tarjeta)
       (cot.indexOf(t.columna) !== -1 ? '<button type="button" class="ch-compra-b" data-compra-manual="' + esc(t.ref) + '">✅ Compra confirmada manualmente</button>' : '') + '</div>';
@@ -698,4 +705,44 @@ async function compraManualUI(ref) {
   aviso('Listo: compra registrada. Salió la tarjeta de seguimiento.');
   cargarTablero();
   if (CH.abierto === chat) recargarChat();
+}
+
+/* ---------- Paso 7 (Feli, 2026-10-07): "➕ Agregar al padrón de proveedores" desde el chat ---------- */
+async function agregarAlPadronUI() {
+  const chat = CH.abierto, d = CH.datos;
+  if (!chat || !d) return;
+  const datos = await datosProductos();
+  const rubros = (datos && datos.canales) || [];
+  const provs = d.proveedores || [];
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  let modo = 'nuevo';
+  const elegidos = {};
+  const pintar = function () {
+    cuerpo.innerHTML = '<div class="opciones">' +
+      '<button type="button" class="choice" data-modo="nuevo"' + (modo === 'nuevo' ? ' aria-current="true"' : '') + '>Es un proveedor nuevo</button>' +
+      '<button type="button" class="choice" data-modo="otro"' + (modo === 'otro' ? ' aria-current="true"' : '') + '>Es otro número de un proveedor que ya está</button></div>' +
+      (modo === 'nuevo'
+        ? '<label for="pp-nom">Nombre del proveedor</label><input type="text" id="pp-nom" maxlength="80" value="' + esc((d.chat && d.chat.nombre) || '') + '">' +
+          '<label>Rubros</label><div class="pila pp-rubros">' + rubros.map(function (r) {
+            return '<label class="pa-check"><input type="checkbox" value="' + esc(r) + '"' + (elegidos[r] ? ' checked' : '') + '> ' + esc(r) + '</label>';
+          }).join('') + '</div><p class="nota">Con este número se le piden las cotizaciones.</p>'
+        : '<label for="pp-prov">¿De qué proveedor?</label><select id="pp-prov"><option value="">Elegí el proveedor</option>' + provs.map(function (p) {
+            return '<option value="' + esc(p.id) + '">' + esc(p.nombre) + '</option>'; }).join('') + '</select>' +
+          '<p class="nota">Este número sirve para cargar sus presupuestos desde este chat. Las cotizaciones se le siguen pidiendo a su número de siempre.</p>');
+    cuerpo.querySelectorAll('[data-modo]').forEach(function (b) { b.addEventListener('click', function () { modo = b.dataset.modo; pintar(); }); });
+    cuerpo.querySelectorAll('.pp-rubros input').forEach(function (x) { x.addEventListener('change', function () { if (x.checked) elegidos[x.value] = true; else delete elegidos[x.value]; }); });
+  };
+  const v = await dialogo({ titulo: '➕ Agregar al padrón de proveedores', cuerpo: cuerpo, alAbrir: pintar,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Agregar', clase: 'btn', valor: function () {
+      if (modo === 'nuevo') return { nombre: $('pp-nom').value.trim(), rubros: Object.keys(elegidos) };
+      return $('pp-prov').value ? { proveedor: $('pp-prov').value } : null;
+    } }] });
+  if (!v) return;
+  if (v.nombre !== undefined && v.nombre.length < 2) return aviso('Escribí el nombre del proveedor.', 'bad');
+  const r = await api('agregarAlPadronDesdeChat', chat, v);
+  if (!r.ok) return aviso(textoDeError(r), 'bad');
+  aviso('Listo: este chat es de ' + r.proveedor.nombre + '.');
+  TB.datosProd = null;
+  abrirChat(chat);
 }

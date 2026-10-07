@@ -357,7 +357,7 @@ function avisoTanda(ts) {
       titulo: '¿Pedir cotización ahora?',
       texto: 'La tanda quedó en ' + (n === 1 ? '1 tarjeta' : n + ' tarjetas') + ' por rubro, en ' + colPorCotizar() + '.' +
         (p ? ' ' + (p === 1 ? 'Un pedido pasó' : p + ' pedidos pasaron') + ' con lo que no se pudo juntar (fuera del padrón, OTROS o Sin rubro).' : '') +
-        ' Si no, queda el botón "📤 Pedir cotización" en cada tarjeta.',
+        ' Si no, se pide después desde cada tarjeta.',
       botones: [{ texto: 'Sí, pedir ahora', clase: 'btn', valor: true }, { texto: 'Después', valor: null }]
     }).then(function (ya) { if (ya) abrirPedirCotizacion(r.tarjetas); });
   };
@@ -541,12 +541,7 @@ async function moverA(ref, destino, despuesDe) {
   bandeja.agregar('moverTarjeta', [ref, op], que + t.titulo + '" a ' + destino);
   pintarTablero();
   if (TB.abierta === ref) pintarTarjeta();
-  // Fase 3: al llegar a Por cotizar, pregunta si se pide ya (si no, queda el botón en la tarjeta)
-  if (destino !== t.columna && sePuedeCotizar(Object.assign({}, t, { columna: destino })) && APP.yo.admin) {
-    const ya = await dialogo({ titulo: '¿Pedir cotización ahora?', texto: '"' + t.titulo + '" pasó a ' + destino + '. Si no, queda el botón "📤 Pedir cotización" en la tarjeta.',
-      botones: [{ texto: 'Sí, pedir ahora', clase: 'btn', valor: true }, { texto: 'Después', valor: null }] });
-    if (ya) abrirPedirCotizacion(ref);
-  }
+  // Feli (2026-10-07): al llegar a Por cotizar ya no pregunta "¿Pedir cotización ahora?": se pide desde la tarjeta abierta
 }
 
 /* ---------- Arrastrar (solo admins) ----------

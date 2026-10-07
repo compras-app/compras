@@ -67,26 +67,42 @@ function opcionesDeProveedor(elegidas, todos) {
   return delChat.length ? delChat : (todos || []);       // el chat es de un proveedor: es él (Feli, 2026-10-06)
 }
 
-/** Las tarjetas (de las abiertas del chat; varias si el presupuesto es de dos pedidos) y el proveedor. Devuelve {refs, proveedor} o null. */
-function elegirTarjetaYProveedor(tarjetas, todos) {
+/**
+ * Las tarjetas (de las del chat; varias si el presupuesto es de dos pedidos) y el proveedor. Devuelve {refs, proveedor} o null.
+ * Paso 7 (Feli, 2026-10-07): las que el otro comprador asignó a ese proveedor dicen "Asignada por …", y "Otras" trae
+ * cualquier tarjeta en Por cotizar, Decisión o Procesando (un presupuesto que llegó sin pedir cotización, o de un contacto
+ * que no es proveedor): ahí el proveedor se elige de la lista (si el chat es de un proveedor, viene elegido).
+ */
+function elegirTarjetaYProveedor(tarjetas, todos, otras, provChat) {
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
-  let refs = tarjetas.length === 1 ? [tarjetas[0].ref] : [], prov = '';
+  otras = otras || [];
+  let refs = tarjetas.length === 1 && !otras.length ? [tarjetas[0].ref] : [], prov = '', verOtras = !tarjetas.length, q = '';
+  const todas = tarjetas.concat(otras.map(function (t) { return Object.assign({ otra: true, proveedores: [] }, t); }));
+  const opcion = function (t) {
+    return '<button type="button" class="choice" data-ref="' + esc(t.ref) + '"' + (refs.indexOf(t.ref) !== -1 ? ' aria-current="true"' : '') + '>' +
+      (refs.indexOf(t.ref) !== -1 && todas.length > 1 ? '✓ ' : '') + (t.manual ? '✋ ' : '') + '<b>' + esc(t.titulo || t.ref) + '</b> <small>· ' +
+      esc([t.codigo, t.sitio, t.columna].filter(Boolean).join(' · ')) + '</small>' +
+      (t.asignadaPor ? '<small class="pr-asignada">Asignada por ' + esc(t.asignadaPor) + '</small>' : '') + '</button>';
+  };
   const pintar = function () {
-    const elegidas = tarjetas.filter(function (t) { return refs.indexOf(t.ref) !== -1; });
-    const provs = elegidas.length ? opcionesDeProveedor(elegidas, todos) : [];
-    if (provs.length === 1) prov = provs[0].id;
+    const elegidas = todas.filter(function (t) { return refs.indexOf(t.ref) !== -1; });
+    const libre = elegidas.some(function (t) { return t.otra || t.manual; });
+    let provs = elegidas.length && !libre ? opcionesDeProveedor(elegidas, todos) : [];
+    const deLista = elegidas.length && (libre || !provs.length);          // se elige de todo el padrón
+    if (deLista) provs = todos || [];
+    if (!deLista && provs.length === 1) prov = provs[0].id;
+    if (deLista && !prov && provChat && provs.some(function (p) { return p.id === provChat; })) prov = provChat;
     if (!provs.some(function (p) { return p.id === prov; })) prov = '';
-    const soloManuales = elegidas.length && elegidas.every(function (t) { return t.manual; });
-    cuerpo.innerHTML = '<label>¿En qué tarjeta?' + (tarjetas.length > 1 ? ' <small>(si el presupuesto es de varios pedidos, tocá todas)</small>' : '') + '</label>' +
-      '<div class="opciones">' + tarjetas.map(function (t) {
-        return '<button type="button" class="choice" data-ref="' + esc(t.ref) + '"' + (refs.indexOf(t.ref) !== -1 ? ' aria-current="true"' : '') + '>' +
-          (refs.indexOf(t.ref) !== -1 && tarjetas.length > 1 ? '✓ ' : '') + (t.manual ? '✋ ' : '') + '<b>' + esc(t.titulo || t.ref) + '</b> <small>· ' +
-          esc([t.codigo, t.columna].filter(String).join(' · ')) + '</small></button>';
-      }).join('') + '</div>' +
+    const nq = sinTildes(q);
+    const lista = otras.filter(function (t) { return refs.indexOf(t.ref) !== -1 || !nq || sinTildes([t.titulo, t.codigo, t.sitio, t.columna].join(' ')).indexOf(nq) !== -1; });
+    cuerpo.innerHTML = (tarjetas.length ? '<label>¿En qué tarjeta?' + (todas.length > 1 ? ' <small>(si el presupuesto es de varios pedidos, tocá todas)</small>' : '') + '</label>' +
+        '<div class="opciones">' + tarjetas.map(opcion).join('') + '</div>' : '<p class="nota">Este chat no tiene tarjetas: elegila en "Otras".</p>') +
+      (otras.length ? '<button type="button" class="linkbtn" id="pr-otras">' + (verOtras ? 'Ocultar otras tarjetas' : 'Otras (' + otras.length + ')') + '</button>' +
+        (verOtras ? '<input type="search" id="pr-otras-q" placeholder="Buscar tarjeta…" value="' + esc(q) + '"><div class="opciones">' + lista.map(function (t) { return opcion(Object.assign({ otra: true }, t)); }).join('') + '</div>' : '') : '') +
       (elegidas.length ? '<label>¿De qué proveedor es?</label>' + (!provs.length
-        ? '<p class="nota">' + (elegidas.length > 1 ? 'Esas tarjetas no tienen un proveedor en común en este chat.' : 'A esta tarjeta no se le pidió cotización por este chat.') + '</p>'
-        : soloManuales && provs.length > 6
+        ? '<p class="nota">No hay proveedores cargados.</p>'
+        : deLista && provs.length > 6
           ? '<select id="pr-prov-sel"><option value="">Elegí el proveedor</option>' + provs.map(function (p) {
               return '<option value="' + esc(p.id) + '"' + (p.id === prov ? ' selected' : '') + '>' + esc(p.nombre) + '</option>'; }).join('') + '</select>'
           : '<div class="opciones">' + provs.map(function (p) {
@@ -99,6 +115,9 @@ function elegirTarjetaYProveedor(tarjetas, todos) {
         pintar();
       });
     });
+    if ($('pr-otras')) $('pr-otras').addEventListener('click', function () { verOtras = !verOtras; pintar(); });
+    const qi = cuerpo.querySelector('#pr-otras-q');
+    if (qi) qi.addEventListener('input', function () { q = qi.value; const pos = qi.selectionStart; pintar(); const q2 = cuerpo.querySelector('#pr-otras-q'); q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (e) {} });
     cuerpo.querySelectorAll('[data-prov]').forEach(function (b) { b.addEventListener('click', function () { prov = b.dataset.prov; pintar(); }); });
     const sel = cuerpo.querySelector('#pr-prov-sel');
     if (sel) sel.addEventListener('change', function () { prov = sel.value; const ok = $('pr-ok'); if (ok) ok.disabled = !(refs.length && prov); });
@@ -116,8 +135,8 @@ async function cargarEnTarjeta(ids) {
   const chat = CH.abierto, d = CH.datos;
   if (!chat || !d) return;
   const tarjetas = d.tarjetas || [];
-  if (!tarjetas.length) return aviso('Este chat no tiene tarjetas abiertas: pedile cotización desde la tarjeta, o sumá el chat a una ✋ gestión manual.', 'bad');
-  const eleccion = await elegirTarjetaYProveedor(tarjetas, d.proveedores);
+  if (!tarjetas.length && !(d.otras || []).length) return aviso('No hay tarjetas en Por cotizar, Decisión o Procesando para cargarle un presupuesto.', 'bad');
+  const eleccion = await elegirTarjetaYProveedor(tarjetas, d.proveedores, d.otras || [], d.chat && d.chat.proveedorId);
   if (!eleccion) return;
   const datos = { id: 'B' + nuevoId(), chat: chat, mensajes: ids, refs: eleccion.refs, proveedor: eleccion.proveedor };
   aviso('Cargando el presupuesto…');
@@ -331,7 +350,7 @@ function htmlCuerpoPresupuesto(b) {
     b.mensajes.map(function (m) {
       return '<div class="pr-msj"><span>' + esc(m.texto || 'Mensaje') + '</span>' +
         (m.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(m.archivo) + '">Ver el original</button>' : '') + '</div>';
-    }).join('') + (veChats() ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(b.chat) + '">💬 Ir al chat</button>' : '') + '</div>';
+    }).join('') + (chatEsMio(b.chat) ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(b.chat) + '">💬 Ir al chat</button>' : '') + '</div>';
   if (b.confirmo) h += '<div class="pr-nota">Revisado por ' + esc(b.confirmo) + ' el ' + esc(fechaCorta(b.fechaConfirmacion)) + '.</div>';
   // Lo que se puede hacer, según el estado
   const bs = [];
@@ -608,7 +627,7 @@ function pintarCompra() {
     '<div class="pr-msjs">' + (c.manual ? '<div class="pr-nota">✅ Confirmada a mano por el chat (la app no le mandó mensaje).</div>' : '') + (m ? (m.enviado ? '<div class="pr-nota">✅ La confirmación le llegó por WhatsApp.</div>'
                                                 : '<div class="pr-problema">El mensaje de confirmación no salió: mandalo desde el chat.</div>') : '') +
     (c.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(c.archivo) + '">Ver el presupuesto</button> ' : '') +
-    (c.chat && veChats() ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') +
+    (chatEsMio(c.chat) ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') +
     // Feli (2026-10-06): a la vista, para anularla (es lo mismo que cancelar la tarjeta)
     (columnasFinales().indexOf(d.pedido.columna) === -1 ? ' <button type="button" class="btn-chico" id="tj-anular">Anular la compra</button>' : '') + '</div>';
   $('tj-compra').querySelectorAll('[data-abrir-ref]').forEach(function (x) { x.addEventListener('click', function () { irPorAccesoDirecto(x.dataset.abrirRef); }); });
@@ -658,11 +677,12 @@ async function anularCompraUI(ref, t) {
   await new Promise(function (ok) { setTimeout(ok, 500); });     // que termine de cerrarse la tarjeta (el "atrás" cierra los diálogos)
   const cuerpo2 = document.createElement('div');
   cuerpo2.className = 'cuerpo';
-  const propuesto = 'Hola' + (a.contacto ? ' ' + a.contacto : '') + ', cancelamos la compra de:\n' + a.productos.map(function (x) { return '- ' + x; }).join('\n') + '\n\n¡Gracias por entender!';
+  const propuesto = 'Hola, cancelamos la compra de:\n' + a.productos.map(function (x) { return '- ' + x; }).join('\n') + '\n\n¡Gracias por entender!';
   cuerpo2.innerHTML = '<textarea id="dg-aviso" rows="7">' + esc(propuesto) + '</textarea>';
   const texto = await dialogo({ titulo: '¿Le querés avisar a ' + a.proveedor + ' que no se lo vas a comprar?', cuerpo: cuerpo2,
     botones: [{ texto: 'No avisar', valor: null }, { texto: 'Mandar el mensaje', clase: 'btn', valor: function () { return $('dg-aviso').value.trim(); } }] });
   if (!texto) return;
-  const m = await api('mandarMensaje', { id: 'H' + nuevoId(), chat: a.chat, texto: texto });
+  // Paso 7: sale del WhatsApp donde está el chat de esa compra (aunque sea el del otro comprador)
+  const m = await api('avisarAnulacion', { id: 'H' + nuevoId(), tarjeta: ref, texto: texto });
   aviso(m.ok ? 'Listo: se le avisó a ' + a.proveedor + '.' : (m.sinConexion ? '📶 Poca señal: no salió. Mandalo desde el chat.' : m.error), m.ok ? '' : 'bad');
 }
