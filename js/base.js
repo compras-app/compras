@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'ff567f75d2';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = 'ef6bd7e055';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -126,7 +126,24 @@ function anotarFallaTelefono(fn, tipo, ms) {
   l.push({ cuando: new Date().toISOString(), fn: fn, tipo: tipo, ms: ms, pantalla: location.pathname.split('/').filter(Boolean).slice(-1)[0] || '' });
   guardado.guardarJSON(K_FALLAS, l.slice(-100));
 }
+/* Y cuánto tardó cada llamada vista desde el teléfono (lo que ve la persona: Google despertando, su costo fijo y lo nuestro).
+   Se junta por función y se manda con las fallas, como una "falla" de tipo tiempo. */
+const K_TIEMPOS = 'compras_tiempos';
+function anotarTiempoTelefono(fn, ms) {
+  if (fn === 'reportarFallas') return;
+  const t = guardado.leerJSON(K_TIEMPOS, {});
+  const x = t[fn] || (t[fn] = [0, 0, 0]);
+  x[0]++; x[1] += ms; x[2] = Math.max(x[2], ms);
+  guardado.guardarJSON(K_TIEMPOS, t);
+}
 function mandarFallasTelefono() {
+  const t = guardado.leerJSON(K_TIEMPOS, {});
+  if (Object.keys(t).length && Date.now() - mandandoFallas >= 60000) {
+    guardado.borrar(K_TIEMPOS);
+    const l0 = guardado.leerJSON(K_FALLAS, []);
+    Object.keys(t).forEach(function (fn) { l0.push({ cuando: new Date().toISOString(), fn: fn, tipo: 'tiempo', ms: t[fn][1], veces: t[fn][0], max: t[fn][2] }); });
+    guardado.guardarJSON(K_FALLAS, l0.slice(-150));
+  }
   const l = guardado.leerJSON(K_FALLAS, []);
   if (!l.length || !APP.token || Date.now() - mandandoFallas < 60000) return;
   mandandoFallas = Date.now();
@@ -151,15 +168,20 @@ async function llamarUnaVez(fn, args, id, limite) {
   } catch (e) {
     // Si se cortó por tiempo, hay conexión pero Google está tardando: no es "poca señal"
     const lento = e && e.name === 'AbortError';
-    if (!lento) conexion(false);
-    anotarFallaTelefono(fn, lento ? 'lento' : 'senal', Date.now() - t0);
-    const x = new Error(lento ? 'Google tardó demasiado' : 'sin señal'); x.sinRed = true; x.lento = lento; throw x;
+    // Paso 8 (Feli, 2026-10-09: "dice sin señal y estoy al lado del router"): si Google falla antes de llegar a la app,
+    // el navegador solo dice "no se pudo". Se prueba si hay internet; si hay, fue Google, no la señal.
+    const google = !lento && await hayInternet();
+    if (!lento && !google) conexion(false);
+    anotarFallaTelefono(fn, lento ? 'lento' : google ? 'google' : 'senal', Date.now() - t0);
+    const x = new Error(lento ? 'Google tardó demasiado' : google ? 'Google no contestó' : 'sin señal');
+    x.sinRed = true; x.lento = lento; x.google = google; throw x;
   } finally { clearTimeout(vence); }
   conexion(true);
   const texto = await resp.text().catch(function () { return ''; });
   try {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const r = JSON.parse(texto);
+    anotarTiempoTelefono(fn, Date.now() - t0);
     setTimeout(mandarFallasTelefono, 0);
     return r;
   } catch (e) {
@@ -171,10 +193,23 @@ async function llamarUnaVez(fn, args, id, limite) {
   }
 }
 
+/** ¿Hay internet? Una consulta mínima a nuestra propia página (sin la guarda del teléfono: HEAD no pasa por sw.js). */
+async function hayInternet() {
+  if (navigator.onLine === false) return false;
+  const ctl = window.AbortController ? new AbortController() : null;
+  const vence = setTimeout(function () { if (ctl) ctl.abort(); }, 5000);
+  try {
+    await fetch(location.origin + '/?senal=' + Date.now(), { method: 'HEAD', cache: 'no-store', signal: ctl ? ctl.signal : undefined });
+    return true;
+  } catch (e) { return false; }
+  finally { clearTimeout(vence); }
+}
+
 /** Lo que devuelven api() y apiLenta() cuando la llamada no llegó a contestar. */
 function respuestaDeFalla(fn, e) {
   if (e.servidor) return { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' };
   if (e.lento) return { ok: false, lento: true, error: LECTURAS[fn] ? MSJ_LENTO : MSJ_LENTO_CAMBIO };
+  if (e.google) return { ok: false, google: true, error: 'Google no contestó. Probá de nuevo en un momento.' };
   return { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
 }
 

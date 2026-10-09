@@ -157,7 +157,8 @@ async function editarPersona(p, previo) {
   aviso('Guardando…');
   const r = await api('guardarPersona', datos);
   if (!r.ok) { aviso(textoDeError(r), 'bad'); return editarPersona(p, datos); }
-  aviso(p ? 'Listo: se guardaron los cambios.' : 'Listo: ' + datos.nombre + ' ya puede entrar con su teléfono.');
+  if (r.aviso) aviso(r.aviso, 'bad');                     // Paso 8: se guardó sin poder comprobar el WhatsApp
+  else aviso(p ? 'Listo: se guardaron los cambios.' : 'Listo: ' + datos.nombre + ' ya puede entrar con su teléfono.');
   mostrarPersonas();
 }
 
@@ -770,18 +771,20 @@ async function mostrarVelocidad() {
   $('ve-cuerpo').innerHTML =
     '<div class="ve-bloque"><h3>Por día</h3>' +
     '<p class="nota">Del servidor: <b>Google</b> = Google (u OpenAI / WhatsApp) no anduvo; <b>Muchos cambios</b> = había muchos cambios a la vez y uno no llegó a entrar; ' +
-    '<b>App</b> = una falla de programación (estas te llegan por mail). De los teléfonos: <b>Sin señal</b> y <b>Google tardó</b> (más de 25 s).</p>' +
-    tabla(['Día', 'Llamadas', 'Promedio', 'Más lenta', 'Google', 'Muchos cambios', 'App', 'Sin señal', 'Google tardó'],
-      r.dias.map(function (d) { return [diaLindo(d.dia), num(d.llamadas), seg(d.promedio), seg(d.maximo), num(d.google), num(d.espera), num(d.app), num(d.senal), num(d.lento)]; }),
+    '<b>App</b> = una falla de programación (estas te llegan por mail). De los teléfonos: <b>Sin señal</b> (el teléfono no tenía internet), ' +
+    '<b>Google no contestó</b> (había internet), <b>Google tardó</b> (más de 25 s). <b>En el teléfono</b> = lo que espera la persona, con Google despertando y su costo fijo; ' +
+    '<b>En Google</b> = solo nuestro código.</p>' +
+    tabla(['Día', 'Llamadas', 'En el teléfono', 'En Google', 'Más lenta (teléfono)', 'Google', 'Muchos cambios', 'App', 'Sin señal', 'Google no contestó', 'Google tardó'],
+      r.dias.map(function (d) { return [diaLindo(d.dia), num(d.llamadas), seg(d.telefono), seg(d.promedio), seg(d.telefonoMax), num(d.google), num(d.espera), num(d.app), num(d.senal), num(d.nocontesto), num(d.lento)]; }),
       'Todavía no hay datos: se empiezan a anotar desde que se publicó esta versión.') + '</div>' +
     '<div class="ve-bloque"><h3>Lo más lento</h3>' +
     '<p class="nota"><b>Esperó la llave</b>: cuánto esperó a que otro terminara de cambiar datos. <b>Tuvo la llave</b>: cuánto hizo esperar a los demás.</p>' +
-    tabla(['Qué', 'Veces', 'Promedio', 'Máximo', 'Esperó la llave (máx.)', 'Tuvo la llave (máx.)', 'Fallas'],
-      r.lentas.map(function (f) { return [f.fn, num(f.llamadas), seg(f.promedio), seg(f.maximo), seg(f.esperaMax), seg(f.tenidaMax), num(f.fallas)]; }),
+    tabla(['Qué', 'Veces', 'En el teléfono', 'Máx. teléfono', 'En Google', 'Máx. Google', 'Esperó la llave (máx.)', 'Tuvo la llave (máx.)', 'Fallas'],
+      r.lentas.map(function (f) { return [f.fn, num(f.llamadas), seg(f.telefono), seg(f.telefonoMax), seg(f.promedio), seg(f.maximo), seg(f.esperaMax), seg(f.tenidaMax), num(f.fallas)]; }),
       'Todavía no hay datos.') + '</div>' +
     '<div class="ve-bloque"><h3>Teléfonos</h3>' +
-    tabla(['Persona', 'Sin señal', 'Google tardó', 'Respuesta rara'],
-      r.personas.map(function (p) { return [p.persona, num(p.senal), num(p.lento), num(p.raro)]; }),
+    tabla(['Persona', 'Sin señal', 'Google no contestó', 'Google tardó', 'Respuesta rara'],
+      r.personas.map(function (p) { return [p.persona, num(p.senal), num(p.nocontesto), num(p.lento), num(p.raro)]; }),
       'Ningún teléfono avisó problemas.') + '</div>';
 }
 $('ve-dias').addEventListener('change', mostrarVelocidad);
