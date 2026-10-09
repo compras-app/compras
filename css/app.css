@@ -912,3 +912,22 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .ch-delpadron{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0}
 .ch-asignada,.pr-asignada{display:block;color:#d9a441;font-size:12px}
 .pp-rubros{max-height:220px;overflow:auto}
+
+/* Admin → Velocidad y errores (Fase 4, Paso 8) */
+.ve-bloque{margin:14px 0 22px}
+.ve-bloque h3{margin:0 0 6px;font-size:15px}
+.ve-tabla{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+.ve-tabla table{border-collapse:collapse;width:100%;font-size:13px}
+.ve-tabla th,.ve-tabla td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+.ve-tabla th{font-weight:600;color:var(--muted)}
+.ve-tabla .n{text-align:right}
+.ve-tabla tr:last-child td{border-bottom:0}
+
+#s-velocidad .ad-barra{align-items:flex-end}
+#ve-actualizar{flex:0 0 auto;width:auto}
+/* Paso 8: la pregunta de la IA en un renglón del presupuesto */
+.pr-ia{margin-top:6px;padding:6px 9px;border-radius:8px;background:var(--soft);border:1px solid var(--line);font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.pr-ia > span{flex:1 1 220px}
+.pr-ia .btn-chico{width:auto;flex:none;min-width:52px}
+.pr-desunir{font-size:12px;padding:2px 0}
+.pr-ia small{color:var(--muted)}

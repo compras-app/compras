@@ -277,6 +277,7 @@
         <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Sitios y aviso de la Tanda verde</small></button>
         <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Un pedido o un servicio con título, descripción y PDF, para compartir con quien elijas</small></button>
         <button type="button" class="ad-op" data-ir="padron"><span class="ic" aria-hidden="true">🗂️</span><b>Padrón</b><small>Los productos, sus variantes, cuándo se pidieron y a quién se cotizó</small></button>
+        <button type="button" class="ad-op" data-ir="velocidad"><span class="ic" aria-hidden="true">📈</span><b>Velocidad y errores</b><small>Qué tarda, qué falla y si fue la señal, Google o la app</small></button>
       </div>
     </section>
 
@@ -367,6 +368,18 @@
     </section>
 
     <!-- Paso 6: el padrón de productos (admin.js) -->
+    <!-- Paso 8 (Feli, 2026-10-09): de quién es cada error y qué está lento -->
+    <section id="s-velocidad" hidden>
+      <div class="ad-barra">
+        <label class="filtro"><span>Ver</span><select id="ve-dias">
+          <option value="1">Hoy</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option>
+        </select></label>
+        <button type="button" class="btn2" id="ve-actualizar">Actualizar</button>
+      </div>
+      <p class="nota ad-estado" id="ve-estado" role="status" aria-live="polite"></p>
+      <div id="ve-cuerpo"></div>
+    </section>
+
     <section id="s-padron" hidden>
       <div class="ad-barra">
         <button type="button" class="btn ad-nuevo" id="pa-nuevo">＋ Agregar producto</button>

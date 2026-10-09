@@ -4345,7 +4345,7 @@
                                      CUENTAS.tipos[(it.cat || '').toUpperCase()] || '' };
     });
     avisar('Publicando…', false);
-    var r = await api('publicarCatalogo', lista);
+    var r = await apiLenta('publicarCatalogo', lista);   // Paso 8: puede tardar; con api() la app cortaba a los 25 s y se volvía a tocar
     if(r && r.ok){
       TR.catalogo = { actualizado: new Date().toLocaleString('sv-SE').slice(0, 16), insumos: lista };
       guardado.guardarJSON(K_TR, TR);
@@ -4353,7 +4353,7 @@
       traerDatos();
     }
     avisar(r && r.ok
-      ? ('Catálogo publicado: ' + r.insumos + ' insumos' +
+      ? (r.sinCambios ? 'El catálogo ya estaba igual (' + r.insumos + ' insumos): no hubo que cambiar nada.' : 'Catálogo publicado: ' + r.insumos + ' insumos' +
          (fuera ? ' · ' + fuera + ' quedaron afuera por estar en la lista de excluidos.' : '.'))
       : ('No se pudo publicar: ' + ((r && r.error) || '')), !(r && r.ok));
   }

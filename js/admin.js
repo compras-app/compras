@@ -31,6 +31,7 @@ pantalla('proveedores', { titulo: 'Proveedores', tab: 'admin', alMostrar: mostra
 pantalla('ajustes', { titulo: 'Ajustes', tab: 'admin', alMostrar: mostrarAjustes });
 pantalla('masivo', { titulo: 'Pedido masivo', tab: 'admin', alMostrar: mostrarMasivo });
 pantalla('padron', { titulo: 'Padrón', tab: 'admin', alMostrar: mostrarPadron });
+pantalla('velocidad', { titulo: 'Velocidad y errores', tab: 'admin', alMostrar: mostrarVelocidad });
 
 document.querySelectorAll('#s-admin [data-ir]').forEach(function (b) {
   b.addEventListener('click', function () { abrir(b.dataset.ir); });
@@ -742,3 +743,47 @@ async function editarFamiliaUI(nombre) {
   aviso('Listo' + (r.hechos && r.hechos.length ? ': ' + r.hechos.join('. ') : '') + '.');
   padronCambiado();
 }
+
+
+/* ============================================================
+   VELOCIDAD Y ERRORES (Fase 4, Paso 8; Feli, 2026-10-09)
+   Por día: cuántas veces se usó la app, cuánto tardó y qué falló, separado
+   en Google, "muchos cambios a la vez" (la llave), la app y lo que les pasó
+   a los teléfonos (sin señal, Google tardó). Lo más lento, por función, y
+   quién tuvo más problemas de señal.
+   ============================================================ */
+async function mostrarVelocidad() {
+  notaAd('ve-estado', 'Cargando…');
+  const r = await api('getVelocidad', Number($('ve-dias').value) || 7);
+  if (!r.ok) return notaAd('ve-estado', textoDeError(r));
+  notaAd('ve-estado', '');
+  const seg = function (n) { return n ? String(n).replace('.', ',') + ' s' : '—'; };
+  const num = function (n) { return n ? String(n) : '—'; };
+  const tabla = function (cab, filas, vacio) {
+    if (!filas.length) return '<p class="nota">' + esc(vacio) + '</p>';
+    return '<div class="ve-tabla"><table><thead><tr>' + cab.map(function (c, i) { return '<th' + (i ? ' class="n"' : '') + '>' + esc(c) + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + filas.map(function (f) {
+        return '<tr>' + f.map(function (c, i) { return '<td' + (i ? ' class="n"' : '') + '>' + esc(c) + '</td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+  };
+  const diaLindo = function (d) { const p = d.split('-'); return p[2] + '/' + p[1]; };
+  $('ve-cuerpo').innerHTML =
+    '<div class="ve-bloque"><h3>Por día</h3>' +
+    '<p class="nota">Del servidor: <b>Google</b> = Google (u OpenAI / WhatsApp) no anduvo; <b>Muchos cambios</b> = había muchos cambios a la vez y uno no llegó a entrar; ' +
+    '<b>App</b> = una falla de programación (estas te llegan por mail). De los teléfonos: <b>Sin señal</b> y <b>Google tardó</b> (más de 25 s).</p>' +
+    tabla(['Día', 'Llamadas', 'Promedio', 'Más lenta', 'Google', 'Muchos cambios', 'App', 'Sin señal', 'Google tardó'],
+      r.dias.map(function (d) { return [diaLindo(d.dia), num(d.llamadas), seg(d.promedio), seg(d.maximo), num(d.google), num(d.espera), num(d.app), num(d.senal), num(d.lento)]; }),
+      'Todavía no hay datos: se empiezan a anotar desde que se publicó esta versión.') + '</div>' +
+    '<div class="ve-bloque"><h3>Lo más lento</h3>' +
+    '<p class="nota"><b>Esperó la llave</b>: cuánto esperó a que otro terminara de cambiar datos. <b>Tuvo la llave</b>: cuánto hizo esperar a los demás.</p>' +
+    tabla(['Qué', 'Veces', 'Promedio', 'Máximo', 'Esperó la llave (máx.)', 'Tuvo la llave (máx.)', 'Fallas'],
+      r.lentas.map(function (f) { return [f.fn, num(f.llamadas), seg(f.promedio), seg(f.maximo), seg(f.esperaMax), seg(f.tenidaMax), num(f.fallas)]; }),
+      'Todavía no hay datos.') + '</div>' +
+    '<div class="ve-bloque"><h3>Teléfonos</h3>' +
+    tabla(['Persona', 'Sin señal', 'Google tardó', 'Respuesta rara'],
+      r.personas.map(function (p) { return [p.persona, num(p.senal), num(p.lento), num(p.raro)]; }),
+      'Ningún teléfono avisó problemas.') + '</div>';
+}
+$('ve-dias').addEventListener('change', mostrarVelocidad);
+$('ve-actualizar').addEventListener('click', mostrarVelocidad);
+

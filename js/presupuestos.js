@@ -167,6 +167,7 @@ async function cargarEnTarjeta(ids) {
     aviso(l.presupuesto.estado === 'Revisar' ? 'El presupuesto de ' + nombre + ' quedó en la tarjeta para revisar: hay cosas que no dan.'
                                               : 'El presupuesto de ' + nombre + ' está en la tarjeta: las cuentas dan.');
   } else if (l.ok && l.leyendo) aviso('Se está leyendo: en un rato aparece en la tarjeta.');
+  else if (l.lento) aviso('Google está tardando: se termina de leer solo y aparece en la tarjeta.', '');
   else aviso(l.sinConexion ? '📶 Poca señal: se termina de leer solo y aparece en la tarjeta.' : l.error, l.sinConexion ? '' : 'bad');
 }
 
@@ -241,8 +242,21 @@ function htmlRenglonPresup(r, moneda, idPresup, editable) {
     (r.problema ? '<div class="pr-problema">' + esc(r.problema) +
       (editable && r.revisable ? ' <button type="button" class="btn-chico" data-pr-bien="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">✓ Está bien</button>' : '') +
       (editable && r.repartir ? ' <button type="button" class="btn-chico" data-pr-repartir="' + r.n + '" data-id="' + esc(idPresup) + '">Repartir</button>' : '') + '</div>' : '') +
+    // Paso 8 (Feli, 2026-10-09): lo dudoso no se une solo; la IA pregunta. Y lo unido se puede deshacer con un toque
+    (r.sugerencia ? '<div class="pr-ia"><span>🤖 ¿Es «' + esc(r.sugerencia.nombre) + '»? <small>(' + esc(r.sugerencia.motivo) + ')</small></span>' +
+      (editable ? ' <button type="button" class="btn-chico" data-pr-unir="si" data-ren="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">Sí</button>' +
+                  ' <button type="button" class="btn-chico" data-pr-unir="no" data-ren="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">No</button>' : '') + '</div>' : '') +
+    (editable && r.linea ? '<div class="pr-nota"><button type="button" class="linkbtn pr-desunir" data-pr-unir="fuera" data-ren="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">No es este producto</button></div>' : '') +
     htmlAntes(r, moneda) +
     (r.corrigio && !corregido ? '<div class="pr-nota">Revisado por ' + esc(r.corrigio) + '</div>' : '') + '</div>';
+}
+
+/** Paso 8: contestar "¿Es …?" (si / no) o sacar un renglón de su producto (fuera). */
+async function unirRenglonUI(idPresup, idRenglon, que) {
+  const res = await api('unirRenglon', idRenglon, que === 'si' ? { si: true } : { linea: '' });
+  if (!res.ok) return aviso(res.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : res.error, 'bad');
+  ponerPresupuesto(res.presupuesto);
+  aviso(que === 'si' ? 'Listo: quedó unido a ese producto.' : 'Listo: quedó como No pedido.');
 }
 
 const PR_CAMPOS = { 'Subtotal': 'Subtotal', 'Descuento': 'Descuento', 'IVA': 'IVA', 'Cargos': 'Flete y otros cargos', 'Total': 'Total', 'Con IVA': '¿Con IVA?',
@@ -430,6 +444,7 @@ function pintarPresupuestos() {
   $('tj-presup').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
   $('tj-presup').querySelectorAll('[data-pr]').forEach(function (x) { x.addEventListener('click', function () { accionPresupuesto(x.dataset.pr, x.dataset.id); }); });
   $('tj-presup').querySelectorAll('[data-pr-bien]').forEach(function (x) { x.addEventListener('click', function () { renglonEstaBien(x.dataset.id, x.dataset.prBien); }); });
+  $('tj-presup').querySelectorAll('[data-pr-unir]').forEach(function (x) { x.addEventListener('click', function () { unirRenglonUI(x.dataset.id, x.dataset.ren, x.dataset.prUnir); }); });
 }
 
 function presupuestoAbierto(id) { return ((TB.detalle && TB.detalle.presupuestos) || []).filter(function (b) { return b.id === id; })[0]; }

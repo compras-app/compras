@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = '230b030af0';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = 'ff567f75d2';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -92,20 +92,56 @@ async function llamar(fn, args, id, opciones) {
   id = id || nuevoId();
   const limite = (opciones && opciones.limiteMs) || LIMITE_MS;
   const esperas = [1500, 4000];
+  let otraVez = !!LECTURAS[fn];   // Paso 8: una lectura que Google no pudo atender se pide solo una vez más
   for (let intento = 0; ; intento++) {
+    let r;
     try {
-      return await llamarUnaVez(fn, args, id, limite);
+      r = await llamarUnaVez(fn, args, id, limite);
     } catch (e) {
       if (!e.servidor || intento >= esperas.length) throw e;
       await new Promise(function (ok) { setTimeout(ok, esperas[intento]); });
+      continue;
     }
+    if (r && r.reintentar && otraVez) { otraVez = false; await new Promise(function (ok) { setTimeout(ok, 2000); }); continue; }
+    return r;
   }
+}
+
+/* Paso 8 (Feli, 2026-10-09): lo que solo trae datos para mirar. Si Google no pudo, se pide otra vez; si tardó
+   demasiado, se dice eso (no "poca señal"). Un cambio que tardó puede haberse hecho igual: se avisa. */
+const LECTURAS = { getTablero: 1, getTarjeta: 1, getTarea: 1, getServicios: 1, getTareas: 1, getNotificaciones: 1, getChats: 1, getChat: 1,
+  getPersonas: 1, getAjustes: 1, getProveedoresAdmin: 1, getPadronAdmin: 1, buscarPedidos: 1, datosCotizar: 1, datosCompraManual: 1,
+  datosTransferencias: 1, listarPedidosGranja: 1, leerPedidoGranja: 1, buscarHistorialTransf: 1, verHistorialTransf: 1, datosProductos: 1,
+  versionChats: 1, versionTablero: 1, audioChat: 1, verArchivo: 1, cuadroComparativo: 1, inicioApp: 1, datosFormulario: 1, getVelocidad: 1 };
+const MSJ_LENTO = 'Google está tardando en contestar. Probá de nuevo en un momento.';
+const MSJ_LENTO_CAMBIO = 'Google tardó demasiado en contestar. Puede que se haya hecho igual: fijate antes de repetirlo.';
+
+/* Lo que falló en este teléfono (sin señal, Google tardó, respuesta rara) queda guardado y se manda solo cuando
+   vuelve la señal: así Admin → "Velocidad y errores" sabe si fue la señal o Google (Paso 8). */
+const K_FALLAS = 'compras_fallas';
+let mandandoFallas = 0;
+function anotarFallaTelefono(fn, tipo, ms) {
+  if (fn === 'reportarFallas') return;
+  const l = guardado.leerJSON(K_FALLAS, []);
+  l.push({ cuando: new Date().toISOString(), fn: fn, tipo: tipo, ms: ms, pantalla: location.pathname.split('/').filter(Boolean).slice(-1)[0] || '' });
+  guardado.guardarJSON(K_FALLAS, l.slice(-100));
+}
+function mandarFallasTelefono() {
+  const l = guardado.leerJSON(K_FALLAS, []);
+  if (!l.length || !APP.token || Date.now() - mandandoFallas < 60000) return;
+  mandandoFallas = Date.now();
+  llamarUnaVez('reportarFallas', [APP.token, l], nuevoId(), LIMITE_MS).then(function (r) {
+    if (!r || !r.ok) return;
+    const ahora = guardado.leerJSON(K_FALLAS, []);     // las que se anotaron mientras tanto quedan
+    guardado.guardarJSON(K_FALLAS, ahora.slice(l.length));
+  }).catch(function () {});
 }
 
 /** Una sola llamada. Sin cabeceras propias: así el navegador no pide permiso antes (CORS). */
 async function llamarUnaVez(fn, args, id, limite) {
   const ctl = window.AbortController ? new AbortController() : null;
   const vence = setTimeout(function () { if (ctl) ctl.abort(); }, limite);
+  const t0 = Date.now();
   let resp;
   try {
     resp = await fetch(API, {
@@ -116,19 +152,30 @@ async function llamarUnaVez(fn, args, id, limite) {
     // Si se cortó por tiempo, hay conexión pero Google está tardando: no es "poca señal"
     const lento = e && e.name === 'AbortError';
     if (!lento) conexion(false);
+    anotarFallaTelefono(fn, lento ? 'lento' : 'senal', Date.now() - t0);
     const x = new Error(lento ? 'Google tardó demasiado' : 'sin señal'); x.sinRed = true; x.lento = lento; throw x;
   } finally { clearTimeout(vence); }
   conexion(true);
   const texto = await resp.text().catch(function () { return ''; });
   try {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    return JSON.parse(texto);
+    const r = JSON.parse(texto);
+    setTimeout(mandarFallasTelefono, 0);
+    return r;
   } catch (e) {
+    anotarFallaTelefono(fn, 'raro', Date.now() - t0);
     // Se guarda para verlo en Tu cuenta (sirve para saber qué contestó Google)
     guardado.guardarJSON(K.error, { cuando: new Date().toISOString(), fn: fn,
                                     detalle: e.message + ' · ' + texto.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) });
     const x = new Error('respuesta rara del servidor: ' + e.message); x.servidor = true; throw x;
   }
+}
+
+/** Lo que devuelven api() y apiLenta() cuando la llamada no llegó a contestar. */
+function respuestaDeFalla(fn, e) {
+  if (e.servidor) return { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' };
+  if (e.lento) return { ok: false, lento: true, error: LECTURAS[fn] ? MSJ_LENTO : MSJ_LENTO_CAMBIO };
+  return { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
 }
 
 /** Como api(), con más tiempo (leer un presupuesto, traer un archivo grande): las demás llamadas cortan a los 25 s. */
@@ -139,8 +186,7 @@ async function apiLenta(fn) {
     if (r && r.sinSesion) sesionPerdida(r.error);
     return r;
   } catch (e) {
-    return e.servidor ? { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' }
-                      : { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
+    return respuestaDeFalla(fn, e);
   }
 }
 
@@ -156,8 +202,7 @@ async function api(fn) {
     if (r && r.sinSesion) sesionPerdida(r.error);
     return r;
   } catch (e) {
-    return e.servidor ? { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' }
-                      : { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
+    return respuestaDeFalla(fn, e);
   }
 }
 
@@ -223,6 +268,7 @@ const bandeja = {
           } else {
             const r = await llamar('lote', [tanda.map(function (m) { return { fn: m.fn, args: [m.token].concat(m.args), id: m.id }; })],
                                    null, { limiteMs: 90000 });
+            if (r && r.reintentar) { const x = new Error('Google no pudo'); x.sinRed = true; throw x; }   // Paso 8: queda para después
             if (!r.ok || !Array.isArray(r.respuestas)) { const x = new Error(r.error || 'lote'); x.servidor = true; throw x; }
             respuestas = r.respuestas;
           }
@@ -234,13 +280,20 @@ const bandeja = {
           respuestas = tanda.map(function () { return { ok: false, error: 'el servidor no lo aceptó' }; });
         }
         const self = this;
+        let otraVez = false;
         tanda.forEach(function (m, i) {
           const r = respuestas[i] || { ok: false, error: 'sin respuesta' };
+          // Paso 8: Google no pudo o había muchos cambios a la vez: queda en la bandeja y se reintenta solo después
+          if (r.reintentar) {
+            const l = self.lista(), x = l.find(function (y) { return y.clave === m.clave; });
+            if (x && ++x.intentos < 12) { self.guardarLista(l); otraVez = true; return; }
+          }
           self.quitar(m.clave);
           if (!r.ok && !r.sinSesion) noAplicado(m.texto, r.error);
           if (r.sinSesion && APP.token === m.token) sesionPerdida(r.error);
           if (self.alTerminar) self.alTerminar(m, r);
         });
+        if (otraVez) break;
       }
     } finally {
       this.enviando = false;
