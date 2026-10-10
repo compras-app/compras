@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'ca72effe39';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = 'd09c8c2a79';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -70,6 +70,15 @@ function conectarTiempoReal() {
   ws.onerror = function () { try { ws.close(); } catch (e) { /* ya estaba cerrado */ } };
 }
 window.addEventListener('online', function () { if (TR.ws && !tiempoRealVivo()) { try { TR.ws.close(); } catch (e) {} } });
+
+/* Fase 5 (Feli, 10/10): para Reportes → Flujo, cada vez que alguien vuelve a la app después de 10 minutos o más sin
+   mirarla cuenta como una apertura (abrirla de cero ya lo cuenta inicioApp). */
+let ocultaDesde = 0;
+document.addEventListener('visibilitychange', function () {
+  if (document.hidden) { ocultaDesde = Date.now(); return; }
+  if (ocultaDesde && Date.now() - ocultaDesde >= 10 * 60000 && APP.token) api('anotarUso');
+  ocultaDesde = 0;
+});
 
 const APP = { token: null, yo: null, config: null, actualizado: null, enLinea: true };
 

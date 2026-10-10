@@ -1831,7 +1831,7 @@
     EXIST_CUANDO = Date.now();
     try{
       localStorage.setItem(CLAVE_EXIST, JSON.stringify({ texto: texto, nombre: nombre || '', fecha: fecha || null,
-        cuando: EXIST_CUANDO, hasta: '', transferido: '', egresadas: {} }));
+        cuando: EXIST_CUANDO, hasta: '', transferido: '', egresadas: {}, idSubida: 'X' + nuevoId().slice(1), subida: false }));
     }catch(e){ try{ localStorage.removeItem(CLAVE_EXIST); }catch(x){} }   // no entra: no se guarda
   }
   function recordarExistencias(cambios){
@@ -1842,6 +1842,22 @@
       localStorage.setItem(CLAVE_EXIST, JSON.stringify(g));
     }catch(e){}
   }
+  /* Fase 5 (Feli, 10/10): cada reporte de existencias que se baja (o se arrastra) también va al servidor, tal cual,
+     para el reporte de Stock. Si no hay señal, se reintenta la próxima vez que se abre Transferencias. */
+  var subiendoExist = false;
+  async function subirExistencias(){
+    if(subiendoExist || !ES_ADMIN || !APP.token) return;
+    var g = null;
+    try{ g = JSON.parse(localStorage.getItem(CLAVE_EXIST) || 'null'); }catch(e){}
+    if(!g || !g.texto || g.subida || !g.idSubida) return;
+    subiendoExist = true;
+    try{
+      var r = await apiLenta('guardarExistenciasAlbor', { id: g.idSubida, texto: g.texto, nombre: g.nombre || '', hasta: g.hasta || '',
+                                                         filas: DATA ? DATA.filasLeidas : 0 });
+      if(r.ok) recordarExistencias({ subida: true });
+    } finally { subiendoExist = false; }
+  }
+
   function recuperarExistencias(){
     var g = null;
     try{ g = JSON.parse(localStorage.getItem(CLAVE_EXIST) || 'null'); }catch(e){}
@@ -1872,6 +1888,7 @@
     }
     DATA = d;
     if(!recuperando) guardarExistencias(texto, nombreArchivo, fechaArchivo);
+    setTimeout(subirExistencias, 0);   // Fase 5: al servidor (también lo que quedó sin subir)
     GRANJAS_FUERA = {};              // reporte nuevo: vuelven todas las granjas tildadas
     $('p-hasta').textContent = '';
     DATA.archivoNombre = nombreArchivo || '';
