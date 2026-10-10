@@ -246,7 +246,7 @@ function pintarTablero() {
   const cols = columnasTb();
   if (!cols.length) {
     cont.innerHTML = '<div class="vacio" style="margin:16px">' +
-      (TB.cargando ? 'Cargando el tablero…' : TB.todaviaNo ? 'El tablero todavía no se mudó a Supabase: llega en la próxima parte de la mudanza.' : 'Hay poca señal: el tablero se ve cuando vuelva.') + '</div>';
+      (TB.cargando ? 'Cargando el tablero…' : 'Hay poca señal: el tablero se ve cuando vuelva.') + '</div>';
     pintarSecciones();
     return;
   }
@@ -490,7 +490,7 @@ async function cargarTablero() {
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
     if (TB.abierta && TB.tipo !== 'tarea') { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
-  } else if (!TB.datos) { TB.todaviaNo = !!r.todaviaNo; pintarTablero(); }
+  } else if (!TB.datos) pintarTablero();                  // sin señal: queda lo guardado
   pintarHace();
   if (TB.otraVez) { TB.otraVez = false; cargarTablero(); }
 }
