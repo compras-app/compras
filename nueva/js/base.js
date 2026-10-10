@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'nueva_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'nueva-6646e3558b';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = 'nueva-05cdea4f59';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -30,6 +30,9 @@ const K = {
   cssMio: 'nueva_css_mio', estilo: 'nueva_estilo',   // el color y el estilo de tablero que eligió cada uno (Paso 6)
   error: 'nueva_error'   // la última respuesta rara del servidor (se ve en Tu cuenta)
 };
+/** La foto de un archivo (adjunto, foto del pedido o del chat), del ancho pedido, para verla adentro de la app. */
+function urlMiniatura(id, ancho) { return 'https://howlgipawqkwkctxpoon.supabase.co/storage/v1/object/public/archivos/' + encodeURIComponent(id); }
+
 try { if (!localStorage.getItem('nueva_token') && localStorage.getItem('compras_token')) localStorage.setItem('nueva_token', localStorage.getItem('compras_token')); } catch (e) {}
 const APP = { token: null, yo: null, config: null, actualizado: null, enLinea: true };
 

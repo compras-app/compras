@@ -148,7 +148,7 @@ function htmlArchivo(m) {
   if (!id) return '<div class="ch-arch sin">' + esc(etiqueta) + (m.conLink ? ' <small>(no guardado)</small>' : '') + '</div>';
   if (m.tipo === 'imageMessage' || m.tipo === 'stickerMessage') {
     return '<button type="button" class="ch-foto' + (m.tipo === 'stickerMessage' ? ' sticker' : '') + '" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
-      '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w480" alt="📷 Foto · abrir" loading="lazy"></button>';
+      '<img src="' + esc(urlMiniatura(id, 480)) + '" alt="📷 Foto · abrir" loading="lazy"></button>';
   }
   if (m.tipo === 'audioMessage') return htmlAudio(m.id);
   return '<button type="button" class="ch-arch" data-ver-archivo="' + esc(id) + '">' + esc(etiqueta) + ' <small>· abrir</small></button>';

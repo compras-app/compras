@@ -982,7 +982,7 @@ function fechaLinda(iso) {
   return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric', year: 'numeric' }) + ' (' + hace(iso) + ')';
 }
 
-function idDrive(url) { const m = /[?&]id=([\w-]+)/.exec(url) || /\/d\/([\w-]+)/.exec(url); return m ? m[1] : ''; }
+function idDrive(url) { const m = /[?&]id=([\w-]+)/.exec(url) || /\/d\/([\w-]+)/.exec(url) || /\/archivos\/([\w-]+)/.exec(url); return m ? m[1] : ''; }
 
 /** Una tarjeta de trabajo (Fase 3): productos de uno o varios pedidos, que se mueve por su lado. */
 function esTrabajo(ref) { return /^W/.test(ref || ''); }
@@ -1685,7 +1685,7 @@ function htmlProducto(l, admin, mio, extra) {
   const fotos = (l.fotos || []).map(function (u) {
     const id = idDrive(u);
     return id ? '<a href="#" data-foto="' + esc(id) + '" aria-label="Ver foto">' +
-                '<img src="https://drive.google.com/thumbnail?id=' + esc(id) + '&sz=w200" alt="Foto" loading="lazy"></a>' : '';
+                '<img src="' + esc(urlMiniatura(id, 200)) + '" alt="Foto" loading="lazy"></a>' : '';
   }).join('');
   const fuera = l.familiaEnPadron === undefined ? !l.enPadron : !l.familiaEnPadron;
   const e = l.estado || '', suyo = l.propuso === APP.yo.nombre;
@@ -2228,7 +2228,7 @@ function pintarAdjuntos() {
   const tile = function (a, espera) {
     const foto = a.tipo === 'foto';
     const img = espera ? (foto && ADJ.urls[a.id] ? '<img src="' + esc(ADJ.urls[a.id]) + '" alt="">' : '<span class="pdf">' + (foto ? '🖼️' : '📄') + '</span>')
-                       : (foto ? '<img src="https://drive.google.com/thumbnail?id=' + esc(a.idDrive) + '&sz=w240" alt="" loading="lazy">' : '<span class="pdf">📄</span>');
+                       : (foto ? '<img src="' + esc(urlMiniatura(a.idDrive, 240)) + '" alt="" loading="lazy">' : '<span class="pdf">📄</span>');
     return '<div class="adj' + (espera ? ' espera' : '') + '" role="button" tabindex="0" data-adj="' + esc(a.id) + '" title="' + esc(a.nombre) + (a.autor ? ' · ' + esc(a.autor) : '') + '">' +
       img + (foto ? '' : '<span class="n">' + esc(a.nombre) + '</span>') +
       (espera ? '<span class="esp">' + (APP.enLinea ? 'Subiendo…' : '⏳') + '</span>' : '') +
@@ -2327,7 +2327,7 @@ function verFoto(id) {
   img.hidden = true;
   img.onload = function () { $('visor-carga').hidden = true; img.hidden = false; };
   img.onerror = function () { $('visor-carga').textContent = 'No se pudo cargar la foto (¿poca señal?).'; };
-  img.src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w1600';
+  img.src = urlMiniatura(id, 1600);
   $('visor').hidden = false;
 }
 function cerrarFoto() {
