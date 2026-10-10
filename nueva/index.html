@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark" data-aspecto="programa" data-estilo="sobrio">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Compras (prueba)</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Compras">
+<meta name="theme-color" content="#7f2745">
+<meta name="color-scheme" content="dark">
+<link rel="apple-touch-icon" href="icono-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/app.css">
+<!--
+  APP DE COMPRAS, descargada en el dispositivo (Fase 2, Paso 2-bis).
+  Vive en GitHub Pages (compras-app.github.io/compras) y queda guardada
+  con sw.js, así abre aunque no haya señal. Los datos los pide a Apps
+  Script (doPost en Api.js) con js/base.js. No lleva datos ni claves:
+  solo el link /exec, que ya es público. Fuente: carpeta pagina/ del
+  proyecto compras-app; la sube Claude con subir-pagina.sh.
+    css/app.css        estilos (antes AppEstilos.html)
+    js/base.js         servidor, guardado, bandeja de salida, navegación, avisos
+    js/login.js        entrar con el código de WhatsApp (antes AppLogin.html)
+    js/pantallas.js    barra, menú y pantallas (antes AppPantallas.html)
+    js/envio-pedidos.js pedidos del formulario guardados en el teléfono (los manda la app o el formulario)
+    js/tablero.js      el tablero: columnas, tarjetas, filtros, arrastrar, tarjeta abierta (Paso 3)
+    js/tareas.js       el tablero de tareas de los admins (Paso 4-ter; usa la ventana de la tarjeta de tablero.js)
+    pedido/            el formulario de pedidos
+-->
+<!-- El color de App_Config: el último que mandó el servidor, guardado en el dispositivo.
+     La primera vez, el de siempre: Rosa viejo (paletaDe_ de #d08a93). -->
+<style id="estiloColor">:root{--accent:#9c686e;--accent-soft:#f3edee;--accent-fg:#ffffff;--band:#9c686e;--tablero:#c4828a;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#d08a93;--accent-soft:#3a2f2f;--accent-fg:#0f1412;--band:#7b575b;--tablero:#5b4346;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}}:root[data-theme="dark"]{--accent:#d08a93;--accent-soft:#3a2f2f;--accent-fg:#0f1412;--band:#7b575b;--tablero:#5b4346;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}</style>
+<script>try { var c = localStorage.getItem('nueva_css_mio'); if (c === null) c = localStorage.getItem('nueva_css'); if (c !== null) document.getElementById('estiloColor').textContent = c;
+  var e = localStorage.getItem('nueva_estilo'); if (e) document.documentElement.dataset.estilo = e; } catch (e) {}</script>
+</head>
+<body>
+<div id="login">
+  <div class="band" aria-hidden="true"></div>
+  <main class="wrap">
+
+    <!-- Cargando: se revisa si hay una llave guardada -->
+    <section id="p-cargando">
+      <h1>Compras</h1>
+      <p class="estado run">Abriendo…</p>
+    </section>
+
+    <!-- Paso A: elegir quién sos -->
+    <section id="p-nombre" hidden>
+      <h1>Entrar</h1>
+      <p class="lead">Elegí tu nombre. Te vamos a mandar un código por WhatsApp.</p>
+      <p class="estado warn" id="e-perdida" hidden></p>
+      <div class="lista" id="usuarios" role="radiogroup" aria-label="¿Quién sos?"></div>
+      <div class="pila">
+        <p class="estado" id="e-nombre" hidden></p>
+        <button class="btn" id="b-pedir" type="button" disabled>Mandame el código</button>
+      </div>
+    </section>
+
+    <!-- Paso B: ingresar el código -->
+    <section id="p-codigo" hidden>
+      <h1>Código</h1>
+      <p class="lead" id="t-destino"></p>
+      <form class="pila" id="f-codigo" novalidate>
+        <label for="codigo" class="lead" style="margin:0">Código de 6 números</label>
+        <input class="codigo" id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*">
+        <p class="estado" id="e-codigo" hidden></p>
+        <button class="btn" id="b-entrar" type="submit">Entrar</button>
+        <button class="btn2" id="b-otro" type="button" disabled>Pedir otro código</button>
+      </form>
+      <button class="linkbtn" id="b-cambiar" type="button"></button>
+    </section>
+
+    <!-- Sin conexión y sin nada guardado: la llave NO se borra -->
+    <section id="p-error" hidden>
+      <h1>Compras</h1>
+      <p class="estado bad" id="e-general"></p>
+      <button class="btn" id="b-reintentar" type="button">Reintentar</button>
+    </section>
+
+    <p class="estado warn" id="aviso-guardar" hidden>Este navegador no deja guardar la sesión: vas a tener que pedir el código cada vez que abras la app.</p>
+  </main>
+</div>
+
+<div id="app" hidden>
+  <header class="barra">
+    <button id="b-volver" type="button" aria-label="Volver" hidden>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <h1 id="b-titulo">Compras</h1>
+    <nav class="apartados" id="b-apartados" aria-label="Apartados" hidden></nav>
+    <button id="b-notif" class="b-notif" type="button" aria-label="Notificaciones" hidden>🔔<span class="badge" id="b-notif-n" hidden></span></button>
+    <button id="b-cuenta" type="button" aria-label="Tu cuenta">
+      <span class="yo" id="b-nombre"></span><span class="inicial" id="b-inicial" aria-hidden="true"></span>
+    </button>
+  </header>
+
+  <nav class="tabs" aria-label="Secciones">
+    <button class="tab" type="button" data-tab="tablero">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>
+      Tablero
+    </button>
+    <button class="tab" type="button" data-tab="tareas" id="t-tareas" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 12l3 3 5-6"/></svg>
+      Tareas
+    </button>
+    <button class="tab" type="button" data-tab="chats" id="t-chats" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
+      Chats
+    </button>
+    <button class="tab" type="button" data-tab="servicios" id="t-servicios">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8V20h3.2l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.3-.6-.6-2.3z"/></svg>
+      Servicios
+    </button>
+    <button class="tab" type="button" data-tab="buscar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      Buscar
+    </button>
+    <a class="tab" id="t-nuevo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      <span class="t-largo">Nuevo pedido</span><span class="t-corto">Nuevo</span>
+    </a>
+    <button class="tab" type="button" data-tab="admin" id="t-admin" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      Admin
+    </button>
+  </nav>
+
+  <div class="sinred" id="sinred" role="status" aria-live="polite" hidden></div>
+
+  <main class="contenido">
+    <section id="s-tablero" class="pantalla-tablero">
+      <!-- Paso 6: en el celular, los filtros van en un bloque que se abre y se cierra (tb-filtros-b) -->
+      <div class="herramientas" id="tb-herramientas">
+        <div class="herr-fila">
+          <div class="secciones" id="tb-secciones" role="tablist" aria-label="Secciones del tablero"></div>
+          <button type="button" class="filtros-b" id="tb-filtros-b" aria-expanded="false" aria-controls="tb-filtros">⚙︎ Filtros</button>
+          <button type="button" class="refrescar" id="tb-refrescar" aria-label="Actualizar el tablero"><span class="ic">↻</span> <span id="tb-hace"></span></button>
+        </div>
+        <div class="filtros" id="tb-filtros">
+          <div class="seg" role="group" aria-label="Qué pedidos ver">
+            <button type="button" id="tb-mios" aria-pressed="false">Mis pedidos</button>
+            <button type="button" id="tb-todos" aria-pressed="false">Todos</button>
+          </div>
+          <label class="filtro" id="tb-sitio-l" hidden><span>Sitio</span><select id="tb-sitio"></select></label>
+          <label class="filtro" id="tb-resp-l" hidden><span>Responsable</span><select id="tb-resp"></select></label>
+        </div>
+      </div>
+      <!-- Procesando (Fase 3): pedidos cuyos productos ya están todos en tarjetas de trabajo. Plegada, arriba de la Tanda verde -->
+      <div class="procesando" id="tb-procesando" hidden></div>
+      <div class="tablero" id="tablero" aria-label="Tablero de pedidos"></div>
+      <!-- Stand by (Paso 2-ter): los que llevan muchos días en Entrantes. Plegada, abajo del tablero -->
+      <div class="procesando standby" id="tb-standby" hidden></div>
+    </section>
+
+    <!-- Servicios (Paso 2-ter): otro tablero, para lo que hay que mandar a arreglar -->
+    <section id="s-servicios" class="pantalla-tablero" hidden>
+      <div class="herramientas">
+        <div class="filtros">
+          <div class="seg" role="group" aria-label="Qué servicios ver" id="sv-filtro">
+            <button type="button" id="sv-mios" aria-pressed="false">Mis servicios</button>
+            <button type="button" id="sv-todos" aria-pressed="true">Todos</button>
+          </div>
+          <label class="filtro" id="sv-sitio-l" hidden><span>Sitio</span><select id="sv-sitio"></select></label>
+          <label class="filtro" id="sv-resp-l" hidden><span>Responsable</span><select id="sv-resp"></select></label>
+          <button type="button" class="refrescar" id="sv-refrescar" aria-label="Actualizar los servicios"><span class="ic">↻</span> <span id="sv-hace"></span></button>
+        </div>
+      </div>
+      <div class="tablero" id="servicios-tablero" aria-label="Tablero de servicios"></div>
+    </section>
+
+    <!-- Fase 4, Paso 2: los chats del WhatsApp (chats.js) -->
+    <section id="s-chats" class="pantalla-tablero" hidden>
+      <div class="ch" id="ch">
+        <aside class="ch-lista">
+          <div class="ch-herr">
+            <input type="search" id="ch-buscar" placeholder="Buscar un chat" aria-label="Buscar un chat" autocomplete="off">
+            <div class="seg" role="group" aria-label="Qué chats ver" id="ch-filtros">
+              <button type="button" data-f="todos" aria-pressed="true">Todos</button>
+              <button type="button" data-f="cotizando" aria-pressed="false">Cotizando</button>
+              <button type="button" data-f="seguimiento" aria-pressed="false">En seguimiento</button>
+              <button type="button" data-f="noleidos" aria-pressed="false">Sin leer</button>
+            </div>
+          </div>
+          <div class="ch-items" id="ch-items"></div>
+        </aside>
+        <div class="ch-chat" id="ch-chat" hidden>
+          <header class="ch-cab">
+            <button type="button" class="ch-volver" id="ch-volver" aria-label="Volver a la lista de chats">‹</button>
+            <div class="ch-quien"><b id="ch-nombre"></b><small id="ch-sub"></small></div>
+            <button type="button" class="btn-chico" id="ch-ver-tarjetas">📋 Tarjetas</button>
+            <button type="button" class="btn-chico" id="ch-ver-notas">📝 Notas</button>
+          </header>
+          <div class="ch-panel" id="ch-panel" hidden></div>
+          <div class="ch-notas" id="ch-notas-p" hidden>
+            <textarea id="ch-notas" rows="3" placeholder="Notas de este chat (las ven todos los administradores)"></textarea>
+            <button type="button" class="btn2" id="ch-notas-ok">Guardar la nota</button>
+          </div>
+          <div class="ch-msjs" id="ch-msjs" aria-live="polite"></div>
+          <div class="ch-cita" id="ch-cita" hidden>
+            <div><b id="ch-cita-quien"></b><span id="ch-cita-texto"></span></div>
+            <button type="button" id="ch-cita-x" aria-label="No citar">✕</button>
+          </div>
+          <!-- Fase 4, Paso 3: "Seleccionar varios" para cargar un presupuesto escrito en varios mensajes (presupuestos.js) -->
+          <div class="ch-selbar" id="ch-selbar" hidden>
+            <span id="ch-sel-n">Tocá los mensajes del presupuesto</span>
+            <button type="button" class="btn-chico si" id="ch-sel-cargar">📥 Cargar en una tarjeta</button>
+            <button type="button" class="btn-chico" id="ch-sel-x">Cancelar</button>
+          </div>
+          <div class="ch-escribir" id="ch-escribir">
+            <button type="button" class="ch-ic" id="ch-predis" aria-label="Mensajes prediseñados" title="Mensajes prediseñados">📋</button>
+            <button type="button" class="ch-ic" id="ch-adjuntar" aria-label="Mandar una foto o un PDF" title="Foto o PDF">📎</button>
+            <input type="file" id="ch-archivo" accept="image/*,application/pdf" hidden>
+            <textarea id="ch-texto" rows="1" placeholder="Escribí un mensaje"></textarea>
+            <button type="button" class="ch-mandar" id="ch-mandar" aria-label="Mandar">➤</button>
+          </div>
+        </div>
+        <div class="ch-vacio" id="ch-vacio">💬 Elegí un chat de la lista</div>
+      </div>
+    </section>
+
+    <section id="s-tareas" class="pantalla-tablero" hidden>
+      <div class="herramientas">
+        <div class="filtros">
+          <div class="seg" role="group" aria-label="Qué tareas ver">
+            <button type="button" id="tk-mias" aria-pressed="false">Mis tareas</button>
+            <button type="button" id="tk-todas" aria-pressed="true">Todas</button>
+          </div>
+          <button type="button" class="refrescar" id="tk-refrescar" aria-label="Actualizar las tareas"><span class="ic">↻</span> <span id="tk-hace"></span></button>
+        </div>
+      </div>
+      <div class="tablero" id="tareas-tablero" aria-label="Tablero de tareas"></div>
+    </section>
+
+    <section id="s-buscar" hidden>
+      <form class="buscar-caja" id="bu-form" role="search">
+        <input type="search" id="bu-q" placeholder="Producto, sitio, proveedor, ref…" aria-label="Buscar pedidos" autocomplete="off" enterkeyhint="search" maxlength="200">
+        <button type="submit" class="btn" id="bu-ir">Buscar</button>
+      </form>
+      <div class="filtros bu-filtros">
+        <div class="seg" role="group" aria-label="En qué pedidos buscar">
+          <button type="button" data-estado="todos" aria-pressed="true">Todos</button>
+          <button type="button" data-estado="curso" aria-pressed="false">En curso</button>
+          <button type="button" data-estado="terminados" aria-pressed="false">Terminados</button>
+        </div>
+        <div class="seg" role="group" aria-label="Pedidos o servicios" id="bu-tipo">
+          <button type="button" data-tipo="" aria-pressed="true">Todo</button>
+          <button type="button" data-tipo="pedidos" aria-pressed="false">Pedidos</button>
+          <button type="button" data-tipo="servicios" aria-pressed="false">Servicios</button>
+        </div>
+        <!-- Fase 4, Paso 5: con un proveedor en la búsqueda, "Le compramos / No le compramos" -->
+        <div class="seg" role="group" aria-label="Le compramos o no" id="bu-compra">
+          <button type="button" data-compra="" aria-pressed="true">Todos</button>
+          <button type="button" data-compra="si" aria-pressed="false">Le compramos</button>
+          <button type="button" data-compra="no" aria-pressed="false">No le compramos</button>
+        </div>
+        <div class="seg" role="group" aria-label="De quién">
+          <button type="button" id="bu-mios" aria-pressed="false">Mis pedidos</button>
+          <button type="button" id="bu-todos" aria-pressed="false">De todos</button>
+        </div>
+        <label class="filtro"><span>Sitio</span><select id="bu-sitio"></select></label>
+        <label class="filtro"><span>Cargados</span><select id="bu-periodo">
+          <option value="">Siempre</option><option value="mes">Último mes</option><option value="3meses">Últimos 3 meses</option><option value="anio">Último año</option>
+        </select></label>
+      </div>
+      <p class="nota bu-estado" id="bu-estado" role="status" aria-live="polite"></p>
+      <div class="bu-resultados" id="bu-resultados"></div>
+      <button type="button" class="btn2 bu-mas" id="bu-mas" hidden>Ver más</button>
+    </section>
+
+    <!-- Admin (Paso 6): un menú y una pantalla por función -->
+    <section id="s-admin" hidden>
+      <div class="ad-menu">
+        <button type="button" class="ad-op" data-ir="personas"><span class="ic" aria-hidden="true">👥</span><b>Personas y dispositivos</b><small>Altas, bajas, roles y dónde tiene abierta la app cada uno</small></button>
+        <button type="button" class="ad-op" data-ir="proveedores"><span class="ic" aria-hidden="true">🏪</span><b>Proveedores</b><small>Teléfonos, rubros, activar o desactivar</small></button>
+        <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Sitios y aviso de la Tanda verde</small></button>
+        <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Un pedido o un servicio con título, descripción y PDF, para compartir con quien elijas</small></button>
+        <button type="button" class="ad-op" data-ir="padron"><span class="ic" aria-hidden="true">🗂️</span><b>Padrón</b><small>Los productos, sus variantes, cuándo se pidieron y a quién se cotizó</small></button>
+        <button type="button" class="ad-op" data-ir="velocidad"><span class="ic" aria-hidden="true">📈</span><b>Velocidad y errores</b><small>Qué tarda, qué falla y si fue la señal, Google o la app</small></button>
+      </div>
+    </section>
+
+    <section id="s-personas" hidden>
+      <div class="ad-barra">
+        <button type="button" class="btn ad-nuevo" id="pe-nuevo">＋ Agregar persona</button>
+      </div>
+      <p class="nota ad-estado" id="pe-estado" role="status" aria-live="polite"></p>
+      <div class="ad-lista" id="pe-lista"></div>
+    </section>
+
+    <section id="s-proveedores" hidden>
+      <div class="ad-barra">
+        <input type="search" id="pv-q" placeholder="Buscar proveedor…" aria-label="Buscar proveedor" autocomplete="off">
+        <button type="button" class="btn ad-nuevo" id="pv-nuevo">＋ Agregar</button>
+      </div>
+      <div class="filtros ad-filtros">
+        <label class="filtro"><span>Rubro</span><select id="pv-rubro"></select></label>
+        <label class="filtro"><span>Ver</span><select id="pv-ver">
+          <option value="">Todos</option><option value="sintel">Sin teléfono</option><option value="inactivos">Desactivados</option>
+        </select></label>
+      </div>
+      <p class="nota ad-estado" id="pv-estado" role="status" aria-live="polite"></p>
+      <div class="ad-lista" id="pv-lista"></div>
+    </section>
+
+    <section id="s-ajustes" hidden>
+      <div class="caja">
+        <div class="act-h"><h2>Sitios</h2><button type="button" class="btn-chico" id="aj-granja-nueva">＋ Agregar sitio</button></div>
+        <p class="nota">Son las que aparecen en el formulario y en los filtros. Si le cambiás el nombre a una, cambia también en los pedidos viejos.</p>
+        <div id="aj-granjas" class="ad-lista"></div>
+      </div>
+      <div class="caja">
+        <h2>Tanda verde</h2>
+        <p class="nota">Cada cuántos días te avisa que conviene mandar a cotizar lo que juntó la Tanda verde.</p>
+        <div class="aj-dias"><label for="aj-dias">Avisar cada</label><input type="number" id="aj-dias" min="1" max="60" inputmode="numeric"><span>días</span>
+          <button type="button" class="btn2" id="aj-dias-ok">Guardar</button></div>
+      </div>
+      <div class="caja">
+        <h2>Pedir cotización</h2>
+        <label class="aj-prueba"><input type="checkbox" id="aj-prueba"> <span><b>🧪 Modo prueba</b><br><small>Todos los pedidos de cotización le llegan al número de prueba, no a los proveedores. Se apaga cuando la app entra en uso.</small></span></label>
+        <div class="campo"><label for="aj-numero">Número de prueba</label><input type="tel" id="aj-numero" inputmode="numeric" placeholder="Solo los números, con 549 adelante"></div>
+        <div class="campo"><label for="aj-msj-cot">Pedido de cotización</label><textarea id="aj-msj-cot" rows="7"></textarea>
+          <small class="nota">{codigo}: el código del pedido (C-0001). {productos}: un renglón por producto.</small></div>
+        <div class="campo"><label for="aj-msj-recprov">Recordatorio al proveedor</label><textarea id="aj-msj-recprov" rows="3"></textarea>
+          <small class="nota">Si el proveedor no contestó el pedido de cotización: al día hábil siguiente, a la misma hora (de 8 a 18), y otro al otro día; después queda "Sin respuesta". Va citando el pedido. {codigo}: el código del pedido.</small></div>
+        <div class="campo"><label for="aj-msj-conf">Confirmación de la compra</label><textarea id="aj-msj-conf" rows="5"></textarea>
+          <small class="nota">Le llega a cada proveedor al comprarle ("🛒 Realizar la compra"); antes de mandarlo se puede cambiar. {codigo} y {productos}: los productos como los escribió el proveedor, con las cantidades a comprar.</small></div>
+        <div class="campo"><label for="aj-aprobador">Aprueba las compras</label><select id="aj-aprobador"></select>
+          <small class="nota">Le llega el WhatsApp de "📨 Mandar a aprobar" (en Decisión) y aprueba desde la tarjeta.</small></div>
+        <div class="campo" id="aj-lineas-c" hidden><label>WhatsApp de cada comprador</label><div id="aj-lineas"></div>
+          <small class="nota">Cada uno ve solo los chats de su WhatsApp. Del principal salen los mensajes al equipo (el código para entrar, las menciones, "¿Recibiste este pedido?" y "Mandar a aprobar"). Se agregan desde el editor (agregarLineaWhatsApp).</small></div>
+        <div class="campo" id="aj-chats-ven-c"><label>Ven los chats</label><div id="aj-chats-ven" class="aj-chats-ven"></div>
+          <small class="nota">Los chats son los del WhatsApp conectado a la app. Solo los admins tildados ven la pestaña 💬 Chats y los botones "💬 Chat". Sin ninguno tildado, los ven todos los admins. Los presupuestos cargados y el cuadro los ven todos los admins.</small></div>
+        <div class="campo"><label>Mensajes prediseñados del chat</label>
+          <div id="aj-predis"></div>
+          <button type="button" class="btn-chico" id="aj-predis-mas">＋ Agregar un mensaje</button>
+          <small class="nota">En el chat, el botón 📋 los pega en el cuadro de texto (ej.: "Esta es nuestra dirección: …"). Se guardan con el botón Guardar de abajo.</small></div>
+        <div class="campo"><label for="aj-msj-recep">¿Recibiste este pedido?</label><textarea id="aj-msj-recep" rows="5"></textarea>
+          <small class="nota">Le llega a quien retiró el pedido al pasarlo a Entregado. {nombre}: su nombre. {titulo}: el título. {productos}: un renglón por producto. Abajo va siempre el link para confirmar.</small></div>
+        <div class="campo"><label for="aj-msj-recep2">Recordatorio de "¿Recibiste este pedido?"</label><textarea id="aj-msj-recep2" rows="4"></textarea>
+          <small class="nota">Si en 1 día hábil no confirmó ni contestó (una sola vez).</small></div>
+        <button type="button" class="btn2" id="aj-cot-ok">Guardar</button>
+      </div>
+      <p class="nota ad-estado" id="aj-estado" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="s-masivo" hidden>
+      <p class="nota">Un pedido con título, lo que haga falta en la descripción (pegado como venga) y los adjuntos, por ejemplo el PDF con la lista.</p>
+      <div class="caja">
+        <div class="campo"><label>¿Qué es?</label><div class="urgencias-el" id="ma-tipo">
+          <button type="button" data-tipo="pedido" aria-pressed="true">📦 Pedido</button><button type="button" data-tipo="servicio" aria-pressed="false">🔧 Servicio</button></div></div>
+        <div class="campo"><label for="ma-titulo">Título</label><input type="text" id="ma-titulo" maxlength="200" autocomplete="off" placeholder="Ej: Materiales obra silos PAB"></div>
+        <div class="campo"><label for="ma-sitio">Sitio</label><select id="ma-sitio"></select></div>
+        <div class="campo"><label>Urgencia</label><div class="urgencias-el" id="ma-urg"></div></div>
+        <div class="campo"><label for="ma-razon">Razón <small>(opcional)</small></label><input type="text" id="ma-razon" maxlength="2000" autocomplete="off" placeholder="Ej: obra nueva, reposición del mes…"></div>
+        <div class="campo"><label for="ma-desc">Descripción</label>
+          <textarea id="ma-desc" rows="10" maxlength="20000" placeholder="Pegá acá los productos como los tengas, o lo que haga falta explicar."></textarea></div>
+        <div class="campo"><label>Compartir con</label>
+          <p class="nota">Las personas que elijas quedan como si lo hubieran pedido con vos: lo ven en "Mis pedidos", comentan y adjuntan (y un servicio lo pueden mover). Si no elegís a nadie, lo ven solo los admins.</p>
+          <div class="pr-rubros" id="ma-compartir"></div></div>
+        <div class="act-h"><h3>Adjuntos</h3><button type="button" class="btn-chico" id="ma-adj-b">📎 Adjuntar PDF o fotos</button></div>
+        <input type="file" id="ma-adj" accept="image/*,application/pdf" multiple style="display:none">
+        <ul class="ma-archivos" id="ma-archivos"></ul>
+      </div>
+      <button type="button" class="btn" id="ma-crear" disabled>Crear pedido masivo</button>
+      <p class="nota ad-estado" id="ma-estado" role="status" aria-live="polite"></p>
+    </section>
+
+    <!-- Paso 6: el padrón de productos (admin.js) -->
+    <!-- Paso 8 (Feli, 2026-10-09): de quién es cada error y qué está lento -->
+    <section id="s-velocidad" hidden>
+      <div class="ad-barra">
+        <label class="filtro"><span>Ver</span><select id="ve-dias">
+          <option value="1">Hoy</option><option value="7" selected>Últimos 7 días</option><option value="30">Últimos 30 días</option>
+        </select></label>
+        <button type="button" class="btn2" id="ve-actualizar">Actualizar</button>
+      </div>
+      <p class="nota ad-estado" id="ve-estado" role="status" aria-live="polite"></p>
+      <div id="ve-cuerpo"></div>
+    </section>
+
+    <section id="s-padron" hidden>
+      <div class="ad-barra">
+        <button type="button" class="btn ad-nuevo" id="pa-nuevo">＋ Agregar producto</button>
+      </div>
+      <div class="pa-filtros">
+        <input type="search" id="pa-q" placeholder="Buscar producto o variante…" autocomplete="off">
+        <select id="pa-rubro"><option value="">Todos los rubros</option></select>
+      </div>
+      <label class="pa-check"><input type="checkbox" id="pa-inactivos"> Ver también los desactivados</label>
+      <p class="nota ad-estado" id="pa-estado" role="status" aria-live="polite"></p>
+      <div class="pa-lista" id="pa-lista"></div>
+      <button type="button" class="btn2" id="pa-mas" hidden>Ver más</button>
+    </section>
+
+    <section id="s-cuenta" hidden>
+      <h2 class="titulo" id="c-nombre"></h2>
+      <p><span class="tag" id="c-rol"></span></p>
+      <p class="lead">Tu sesión queda guardada en este dispositivo: no vas a tener que pedir el código de nuevo.</p>
+      <div class="caja" id="c-apartados" hidden>
+        <h2>Apartados</h2>
+        <p class="nota" id="c-apartados-txt"></p>
+        <div class="pila" id="c-apartados-lista"></div>
+      </div>
+      <div class="caja">
+        <h2>Este dispositivo</h2>
+        <dl>
+          <dt>Dispositivo</dt><dd id="c-disp"></dd>
+          <dt>Entraste</dt><dd id="c-desde"></dd>
+          <dt>Dirección</dt><dd id="c-host"></dd>
+          <dt>Versión</dt><dd id="c-version"></dd>
+          <dt id="c-error-t" hidden>Último error</dt><dd id="c-error" hidden></dd>
+        </dl>
+      </div>
+      <!-- Paso 6 (Feli, 2026-10-01): el formato es siempre el de Transferencias; cada uno elige su color y su tablero -->
+      <div class="caja" id="c-aspecto">
+        <h2>Cómo se ve la app</h2>
+        <p class="nota">Solo cambia para vos, en todos tus dispositivos.</p>
+        <h3 class="asp-t">Color</h3>
+        <p class="nota">Se usa en Compras, Transferencias y el formulario.</p>
+        <div class="asp-colores" id="c-colores"></div>
+        <h3 class="asp-t">Tablero</h3>
+        <div class="asp-estilos" id="c-estilos"></div>
+      </div>
+      <div class="pila">
+        <p class="estado" id="e-cuenta" hidden></p>
+        <button class="btn2" id="b-prueba" type="button" hidden></button>
+        <button class="btn2" id="b-prueba2" type="button" hidden></button>
+        <button class="btn2" id="b-salir" type="button">Cerrar sesión en este dispositivo</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- Tarjeta abierta (como en Trello): encima del tablero -->
+  <div class="modal" id="tarjeta-modal" hidden>
+    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="tj-titulo">
+      <div class="panel-h">
+        <button type="button" class="col-chip" id="tj-columna"></button>
+        <button type="button" class="btn-chico" id="tj-editar" hidden>✏️ Editar pedido</button>
+        <button type="button" class="icono" id="tj-cerrar" aria-label="Cerrar">×</button>
+      </div>
+      <div class="panel-c">
+        <div class="izq">
+          <h2 class="tit" id="tj-titulo"></h2>
+          <div class="sub-t" id="tj-subtitulo" hidden></div>
+          <div class="datos" id="tj-datos"></div>
+          <div class="etiquetas" id="tj-etiquetas"></div>
+          <!-- Fase 3: de qué pedido viene una tarjeta de trabajo, o las tarjetas que salieron de un pedido -->
+          <div class="enlaces" id="tj-enlaces" hidden></div>
+          <button type="button" class="btn2 tj-reabrir" id="tj-reabrir" hidden>↩️ Reabrir el pedido</button>
+          <div class="bloque" id="tj-desc-b" hidden>
+            <div class="act-h"><h3 id="tj-desc-t">Descripción</h3><button type="button" class="btn-chico" id="tj-desc-editar" hidden>✏️ Editar</button></div>
+            <p class="texto" id="tj-desc"></p>
+          </div>
+          <div class="bloque" id="tj-razon-b"><h3>Razón del pedido</h3><p class="texto" id="tj-razon"></p></div>
+          <!-- Tareas (Paso 4-ter): checklists y recordatorios -->
+          <div class="bloque" id="tj-check-b" hidden>
+            <div class="act-h"><h3>Checklists</h3><button type="button" class="btn-chico" id="tk-nuevo-checklist">+ Checklist</button></div>
+            <div id="tj-checklists"></div>
+          </div>
+          <div class="bloque" id="tj-rec-b" hidden>
+            <div class="act-h"><h3>Recordatorios</h3><button type="button" class="btn-chico" id="tk-nuevo-rec">⏰ Agregar recordatorio</button></div>
+            <div id="tj-recordatorios"></div>
+          </div>
+          <div class="bloque" id="tj-prod-b">
+            <div class="act-h"><h3 id="tj-prod-t">Productos</h3></div>
+            <div id="tj-productos"></div>
+            <button type="button" class="btn2" id="tj-agregar" hidden style="width:auto">+ Agregar producto</button>
+          </div>
+          <!-- Paso 6: aprobación de la compra (cotizar.js) -->
+          <div class="bloque" id="tj-aprob-b" hidden>
+            <div class="act-h"><h3>Aprobación</h3><button type="button" class="btn-chico" id="tj-aprobar-mandar" hidden>📨 Mandar a aprobar</button></div>
+            <div id="tj-aprob"></div>
+          </div>
+          <!-- Fase 4, Paso 1-bis: "¿Recibiste este pedido?" (recepcion.js) -->
+          <div class="bloque" id="tj-recep-b" hidden>
+            <div class="act-h"><h3>Recepción</h3></div>
+            <div id="tj-recep"></div>
+          </div>
+          <!-- Fase 4, Paso 2: en una ✋ manual, los proveedores con los que se está hablando (chats.js) -->
+          <div class="bloque" id="tj-hablando-b" hidden>
+            <div class="act-h"><h3>Proveedores con los que se está hablando</h3><button type="button" class="btn-chico" id="tj-hablando-sumar">＋ Sumar proveedor</button></div>
+            <div id="tj-hablando"></div>
+          </div>
+          <!-- Fase 3: a quién se le pidió cotización (cotizar.js) -->
+          <div class="bloque" id="tj-cot-b" hidden>
+            <div class="act-h"><h3>Cotizaciones</h3><button type="button" class="btn-chico si" id="tj-cotizar" hidden>📤 Pedir cotización</button></div>
+            <div id="tj-cot"></div>
+          </div>
+          <!-- Fase 4, Paso 5: la compra de una tarjeta de seguimiento (presupuestos.js) -->
+          <div class="bloque" id="tj-compra-b" hidden>
+            <div class="act-h"><h3>🛒 Compra</h3></div>
+            <div id="tj-compra"></div>
+          </div>
+          <!-- Fase 4, Paso 3: los presupuestos cargados desde el chat (presupuestos.js) -->
+          <div class="bloque" id="tj-presup-b" hidden>
+            <div class="act-h"><h3>Presupuestos</h3></div>
+            <div id="tj-presup"></div>
+          </div>
+          <div class="bloque">
+            <div class="act-h"><h3 id="tj-adj-t">Adjuntos</h3><button type="button" class="btn-chico" id="tj-adjuntar-b">📎 Adjuntar foto o PDF</button></div>
+            <input type="file" id="tj-adjuntar" accept="image/*,application/pdf" multiple style="display:none">
+            <div class="adjuntos" id="tj-adjuntos"></div>
+          </div>
+          <button type="button" class="btn2" id="tj-manual" hidden>✋ Pasar a gestión manual</button>
+          <button type="button" class="peligro" id="tj-cancelar" hidden>Cancelar pedido</button>
+          <button type="button" class="peligro" id="tj-borrar-tarea" hidden>Borrar tarea</button>
+        </div>
+        <div class="lado">
+          <div class="act-h">
+            <h3>Comentarios y actividad</h3>
+            <button type="button" class="btn-chico" id="tj-detalles" aria-pressed="false">Ver detalles</button>
+          </div>
+          <div class="comentar">
+            <div class="menciones" id="tj-menciones" hidden></div>
+            <textarea id="tj-comentario" rows="1" maxlength="2000" placeholder="Escribí un comentario…" aria-label="Comentario"></textarea>
+            <div class="comentar-b">
+              <button type="button" class="btn" id="tj-comentar" disabled>Comentar</button>
+              <span class="nota">Con @ mencionás a alguien y le llega un WhatsApp.</span>
+            </div>
+          </div>
+          <div id="tj-actividad"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cambios que no se aplicaron (quedan guardados hasta "Entendido") -->
+  <div class="modal encima" id="no-aplicados" hidden>
+    <div class="panel chico" role="alertdialog" aria-modal="true" aria-labelledby="na-titulo">
+      <h2 id="na-titulo"></h2>
+      <p>Se hicieron con poca señal y, cuando llegaron, ya no se podían aplicar. El tablero ya muestra cómo quedó.</p>
+      <ul class="na-lista" id="na-lista"></ul>
+      <div class="botones"><button type="button" class="btn" id="na-ok">Entendido</button></div>
+    </div>
+  </div>
+
+  <!-- Foto en grande, adentro de la app -->
+  <div class="visor" id="visor" hidden>
+    <button type="button" class="icono visor-cerrar" id="visor-cerrar" aria-label="Cerrar la foto">×</button>
+    <img id="visor-img" alt="Foto del producto">
+    <!-- PDF y videos, adentro de la app: nunca se va a Drive (Feli, 2026-10-05) -->
+    <div class="visor-doc" id="visor-doc" hidden></div>
+    <p class="visor-carga" id="visor-carga">Cargando la foto…</p>
+  </div>
+
+  <!-- Fase 4, Paso 4: el cuadro comparativo, en grande (cuadro.js). Al abrirlo pasa a ser hijo de <body>, para imprimir solo el cuadro -->
+  <div class="cuadro" id="cuadro" hidden>
+    <div class="cuadro-barra">
+      <div class="cuadro-tit"><b id="cuadro-titulo"></b><span id="cuadro-sub"></span></div>
+      <button type="button" class="btn-chico no-imprimir" id="cuadro-imprimir">🖨️ Imprimir</button>
+      <button type="button" class="icono no-imprimir" id="cuadro-x" aria-label="Cerrar el cuadro">×</button>
+    </div>
+    <div class="cuadro-cuerpo" id="cuadro-cuerpo"></div>
+    <!-- Fase 4, Paso 5: lo elegido para comprar y "Confirmar compra" -->
+    <div class="cuadro-compra no-imprimir" id="cuadro-compra" hidden></div>
+  </div>
+
+  <!-- Diálogos (mover, quién retiró, responsable, cancelar) -->
+  <div class="modal encima" id="dialogo" hidden>
+    <div class="panel chico" role="dialog" aria-modal="true" aria-labelledby="dg-titulo">
+      <h2 id="dg-titulo"></h2>
+      <p id="dg-texto"></p>
+      <div class="cuerpo" id="dg-cuerpo"></div>
+      <div class="botones" id="dg-botones"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/base.js"></script>
+<script src="js/login.js"></script>
+<script src="js/envio-pedidos.js"></script>
+<script src="js/tablero.js"></script>
+<script src="js/cotizar.js"></script>
+<script src="js/recepcion.js"></script>
+<script src="js/chats.js"></script>
+<script src="js/presupuestos.js"></script>
+<script src="js/cuadro.js"></script>
+<script src="js/tareas.js"></script>
+<script src="js/servicios.js"></script>
+<script src="js/notificaciones.js"></script>
+<script src="js/buscar.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/pantallas.js"></script>
+<script>arrancar();</script>
+<div aria-hidden="true" style="position:fixed;left:8px;bottom:8px;z-index:99999;background:#c0392b;color:#fff;font:600 12px system-ui,sans-serif;padding:3px 9px;border-radius:10px;opacity:.9;pointer-events:none">Prueba · Supabase</div></body>
+</html>

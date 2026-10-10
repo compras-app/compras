@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Pedido de insumos (prueba)</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pedido">
+<meta name="theme-color" content="#7f2745">
+<meta name="color-scheme" content="dark">
+<link rel="apple-touch-icon" href="icono-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="formulario.css">
+<!--
+  FORMULARIO DE PEDIDOS, descargado en el dispositivo (Fase 2, Paso 2-bis, etapa 3).
+  compras-app.github.io/compras/pedido/ — no pide login, como el de siempre.
+  Abre sin señal (sw.js de la carpeta de arriba) con la lista de productos
+  guardada. El borrador guarda también las fotos. Al enviar, el pedido queda
+  guardado en el teléfono y se manda solo cuando hay señal (js/envio-pedidos.js).
+    formulario.css   estilos (antes en Formulario.html)
+    formulario.js    el formulario (antes en Formulario.html)
+    ../js/base.js    servidor (doPost), guardado en el dispositivo
+-->
+<style id="estiloColor">:root{--accent:#9c686e;--accent-soft:#f3edee;--accent-fg:#ffffff;--band:#9c686e;--tablero:#c4828a;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--accent:#d08a93;--accent-soft:#3a2f2f;--accent-fg:#0f1412;--band:#7b575b;--tablero:#5b4346;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}}:root[data-theme="dark"]{--accent:#d08a93;--accent-soft:#3a2f2f;--accent-fg:#0f1412;--band:#7b575b;--tablero:#5b4346;--fondo-a:#724c51;--fondo-b:#2e1e20;--fondo-c:#926167;--fondo-d:#3e292c;}</style>
+<script>try { var c = localStorage.getItem('nueva_css_mio'); if (c === null) c = localStorage.getItem('nueva_css'); if (c !== null) document.getElementById('estiloColor').textContent = c; } catch (e) {}</script>
+</head>
+<body>
+
+<div class="aviso-senal" id="aviso-senal" role="status" aria-live="polite" hidden></div>
+<div class="band" aria-hidden="true"></div>
+<main class="wrap">
+  <a class="volver" id="volver" href="../" hidden>‹ Volver a Compras</a>
+  <h1>Pedido de insumos</h1>
+  <p class="lead">Cargá lo que necesita tu granja. Podés agregar todos los productos que quieras en un mismo pedido.</p>
+
+  <p class="cargando" id="cargando">Cargando el formulario…</p>
+  <div id="sin-datos" hidden>
+    <p class="estado bad" id="sin-datos-txt"></p>
+    <p><button type="button" class="btn" id="reintentar">Reintentar</button></p>
+  </div>
+
+  <form id="form" novalidate hidden>
+    <!-- Paso 2-ter: pedir productos o un servicio (ej. llevar a arreglar la motoguadaña) -->
+    <div class="q" id="q-tipo">
+      <span class="qt" id="l-tipo">¿Qué necesitás?</span>
+      <div class="choices tipo" role="radiogroup" aria-labelledby="l-tipo" id="tipo">
+        <button type="button" class="choice" role="radio" data-tipo="productos" aria-checked="true"><span class="k">📦</span><span>Productos</span></button>
+        <button type="button" class="choice" role="radio" data-tipo="servicio" aria-checked="false"><span class="k">🔧</span><span>Un servicio</span></button>
+      </div>
+    </div>
+
+    <div class="q" id="q-sitio">
+      <span class="qt" id="l-sitio">Sitio<span class="req">*</span></span>
+      <div class="choices" role="radiogroup" aria-labelledby="l-sitio" data-name="sitio"></div>
+    </div>
+
+    <div class="q" id="q-urgencia">
+      <span class="qt" id="l-urg">Nivel de urgencia<span class="req">*</span></span>
+      <div class="choices" role="radiogroup" aria-labelledby="l-urg" data-name="urgencia"></div>
+    </div>
+
+    <div class="q" id="q-pide">
+      <label for="pide">Quién pide<span class="req">*</span></label>
+      <select id="pide"><option value="">Elegí tu nombre</option></select>
+    </div>
+
+    <div class="q" id="q-razon">
+      <label for="razon">Razón del pedido<span class="req">*</span></label>
+      <textarea id="razon" placeholder="Para qué se necesita, qué se rompió, en qué galpón…"></textarea>
+    </div>
+
+    <div id="blk-prods">
+      <div class="sec"><h2>Productos</h2><span id="count"></span></div>
+      <div id="prods"></div>
+      <button type="button" class="btn2 add" id="addProd">+ Agregar otro producto</button>
+    </div>
+
+    <div id="blk-serv" hidden>
+      <div class="sec"><h2>Servicio</h2></div>
+      <div class="q" id="q-servicio">
+        <label for="servicio">Servicio<span class="req">*</span></label>
+        <input type="text" id="servicio" maxlength="200" autocomplete="off" placeholder="Ej: Llevar a arreglar la motoguadaña">
+      </div>
+      <div class="q" id="q-obs">
+        <label for="obs">Observaciones <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
+        <textarea id="obs" maxlength="3000" placeholder="Qué le pasa, marca, modelo, dónde está, a quién llevarlo…"></textarea>
+      </div>
+      <div class="q">
+        <span style="font-weight:700;font-size:15px">Adjuntos <span style="font-weight:400;color:var(--muted)">(opcional: fotos o PDF)</span></span>
+        <div class="drop">
+          <label class="btn2" for="adj-f">📎 Adjuntar archivos</label>
+          <input class="vh" type="file" id="adj-f" accept="image/*,application/pdf" multiple>
+          <div class="thumbs" id="adj-thumbs"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <div class="estado" id="estado" role="status" aria-live="polite" hidden></div>
+      <button type="submit" class="btn" id="enviar">Enviar pedido</button>
+      <button type="button" class="linkbtn" id="reset">Empezar de cero</button>
+      <span class="saved" id="saved"></span>
+    </div>
+  </form>
+
+  <section class="ok-box" id="listo" hidden aria-live="polite">
+    <h2 id="listoTit">✓ Pedido enviado</h2>
+    <p id="listoTxt">Compras ya lo recibió. Si te preguntan por este pedido, este es el número:</p>
+    <div class="ref" id="listoRef"></div>
+    <p id="listoDet"></p>
+    <p class="paso" id="listoPaso" hidden></p>
+    <button type="button" class="btn" id="otro">Cargar otro pedido</button>
+    <button type="button" class="btn2" id="corregir" hidden>Corregirlo</button>
+  </section>
+
+  <section class="guardados" id="guardados" hidden>
+    <h2>Pedidos cargados en este teléfono</h2>
+    <p>Los que esperan señal se mandan solos. Los enviados quedan acá una semana.</p>
+    <div id="guardados-lista"></div>
+  </section>
+</main>
+
+<div id="fatal" hidden style="margin:20px;padding:14px;border-radius:10px;background:#fbeceb;color:#b3261e;font:600 15px system-ui"></div>
+<script>
+window.addEventListener('error',function(e){var f=document.getElementById('fatal');f.hidden=false;f.textContent='Error al cargar el formulario: '+(e.message||e);});
+</script>
+<script src="../js/base.js"></script>
+<script src="../js/envio-pedidos.js"></script>
+<script src="formulario.js"></script>
+<div aria-hidden="true" style="position:fixed;left:8px;bottom:8px;z-index:99999;background:#c0392b;color:#fff;font:600 12px system-ui,sans-serif;padding:3px 9px;border-radius:10px;opacity:.9;pointer-events:none">Prueba · Supabase</div></body>
+</html>
