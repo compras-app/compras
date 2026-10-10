@@ -254,3 +254,19 @@ $('b-reintentar').addEventListener('click', arrancar);
 
 if (!guardado.guardar('nueva_prueba', '1')) $('aviso-guardar').hidden = false;
 guardado.borrar('nueva_prueba');
+
+/* Solo en la página de prueba: entrar con un código puesto a mano */
+(function () {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'btn2'; b.textContent = 'Ya tengo un código';
+  $('b-pedir').insertAdjacentElement('afterend', b);
+  b.addEventListener('click', function () {
+    if (!elegido) return estado('e-nombre', 'Elegí tu nombre primero.');
+    $('t-destino').textContent = 'Escribí el código que tenés.';
+    $('b-cambiar').textContent = 'No soy ' + elegido.nombre;
+    $('codigo').value = ''; envioEntrar = null; estado('e-codigo', '');
+    $('b-entrar').disabled = false;
+    mostrarLogin('p-codigo');
+    $('codigo').focus();
+  });
+})();
