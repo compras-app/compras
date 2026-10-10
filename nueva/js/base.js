@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'nueva_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'nueva-05cdea4f59';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = 'nueva-a4b487d36d';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -32,6 +32,44 @@ const K = {
 };
 /** La foto de un archivo (adjunto, foto del pedido o del chat), del ancho pedido, para verla adentro de la app. */
 function urlMiniatura(id, ancho) { return 'https://howlgipawqkwkctxpoon.supabase.co/storage/v1/object/public/archivos/' + encodeURIComponent(id); }
+
+/* ---------- Al instante (Fase 5): la base avisa por Supabase Realtime cuando algo cambia ----------
+   El aviso no trae datos (solo qué cambió: tablero, chats o notificaciones, y la versión nueva); lo nuevo se pide
+   como siempre, con la sesión. Mientras el canal está vivo, las pantallas no preguntan cada pocos segundos. Si se
+   corta, vuelven a preguntar y el canal se reconecta solo. Vacío (null): sin canal, como antes. */
+const TIEMPO_REAL = { url: 'wss://howlgipawqkwkctxpoon.supabase.co/realtime/v1/websocket', clave: 'sb_publishable_TkZ5kj7eRjCNwZpE0bwQQw_jppnoXFq' };
+const TR = { ws: null, vivo: false, oyentes: [], latido: null, reintento: 0, ultimo: 0 };
+function alCambiar(fn) { TR.oyentes.push(fn); }
+function tiempoRealVivo() { return TR.vivo && Date.now() - TR.ultimo < 70000; }
+function avisarCambio(c) { TR.oyentes.forEach(function (fn) { try { fn(c); } catch (e) { console.error(e); } }); }
+function conectarTiempoReal() {
+  if (!TIEMPO_REAL || TR.ws || !window.WebSocket) return;
+  let ws, n = 0;
+  try { ws = new WebSocket(TIEMPO_REAL.url + '?apikey=' + encodeURIComponent(TIEMPO_REAL.clave) + '&vsn=1.0.0'); } catch (e) { return; }
+  TR.ws = ws;
+  const mandar = function (o) { try { ws.send(JSON.stringify(Object.assign({ ref: String(++n) }, o))); } catch (e) { /* se reconecta */ } };
+  ws.onopen = function () {
+    mandar({ topic: 'realtime:compras', event: 'phx_join', payload: { config: { broadcast: { self: false }, private: false } } });
+    TR.latido = setInterval(function () { mandar({ topic: 'phoenix', event: 'heartbeat', payload: {} }); }, 25000);
+  };
+  ws.onmessage = function (m) {
+    let d;
+    try { d = JSON.parse(m.data); } catch (e) { return; }
+    TR.ultimo = Date.now();
+    if (d.event === 'phx_reply' && d.topic === 'realtime:compras' && d.payload && d.payload.status === 'ok' && !TR.vivo) {
+      TR.vivo = true; TR.reintento = 0;
+      avisarCambio({ que: 'conectado' });            // lo que cambió mientras estaba cortado
+    }
+    if (d.event === 'broadcast' && d.payload && d.payload.event === 'cambio') avisarCambio(d.payload.payload || {});
+  };
+  ws.onclose = function () {
+    clearInterval(TR.latido);
+    TR.ws = null; TR.vivo = false;
+    setTimeout(conectarTiempoReal, Math.min(60000, 2000 * Math.pow(2, TR.reintento++)));
+  };
+  ws.onerror = function () { try { ws.close(); } catch (e) { /* ya estaba cerrado */ } };
+}
+window.addEventListener('online', function () { if (TR.ws && !tiempoRealVivo()) { try { TR.ws.close(); } catch (e) {} } });
 
 try { if (!localStorage.getItem('nueva_token') && localStorage.getItem('compras_token')) localStorage.setItem('nueva_token', localStorage.getItem('compras_token')); } catch (e) {}
 const APP = { token: null, yo: null, config: null, actualizado: null, enLinea: true };

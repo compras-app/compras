@@ -58,6 +58,7 @@ async function abrirNotificaciones() {
     const n = l.filter(function (x) { return !leida(x); }).length;
     cuerpo.innerHTML = (cargando && !NT.datos ? '<p class="nota">Buscando las notificaciones…</p>' : '') +
       (!cargando && !NT.datos ? '<p class="nota">📶 Hay poca señal: las notificaciones se ven cuando vuelva.</p>' : '') +
+      (!cargando && NT.datos && NT.viejas && NT.datos.cuando ? '<p class="nota">📶 Poca señal: lo que ves es ' + esc(deCuando(NT.datos.cuando)) + '. Se actualiza cuando vuelva la señal.</p>' : '') +
       (NT.datos && !l.length ? '<p class="nota">No tenés notificaciones.</p>' : '') +
       (n ? '<div class="notif-h"><button type="button" class="linkbtn" id="nt-todas">Marcar todas como leídas</button></div>' : '') +
       '<div class="notif-l">' + l.map(function (x) {
@@ -82,8 +83,9 @@ async function abrirNotificaciones() {
   };
   const espera = dialogo({ titulo: '🔔 Notificaciones', cuerpo: cuerpo, botones: [{ texto: 'Cerrar', valor: null }], alAbrir: function () { pintar(true); } });
   const r = await api('getNotificaciones');
+  NT.viejas = !r.ok && !!r.sinConexion;
   if (r.ok) {
-    NT.datos = { lista: r.lista || [] };
+    NT.datos = { lista: r.lista || [], cuando: Date.now() };
     guardado.guardarJSON(K_NOTIF, NT.datos);
     notifSinLeer(r.sinLeer);
   }
@@ -98,6 +100,21 @@ function irANotificacion(x) {
   if (/^K/.test(x.ref) && !APP.yo.admin) return;
   abrirTarjeta(x.ref);
 }
+
+// Fase 5: cuando la base avisa que llegó una notificación (a alguien), se pregunta cuántas sin leer tengo
+let esperaNotif = null;
+alCambiar(function (c) {
+  if (c.que !== 'notif' && c.que !== 'conectado') return;
+  clearTimeout(esperaNotif);
+  esperaNotif = setTimeout(async function () {
+    if (!APP.token) return;
+    const r = await api('getNotificaciones');
+    if (!r.ok) return;
+    NT.datos = { lista: r.lista || [], cuando: Date.now() };
+    guardado.guardarJSON(K_NOTIF, NT.datos);
+    notifSinLeer(r.sinLeer);
+  }, 1000);
+});
 
 $('b-notif').addEventListener('click', abrirNotificaciones);
 pintarCampana();

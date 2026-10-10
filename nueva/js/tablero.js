@@ -490,6 +490,7 @@ async function cargarTablero() {
     guardado.guardarJSON(K_TABLERO, TB.datos);
     if (!TB.arrastre) pintarTablero();
     if (TB.abierta && TB.tipo !== 'tarea') { pintarTarjeta(); traerTarjeta(TB.abierta); }   // ej. un comentario nuevo de otro
+    precargarMisTarjetas();
   } else if (!TB.datos) pintarTablero();                  // sin señal: queda lo guardado
   pintarHace();
   if (TB.otraVez) { TB.otraVez = false; cargarTablero(); }
@@ -504,13 +505,17 @@ function tableroALaVista() { return !$('app').hidden && !$('s-tablero').hidden &
 // Lo que cambian los demás se ve en segundos: cada 8 s se pregunta si algo cambió (consulta
 // liviana, no lee la planilla) y solo en ese caso se trae el tablero. Además, al volver a la
 // app, al volver la señal, y por las dudas cada 2 minutos.
-async function vigilarCambios() {
+// Fase 5: con el canal "al instante" vivo, el aviso trae la versión nueva (v) y no hace falta preguntar.
+async function vigilarCambios(v) {
   if (!tableroALaVista() || TB.arrastre || TB.cargando || !TB.datos || !APP.token) return;
+  if (v) { if (v !== TB.datos.version) cargarTablero(); return; }
   let r;
   try { r = await llamar('versionTablero', [APP.token]); } catch (e) { return; }
   if (r.ok && r.version !== TB.datos.version) cargarTablero();
 }
-setInterval(vigilarCambios, 8000);
+setInterval(function () { if (!tiempoRealVivo()) vigilarCambios(); }, 8000);
+alCambiar(function (c) { if (c.que === 'tablero') vigilarCambios(c.v); else if (c.que === 'conectado') vigilarCambios(); });
+conectarTiempoReal();
 setInterval(function () { if (tableroALaVista() && !TB.arrastre) cargarTablero(); }, 120000);
 setInterval(pintarHace, 30000);
 document.addEventListener('visibilitychange', function () { if (tableroALaVista()) cargarTablero(); });
@@ -876,6 +881,32 @@ function preguntarRetiro(t) {
 }
 
 /* ---------- Tarjeta abierta ---------- */
+/**
+ * Fase 5 (parte C del Paso 8): un encargado o empleado abre sus pedidos aunque no haya señal. Con señal, el teléfono
+ * guarda de antemano el detalle de sus tarjetas (las que no tiene o tiene de hace más de 15 minutos), de a una y como
+ * mucho 8 por vez. Los admins abren muchas distintas: guardan solo las que abren.
+ */
+let precargando = false;
+async function precargarMisTarjetas() {
+  if (precargando || !APP.yo || APP.yo.admin || !TB.datos || !APP.enLinea) return;
+  precargando = true;
+  try {
+    const guardadas = detallesGuardados(), limite = Date.now() - 15 * 60000;
+    const faltan = (TB.datos.tarjetas || []).filter(function (t) {
+      return esMio(t) && !/^W/.test(t.ref) && (!guardadas[t.ref] || guardadas[t.ref].cuando < limite);
+    }).slice(0, 8);
+    for (const t of faltan) {
+      if (TB.abierta === t.ref || !APP.enLinea) continue;
+      const r = await api('getTarjeta', t.ref, { historia: false });
+      if (!r.ok) break;
+      if (TB.abierta === t.ref) continue;           // la abrió mientras tanto: la guarda traerTarjeta
+      guardarDetalle(t.ref, { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
+                              trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {},
+                              solicitudes: r.solicitudes || [], presupuestos: r.presupuestos || [], compra: r.compra || null });
+    }
+  } finally { precargando = false; }
+}
+
 function detallesGuardados() { return guardado.leerJSON(K_TARJETAS, {}); }
 function guardarDetalle(ref, d) {
   const todos = detallesGuardados();
@@ -904,9 +935,12 @@ async function abrirTarjeta(ref, sinHistoria) {
   sacarNuevo(ref);
   const g = detallesGuardados()[ref];
   TB.detalle = g ? g.d : null;
+  TB.guardadoDesde = g ? g.cuando : 0;           // Fase 5 (parte C del Paso 8): de cuándo es lo guardado
+  TB.viejo = false;
   TB.sinDetalle = '';
   ponerBorrador(ref);
   pintarTarjeta();
+  pintarViejo();
   $('tarjeta-modal').hidden = false;
   $('tarjeta-modal').scrollTop = 0;
   document.body.classList.add('modal-abierto');
@@ -938,10 +972,32 @@ async function traerTarjeta(ref) {
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
-  } else if (r.sinConexion) TB.sinDetalle = TB.detalle ? '' : 'Hay poca señal: los productos se ven cuando vuelva.';
+  } else if (r.sinConexion) { TB.sinDetalle = TB.detalle ? '' : 'Hay poca señal: los productos se ven cuando vuelva.'; TB.viejo = !!TB.detalle; }
   else if (!r.sinSesion) TB.sinDetalle = r.error;
+  if (r.ok) { TB.viejo = false; TB.guardadoDesde = Date.now(); }
   pintarTarjeta();
+  pintarViejo();
   if (TB.traerOtraVez) { TB.traerOtraVez = false; traerTarjeta(ref); }
+}
+
+/** Sin señal, la tarjeta muestra lo guardado en el teléfono y dice de cuándo es (se actualiza sola al volver la señal). */
+function pintarViejo() {
+  let el = $('tj-viejo');
+  if (!el) {
+    el = document.createElement('p');
+    el.id = 'tj-viejo'; el.className = 'nota';
+    $('tj-etiquetas').parentNode.insertBefore(el, $('tj-etiquetas'));
+  }
+  el.hidden = !(TB.abierta && TB.viejo && TB.guardadoDesde);
+  if (!el.hidden) el.textContent = '📶 Poca señal: lo que ves es ' + deCuando(TB.guardadoDesde) + '. Se actualiza solo cuando vuelva la señal.';
+}
+/** "de las 10:40" (hoy), "de ayer a las 10:40" o "del 8/10 a las 10:40". */
+function deCuando(ms) {
+  const d = new Date(ms), hoy = new Date(), ayer = new Date(Date.now() - 864e5);
+  const hora = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  if (d.toDateString() === hoy.toDateString()) return 'de las ' + hora;
+  if (d.toDateString() === ayer.toDateString()) return 'de ayer a las ' + hora;
+  return 'del ' + d.getDate() + '/' + (d.getMonth() + 1) + ' a las ' + hora;
 }
 
 function ocultarTarjeta() {
@@ -1564,7 +1620,11 @@ function enviarComentario() {
 }
 
 // Sin señal, el comentario que espera dice "⏳ se manda solo"; con señal, "Enviando…"
-function alCambiarLaSenal() { if (TB.abierta) { pintarActividad(); pintarAdjuntos(); } }
+function alCambiarLaSenal(hay) {
+  if (!TB.abierta) return;
+  pintarActividad(); pintarAdjuntos();
+  if (hay && TB.viejo) traerTarjeta(TB.abierta);     // Fase 5: volvió la señal, se actualiza sola
+}
 
 /** Respuesta de un comentario que salió de la bandeja. */
 function comentarioMandado(m, r) {

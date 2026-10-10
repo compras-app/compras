@@ -192,12 +192,15 @@ async function cargarTareas() {
 }
 $('tk-refrescar').addEventListener('click', function () { cargarTareas(); });
 // Lo que cambian los otros admins se ve en segundos (la misma consulta liviana que el tablero)
-setInterval(async function () {
+async function vigilarTareas(v) {
   if (!tareasALaVista() || TB.arrastre || TK.cargando || !TK.datos || !APP.token) return;
+  if (v) { if (v !== TK.datos.version) cargarTareas(); return; }
   let r;
   try { r = await llamar('versionTablero', [APP.token]); } catch (e) { return; }
   if (r.ok && r.version !== TK.datos.version) cargarTareas();
-}, 8000);
+}
+setInterval(function () { if (!tiempoRealVivo()) vigilarTareas(); }, 8000);
+alCambiar(function (c) { if (c.que === 'tablero') vigilarTareas(c.v); else if (c.que === 'conectado') vigilarTareas(); });
 setInterval(function () { if (tareasALaVista() && !TB.arrastre) cargarTareas(); }, 120000);
 document.addEventListener('visibilitychange', function () { if (tareasALaVista()) cargarTareas(); });
 

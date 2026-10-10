@@ -638,14 +638,17 @@ $('tj-hablando-sumar').addEventListener('click', async function () {
 })();
 
 /* ---------- ¿Hay algo nuevo? Cada 5 s, con la pantalla de chats a la vista ---------- */
-setInterval(async function () {
+async function vigilarChats() {
   if (document.hidden || document.body.dataset.pantalla !== 'chats' || !APP.token || !APP.yo || !APP.yo.admin) return;
   const r = await api('versionChats', CH.abierto || '');
   if (!r.ok) return;
   if (CH.abierto && r.chat && r.chat !== CH.version.chat) recargarChat(false);
   // La lista, como mucho cada 20 s (con el WhatsApp personal cambia muy seguido)
   if (r.lista !== CH.version.lista && Date.now() - CH.listaHora > 20000) cargarListaChats();
-}, 5000);
+}
+setInterval(function () { if (!tiempoRealVivo()) vigilarChats(); }, 5000);
+// Fase 5: con el canal "al instante", se pregunta solo cuando la base avisa que cambió algo de los chats
+alCambiar(function (c) { if (c.que === 'chats' || c.que === 'conectado') vigilarChats(); });
 
 /**
  * "✅ Compra confirmada manualmente" (Feli, 2026-10-06): ya se le confirmó al proveedor por el chat, sin el cuadro.

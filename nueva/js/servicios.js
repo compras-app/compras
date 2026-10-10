@@ -158,12 +158,15 @@ async function cargarServicios() {
   if (SV.otraVez) { SV.otraVez = false; cargarServicios(); }
 }
 $('sv-refrescar').addEventListener('click', function () { cargarServicios(); });
-setInterval(async function () {
+async function vigilarServicios(v) {
   if (!serviciosALaVista() || TB.arrastre || SV.cargando || !SV.datos || !APP.token) return;
+  if (v) { if (v !== SV.datos.version) cargarServicios(); return; }
   let r;
   try { r = await llamar('versionTablero', [APP.token]); } catch (e) { return; }
   if (r.ok && r.version !== SV.datos.version) cargarServicios();
-}, 8000);
+}
+setInterval(function () { if (!tiempoRealVivo()) vigilarServicios(); }, 8000);
+alCambiar(function (c) { if (c.que === 'tablero') vigilarServicios(c.v); else if (c.que === 'conectado') vigilarServicios(); });
 document.addEventListener('visibilitychange', function () { if (serviciosALaVista()) cargarServicios(); });
 
 function moverServicioA(ref, destino, despuesDe) {
