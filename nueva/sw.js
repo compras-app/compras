@@ -19,9 +19,15 @@ const ARCHIVOS = [
 const FUENTES = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 const EN_PRUEBA = self.location.hostname === 'localhost';   // en la compu de Claude: siempre lo último
 
+// Al publicar, GitHub puede tardar unos minutos en dar todos los archivos nuevos. Si la copia agarró un js/base.js
+// de antes (no lleva la huella de esta versión), no se instala: queda la versión anterior y se prueba en la próxima visita.
 self.addEventListener('install', e => {
+  const huella = VERSION.split('-').pop();
   e.waitUntil(caches.open(VERSION)
-    .then(c => c.addAll(ARCHIVOS.map(u => new Request(u, { cache: 'reload' }))))
+    .then(c => c.addAll(ARCHIVOS.map(u => new Request(u, { cache: 'reload' })))
+      .then(() => huella === 'dev' ? null : c.match('./js/base.js').then(r => r && r.text()).then(t => {
+        if (!t || t.indexOf(huella) === -1) return caches.delete(VERSION).then(() => { throw new Error('Copia a medias: se prueba después'); });
+      })))
     .then(() => self.skipWaiting()));
 });
 
