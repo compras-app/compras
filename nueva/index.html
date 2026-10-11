@@ -277,6 +277,7 @@
         <button type="button" class="ad-op" data-ir="ajustes"><span class="ic" aria-hidden="true">⚙️</span><b>Ajustes</b><small>Sitios y aviso de la Tanda verde</small></button>
         <button type="button" class="ad-op" data-ir="masivo"><span class="ic" aria-hidden="true">📦</span><b>Pedido masivo</b><small>Un pedido o un servicio con título, descripción y PDF, para compartir con quien elijas</small></button>
         <button type="button" class="ad-op" data-ir="padron"><span class="ic" aria-hidden="true">🗂️</span><b>Padrón</b><small>Los productos, sus variantes, cuándo se pidieron y a quién se cotizó</small></button>
+        <button type="button" class="ad-op" data-ir="reportes"><span class="ic" aria-hidden="true">📊</span><b>Reportes</b><small>Cómo anda el proceso, la plata, los proveedores y el padrón</small></button>
         <button type="button" class="ad-op" data-ir="velocidad"><span class="ic" aria-hidden="true">📈</span><b>Velocidad y errores</b><small>Qué tarda, qué falla y si fue la señal, Google o la app</small></button>
       </div>
     </section>
@@ -378,6 +379,28 @@
       </div>
       <p class="nota ad-estado" id="ve-estado" role="status" aria-live="polite"></p>
       <div id="ve-cuerpo"></div>
+    </section>
+
+    <!-- Fase 5, Paso 4: los reportes (reportes.js) -->
+    <section id="s-reportes" hidden>
+      <div class="rp-pestanas" id="rp-pestanas" role="tablist"></div>
+      <div class="rp-filtros">
+        <label class="filtro"><span>Desde</span><input type="date" id="rp-desde"></label>
+        <label class="filtro"><span>Hasta</span><input type="date" id="rp-hasta"></label>
+        <label class="filtro"><span>Granja</span><select id="rp-sitio"><option value="">Todas</option></select></label>
+        <label class="filtro"><span>Rubro</span><select id="rp-rubro"><option value="">Todos</option></select></label>
+        <label class="filtro"><span>Comprador</span><select id="rp-comprador"><option value="">Todos</option></select></label>
+        <label class="filtro" id="rp-tablero-l" hidden><span>Tablero</span><select id="rp-tablero">
+          <option value="compras">Compras</option><option value="seguimiento">Tarjetas de seguimiento</option>
+          <option value="servicios">Servicios</option><option value="tareas">Tareas</option></select></label>
+        <label class="pa-check"><input type="checkbox" id="rp-prueba"> Incluir lo de prueba (DEMO)</label>
+      </div>
+      <div class="ad-barra">
+        <button type="button" class="btn" id="rp-armar">Armar reporte</button>
+        <button type="button" class="btn2" id="rp-excel" hidden>⬇️ Bajar a Excel</button>
+      </div>
+      <p class="nota ad-estado" id="rp-estado" role="status" aria-live="polite"></p>
+      <div id="rp-cuerpo"></div>
     </section>
 
     <section id="s-padron" hidden>
@@ -584,6 +607,7 @@
 <script src="js/notificaciones.js"></script>
 <script src="js/buscar.js"></script>
 <script src="js/admin.js"></script>
+<script src="js/reportes.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 <div aria-hidden="true" style="position:fixed;left:8px;bottom:8px;z-index:99999;background:#c0392b;color:#fff;font:600 12px system-ui,sans-serif;padding:3px 9px;border-radius:10px;opacity:.9;pointer-events:none">Prueba · Supabase</div></body>

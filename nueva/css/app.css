@@ -931,3 +931,32 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .pr-ia .btn-chico{width:auto;flex:none;min-width:52px}
 .pr-desunir{font-size:12px;padding:2px 0}
 .pr-ia small{color:var(--muted)}
+
+/* Fase 5, Paso 4: Admin → Reportes (reportes.js) */
+.rp-pestanas{display:flex;gap:6px;overflow-x:auto;margin:4px 0 12px;padding-bottom:2px}
+.rp-pest{flex:0 0 auto;border:1px solid var(--line);background:transparent;color:inherit;border-radius:999px;padding:6px 14px;font:inherit;font-size:14px;cursor:pointer}
+.rp-pest.on{background:var(--accent);border-color:transparent;color:var(--accent-fg);font-weight:600}
+.rp-filtros{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;margin-bottom:10px}
+.rp-filtros .filtro{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:3px;font-size:12px;color:var(--muted)}
+.rp-filtros .filtro select,.rp-filtros .filtro input{width:100%;box-sizing:border-box;min-width:140px}
+.rp-filtros input[type=date],.rp-filtros select{font:inherit;font-size:14px}
+#rp-armar,#rp-excel{flex:0 0 auto;width:auto}
+.rp-de{margin:4px 0 8px}
+.rp-vacio{margin:18px 0}
+.rp-cajas{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin:8px 0 18px}
+.rp-caja{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid var(--line);border-radius:12px;padding:12px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.rp-caja b{font-size:22px}
+.rp-caja span{font-size:14px}
+.rp-caja small{font-size:12px;color:var(--muted)}
+.rp-caja:hover{border-color:var(--accent,#d08a93)}
+.ve-tabla tr.rp-clic{cursor:pointer}
+.ve-tabla tr.rp-clic:hover td{background:rgba(255,255,255,.04)}
+.ve-tabla tr.rp-detalle td{white-space:normal;font-size:13px;color:var(--muted)}
+.rp-barra{min-width:90px}
+.rp-barra span{display:block;height:8px;border-radius:4px;background:var(--accent,#d08a93);min-width:2px}
+.rp-linea{width:100%;max-width:560px;height:auto}
+.rp-linea line{stroke:var(--line);stroke-width:2}
+.rp-linea circle{fill:var(--accent,#d08a93)}
+.rp-linea circle.prox{fill:none;stroke:var(--accent,#d08a93);stroke-width:2;stroke-dasharray:3 2}
+.rp-linea text{fill:var(--muted);font-size:11px}
+@media (max-width:600px){.rp-filtros .filtro{flex:1 1 40%}.rp-filtros .filtro select,.rp-filtros .filtro input{min-width:0}.rp-caja b{font-size:19px}}
