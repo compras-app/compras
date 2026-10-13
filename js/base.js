@@ -11,7 +11,7 @@
 
 const API = location.hostname === 'localhost'
   ? location.origin + '/exec'     // servidor de prueba en la compu de Claude: corre el mismo código del Apps Script
-  : 'https://script.google.com/macros/s/AKfycbzhD_LiZqCkHeJXVouw_es70R1FUut8w0lCZG3Bglxcnq8OJCIS-zJ2iVEegoaIZkU7/exec';
+  : 'https://howlgipawqkwkctxpoon.supabase.co/functions/v1/api?forceFunctionRegion=sa-east-1';   // Supabase (Fase 5, desde el 13/10)
 const FORMULARIO = new URL('../pedido/', document.currentScript.src).href;   // "Nuevo pedido"
 // Apartados de la app (Fase extra): Compras (el tablero) y Transferencias (el Programa de Compras)
 const APARTADOS = {
@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = '51da408c05';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '96563bc5af';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -31,13 +31,14 @@ const K = {
   error: 'compras_error'   // la última respuesta rara del servidor (se ve en Tu cuenta)
 };
 /** La foto de un archivo (adjunto, foto del pedido o del chat), del ancho pedido, para verla adentro de la app. */
-function urlMiniatura(id, ancho) { return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(id) + '&sz=w' + ancho; }
+function urlMiniatura(id, ancho) { return 'https://howlgipawqkwkctxpoon.supabase.co/storage/v1/object/public/archivos/' + encodeURIComponent(id); }
 
 /* ---------- Al instante (Fase 5): la base avisa por Supabase Realtime cuando algo cambia ----------
    El aviso no trae datos (solo qué cambió: tablero, chats o notificaciones, y la versión nueva); lo nuevo se pide
    como siempre, con la sesión. Mientras el canal está vivo, las pantallas no preguntan cada pocos segundos. Si se
    corta, vuelven a preguntar y el canal se reconecta solo. Vacío (null): sin canal, como antes. */
-const TIEMPO_REAL = null;
+// La clave "publishable" es pública a propósito: no deja leer ninguna tabla (todas tienen las reglas de acceso cerradas)
+const TIEMPO_REAL = { url: 'wss://howlgipawqkwkctxpoon.supabase.co/realtime/v1/websocket', clave: 'sb_publishable_TkZ5kj7eRjCNwZpE0bwQQw_jppnoXFq' };
 const TR = { ws: null, vivo: false, oyentes: [], latido: null, reintento: 0, ultimo: 0 };
 function alCambiar(fn) { TR.oyentes.push(fn); }
 function tiempoRealVivo() { return TR.vivo && Date.now() - TR.ultimo < 70000; }
@@ -163,8 +164,8 @@ const LECTURAS = { getTablero: 1, getTarjeta: 1, getTarea: 1, getServicios: 1, g
   getPersonas: 1, getAjustes: 1, getProveedoresAdmin: 1, getPadronAdmin: 1, buscarPedidos: 1, datosCotizar: 1, datosCompraManual: 1,
   datosTransferencias: 1, listarPedidosGranja: 1, leerPedidoGranja: 1, buscarHistorialTransf: 1, verHistorialTransf: 1, datosProductos: 1,
   versionChats: 1, versionTablero: 1, audioChat: 1, verArchivo: 1, cuadroComparativo: 1, inicioApp: 1, datosFormulario: 1, getVelocidad: 1 };
-const MSJ_LENTO = 'Google está tardando en contestar. Probá de nuevo en un momento.';
-const MSJ_LENTO_CAMBIO = 'Google tardó demasiado en contestar. Puede que se haya hecho igual: fijate antes de repetirlo.';
+const MSJ_LENTO = 'El servidor está tardando en contestar. Probá de nuevo en un momento.';
+const MSJ_LENTO_CAMBIO = 'El servidor tardó demasiado en contestar. Puede que se haya hecho igual: fijate antes de repetirlo.';
 
 /* Lo que falló en este teléfono (sin señal, Google tardó, respuesta rara) queda guardado y se manda solo cuando
    vuelve la señal: así Admin → "Velocidad y errores" sabe si fue la señal o Google (Paso 8). */
@@ -223,7 +224,7 @@ async function llamarUnaVez(fn, args, id, limite) {
     const google = !lento && await hayInternet();
     if (!lento && !google) conexion(false);
     anotarFallaTelefono(fn, lento ? 'lento' : google ? 'google' : 'senal', Date.now() - t0);
-    const x = new Error(lento ? 'Google tardó demasiado' : google ? 'Google no contestó' : 'sin señal');
+    const x = new Error(lento ? 'El servidor tardó demasiado' : google ? 'El servidor no contestó' : 'sin señal');
     x.sinRed = true; x.lento = lento; x.google = google; throw x;
   } finally { clearTimeout(vence); }
   conexion(true);
@@ -259,7 +260,7 @@ async function hayInternet() {
 function respuestaDeFalla(fn, e) {
   if (e.servidor) return { ok: false, error: 'Error del servidor. Probá de nuevo en un rato.' };
   if (e.lento) return { ok: false, lento: true, error: LECTURAS[fn] ? MSJ_LENTO : MSJ_LENTO_CAMBIO };
-  if (e.google) return { ok: false, google: true, error: 'Google no contestó. Probá de nuevo en un momento.' };
+  if (e.google) return { ok: false, google: true, error: 'El servidor no contestó. Probá de nuevo en un momento.' };
   return { ok: false, sinConexion: true, error: 'Hay poca señal y no se pudo. Probá de nuevo en un rato.' };
 }
 

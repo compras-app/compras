@@ -774,7 +774,7 @@ async function mostrarVelocidad() {
     '<b>App</b> = una falla de programación (estas te llegan por mail). De los teléfonos: <b>Sin señal</b> (el teléfono no tenía internet), ' +
     '<b>Google no contestó</b> (había internet), <b>Google tardó</b> (más de 25 s). <b>En el teléfono</b> = lo que espera la persona, con Google despertando y su costo fijo; ' +
     '<b>En Google</b> = solo nuestro código.</p>' +
-    tabla(['Día', 'Llamadas', 'En el teléfono', 'En Google', 'Más lenta (teléfono)', 'Google', 'Muchos cambios', 'App', 'Sin señal', 'Google no contestó', 'Google tardó'],
+    tabla(['Día', 'Llamadas', 'En el teléfono', 'En el servidor', 'Más lenta (teléfono)', 'Servicio externo', 'Muchos cambios', 'App', 'Sin señal', 'El servidor no contestó', 'El servidor tardó'],
       r.dias.map(function (d) { return [diaLindo(d.dia), num(d.llamadas), seg(d.telefono), seg(d.promedio), seg(d.telefonoMax), num(d.google), num(d.espera), num(d.app), num(d.senal), num(d.nocontesto), num(d.lento)]; }),
       'Todavía no hay datos: se empiezan a anotar desde que se publicó esta versión.') + '</div>' +
     '<div class="ve-bloque"><h3>Lo más lento</h3>' +

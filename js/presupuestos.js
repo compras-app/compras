@@ -167,7 +167,7 @@ async function cargarEnTarjeta(ids) {
     aviso(l.presupuesto.estado === 'Revisar' ? 'El presupuesto de ' + nombre + ' quedó en la tarjeta para revisar: hay cosas que no dan.'
                                               : 'El presupuesto de ' + nombre + ' está en la tarjeta: las cuentas dan.');
   } else if (l.ok && l.leyendo) aviso('Se está leyendo: en un rato aparece en la tarjeta.');
-  else if (l.lento) aviso('Google está tardando: se termina de leer solo y aparece en la tarjeta.', '');
+  else if (l.lento) aviso('El servidor está tardando: se termina de leer solo y aparece en la tarjeta.', '');
   else aviso(l.sinConexion ? '📶 Poca señal: se termina de leer solo y aparece en la tarjeta.' : l.error, l.sinConexion ? '' : 'bad');
 }
 
