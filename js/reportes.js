@@ -235,30 +235,41 @@ function tablasEgresos(r) {
 }
 
 /* Stock (Feli, 13/10): lo egresado de las granjas contra la existencia de Albor de la oficina que las abastece.
-   Consumo esperado = promedio de los últimos meses completos con egresos (hasta 6), sin margen. Diferencia negativa = falta. */
+   Consumo esperado (Egresos totales) = promedio por mes de los últimos meses completos con egresos (hasta 6), sin margen.
+   Por oficina, tres tablas: en negativo, justos y sobran. La diferencia va con su signo (Feli: sin "faltan" ni "sobran"). */
 function tablasStock(r) {
   const mes = function (m) { const x = String(m).split('-'); return x[1] + '/' + x[0]; };
   const meses = r.meses || [];
-  const deMeses = !meses.length ? 'todavía no hay egresos de meses completos' : meses.length === 1 ? 'lo egresado en ' + mes(meses[0]) : 'el promedio de ' + meses.map(mes).join(', ');
-  return (r.grupos || []).map(function (g) {
+  const prom = meses.length > 1 ? ' (promedio por mes)' : '';
+  const deMeses = !meses.length ? 'todavía no hay egresos de meses completos' : meses.length === 1 ? 'lo egresado en ' + mes(meses[0]) : 'el promedio por mes de ' + meses.map(mes).join(', ');
+  const conSigno = function (n) { return n > 0 ? '+' + nro(n) : n < 0 ? '−' + nro(-n) : '0'; };
+  const tablas = [];
+  (r.grupos || []).forEach(function (g) {
     const ps = r.productos.filter(function (p) { return p.grupo === g.grupo; });
-    const faltan = ps.filter(function (p) { return p.diferencia < 0; }).length;
-    const varias = g.oficinas.length > 1;
-    return {
-      titulo: g.nombre + ' — egresos de ' + g.granjas,
-      nota: 'Consumo esperado del mes que viene: ' + deMeses + '. Existencia: la de Albor' + (r.existencias ? ' del ' + new Date(r.existencias.fecha).toLocaleDateString('es-AR') : '') + '. ' +
-            (faltan ? '<b>' + nro(faltan) + (faltan === 1 ? ' producto no alcanza' : ' productos no alcanzan') + '</b> (arriba, en rojo).' : 'Alcanza para todo.'),
-      cab: ['Producto', 'Tipo'].concat(meses.map(function (m) { return 'Egresado ' + mes(m); })).concat(['Consumo esperado'])
-        .concat(varias ? g.oficinas.map(function (o) { return o.replace('OFICINA ', 'Of. '); }) : []).concat(['Existencia', 'Diferencia']),
-      filas: ps.map(function (p) {
-        return [p.insumo, p.tipo || ''].concat(meses.map(function (m) { return p.meses && p.meses[m] ? nro(p.meses[m]) : ''; }))
-          .concat([nro(p.esperado)]).concat(varias ? g.oficinas.map(function (o) { return nro((p.oficinas || {})[o] || 0); }) : [])
-          .concat([nro(p.existencia), (p.diferencia < 0 ? 'Faltan ' + nro(-p.diferencia) : p.diferencia > 0 ? 'Sobran ' + nro(p.diferencia) : 'Justo')]);
-      }),
-      falta: ps.map(function (p) { return p.diferencia < 0; }),
-      vacio: 'Sin egresos ni existencias para esta oficina.'
+    const cols = g.columnas || [], ofs = g.oficinas || [], varias = ofs.length > 1;
+    const cab = ['Producto', 'Tipo'].concat(cols.map(function (c) { return 'Egreso ' + c + prom; })).concat(['Egresos totales' + prom])
+      .concat(varias ? ofs.map(function (o) { return o.replace('OFICINA ', 'Oficina ').replace('Oficina CASA', 'Oficina Casa'); }).concat(['Existencias totales']) : ['Existencia ' + ofs[0].replace('OFICINA ', 'Oficina ')])
+      .concat(['Diferencia']);
+    const fila = function (p) {
+      return [p.insumo, p.tipo || ''].concat(cols.map(function (c) { return p.granjas && p.granjas[c] ? nro(p.granjas[c]) : ''; }))
+        .concat([nro(p.esperado)])
+        .concat(varias ? ofs.map(function (o) { return nro((p.oficinas || {})[o] || 0); }) : [])
+        .concat([nro(p.existencia), conSigno(p.diferencia)]);
     };
+    [['negativo', 'en negativo', function (p) { return p.diferencia < 0; }],
+     ['justo', 'justos', function (p) { return p.diferencia === 0; }],
+     ['sobra', 'sobran', function (p) { return p.diferencia > 0; }]].forEach(function (parte, k) {
+      const lista = ps.filter(parte[2]);
+      tablas.push({
+        titulo: g.nombre + ' · ' + parte[1] + ' (' + nro(lista.length) + ')',
+        nota: k ? '' : 'Egresos de ' + g.granjas + '. Egresos totales = consumo esperado del mes que viene: ' + deMeses +
+              '. Existencia: la de Albor' + (r.existencias ? ' del ' + new Date(r.existencias.fecha).toLocaleDateString('es-AR') : '') + '. Diferencia = existencia − egresos totales.',
+        cab: cab, filas: lista.map(fila), falta: parte[0] === 'negativo' ? lista.map(function () { return true; }) : null,
+        vacio: parte[0] === 'negativo' ? 'Ninguno: alcanza para todo.' : 'Ninguno.'
+      });
+    });
   });
+  return tablas;
 }
 
 /* ---------- Dibujar ---------- */
