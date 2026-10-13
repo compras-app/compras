@@ -697,6 +697,13 @@
     #atablehost td.cant input.ci{min-height:46px;font-size:20px}
     .sheethead .line{flex-wrap:wrap;gap:4px 14px}
   }
+  /* Anulado en el historial (Feli, 13/10) */
+  tr.uno.anulado td{text-decoration:line-through;color:var(--ink-faint)}
+  tr.uno.anulado td .anulado-m{text-decoration:none;display:inline-block;font-size:11.5px;font-weight:650;color:var(--ink-soft);margin-right:4px}
+  .anular-b{margin-top:10px;font-size:12.5px}
+  .anular-b summary{cursor:pointer;color:var(--ink-soft)}
+  .anular-b .nota-a{margin:6px 0;color:var(--ink-soft)}
+  .anular-b textarea{width:100%;font:inherit;padding:6px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:var(--ink)}
 </style>
 <!-- El color de cada uno, el mismo que en Compras y el formulario (Feli, 2026-10-01): lo que
      eligió en Tu cuenta, guardado en el dispositivo; si no eligió, Rosa viejo. Pisa --accent y
@@ -758,7 +765,7 @@
       </label>
       <label class="check"><input type="checkbox" id="hidezero"> Ocultar insumos en 0</label>
       <label class="check"><input type="checkbox" id="bycat" checked> Agrupar por categoría</label>
-      <label class="check"><input type="checkbox" id="usarexcl" checked> Ocultar excluidos <span id="exclcount"></span></label>
+      <label class="check"><input type="checkbox" id="usarexcl" checked> Solo lo que se usa <span id="exclcount"></span></label>
       <label class="check"><input type="checkbox" id="mostrardif"> Mostrar diferencia</label>
       <label class="check" id="vergranjaslbl"><input type="checkbox" id="vergranjas"> Ver granjas</label>
       <label class="check" id="difcasalbl" title="Solo los insumos en los que esas dos oficinas no tienen lo mismo"><input type="checkbox" id="difcasa"> Ver diferencias entre Oficina Casa y Oficina LC 50</label>
@@ -989,7 +996,7 @@
         <label class="field" title="La de la fecha del egreso (cambia el 1 de julio). Se puede cambiar a mano.">Campaña
           <input type="text" id="gcampania" autocomplete="off" style="width:80px" placeholder="26/27">
         </label>
-        <label class="check" title="Es la misma casilla de Conteo de stock. Destildada, los productos excluidos también se egresan."><input type="checkbox" id="gusarexcl" checked> Ocultar excluidos</label>
+        <label class="check" title="Es la misma casilla de Conteo de stock. Destildada, también se egresan los tipos y productos que no se usan."><input type="checkbox" id="gusarexcl" checked> Solo lo que se usa</label>
         <span class="sep" style="flex:1"></span>
         <button class="linkbtn" id="ggranjasver" data-ajuste="ggranjas">editar granjas (Ajustes)</button>
         <button class="linkbtn" id="gcuentasver" data-ajuste="gcuentas">editar cuentas (Ajustes)</button>
@@ -1177,10 +1184,12 @@
       </div>
 
     <div class="excl on" id="excl">
-      <h3>Productos excluidos del conteo</h3>
-      <p>Una regla por línea: un <b>código de insumo</b> para sacar un producto suelto, o
-         <b><code>cat: NOMBRE</code></b> para sacar una categoría entera. Lo que va después de
-         un <code>#</code> es solo una nota. Un código que no exista en el CSV se ignora.</p>
+      <h3>Productos que se usan</h3>
+      <p>Una regla por línea: <b><code>solo cat: TIPO</code></b> para usar ese tipo de insumo (con alguna
+         de estas líneas, los otros tipos quedan afuera y un producto nuevo de estos tipos entra solo);
+         <b><code>cat: TIPO</code></b> para sacar un tipo entero, o un <b>código de insumo</b> para sacar un
+         producto suelto. Lo que va después de un <code>#</code> es solo una nota. Un código que no exista
+         en el CSV se ignora.</p>
       <textarea id="excltxt" spellcheck="false"></textarea>
       <div class="acciones">
         <button class="btn" id="exclguardar">Guardar lista</button>
@@ -1282,30 +1291,35 @@
   var EXCLUIDOS_ORIGINAL = '';
 
   var CLAVE_EXCLUIDOS = 'programa-compras:excluidos';
-  var EXCLUIDOS = {cods:{}, cats:{}};
+  var EXCLUIDOS = {cods:{}, cats:{}, solo:{}};
   var EXCLUIDOS_TEXTO = '';  // lo que se ve en el panel
 
   // Los códigos del sistema a veces traen un espacio de más ("DESC 00018").
   function clave(s){ return String(s).toUpperCase().replace(/\s+/g,''); }
 
-  /* Cada línea es una de tres cosas:
-       cat: ABT PREMIX          -> toda la categoría
-       VET0003  # BIOMACROTIL   -> un producto por código
+  /* Cada línea es una de cuatro cosas:
+       solo cat: VACUNAS        -> solo se usan los tipos así (Feli, 13/10): lo
+                                   de otro tipo queda afuera, y un producto
+                                   nuevo de estos tipos entra solo
+       cat: ABT PREMIX          -> toda la categoría afuera
+       VET0003  # BIOMACROTIL   -> un producto afuera, por código
        # nota                   -> comentario, se ignora                */
   function leerExcluidos(texto){
-    var cods = {}, cats = {};
+    var cods = {}, cats = {}, solo = {};
     texto.split('\n').forEach(function(linea){
       var limpio = linea.split('#')[0].trim();
       if(!limpio) return;
+      var s = /^solo\s+cat\s*:\s*(.+)$/i.exec(limpio);
       var m = /^cat\s*:\s*(.+)$/i.exec(limpio);
-      if(m) cats[m[1].trim().toUpperCase()] = true;
+      if(s) solo[s[1].trim().toUpperCase()] = true;
+      else if(m) cats[m[1].trim().toUpperCase()] = true;
       else  cods[clave(limpio)] = true;
     });
-    return {cods:cods, cats:cats};
+    return {cods:cods, cats:cats, solo:solo};
   }
 
   function cuantosExcluidos(){
-    return Object.keys(EXCLUIDOS.cods).length + Object.keys(EXCLUIDOS.cats).length;
+    return Object.keys(EXCLUIDOS.cods).length + Object.keys(EXCLUIDOS.cats).length + Object.keys(EXCLUIDOS.solo).length;
   }
 
   function guardarExcluidos(texto){
@@ -1635,7 +1649,9 @@
   var $ = function(id){ return document.getElementById(id); };
 
   function esExcluido(it){
-    if(EXCLUIDOS.cats[it.cat.toUpperCase()] === true) return true;
+    var cat = String(it.cat || '').trim().toUpperCase();
+    if(Object.keys(EXCLUIDOS.solo).length && EXCLUIDOS.solo[cat] !== true) return true;
+    if(EXCLUIDOS.cats[cat] === true) return true;
     return EXCLUIDOS.cods[clave(it.cod)] === true;
   }
 
@@ -3739,7 +3755,10 @@
     cols.forEach(function(c){ h.push('<th class="name">' + esc(c) + '</th>'); });
     h.push('</tr></thead><tbody>');
     L.forEach(function(x, i){
-      h.push('<tr class="uno' + (HIST.abierto === i ? ' abierto' : '') + '" data-h="' + i + '">' + filaHistorial(x).join('') + '</tr>');
+      // Anulado (Feli, 13/10): tachado, se sigue viendo, y los reportes no lo cuentan
+      var celdas = filaHistorial(x);
+      if(x.anulado) celdas[0] = celdas[0].replace('<td>', '<td><span class="anulado-m">🚫 Anulado</span> ');
+      h.push('<tr class="uno' + (HIST.abierto === i ? ' abierto' : '') + (x.anulado ? ' anulado' : '') + '" data-h="' + i + '">' + celdas.join('') + '</tr>');
       if(HIST.abierto === i) h.push('<tr class="det"><td colspan="' + cols.length + '" id="hdet">' + (HIST.detalle || 'Abriendo…') + '</td></tr>');
     });
     h.push('</tbody></table>');
@@ -3825,8 +3844,35 @@
       })));
       h.push(editorNota(r, 'lleva los productos de la mitad del mes'));
     }
+    h.push(bloqueAnular(x));
     h.push('<div class="acciones"><button class="btn" data-himprimir>Imprimir</button></div>');
     return h.join('');
+  }
+
+  /* Anular (Feli, 13/10): queda tachado y los reportes no lo cuentan. No toca Albor. */
+  function bloqueAnular(x){
+    if(x.anulado) return '<div class="anular-b"><b>🚫 Anulado</b> por ' + esc(x.anulado.quien) + (x.anulado.fecha ? ' el ' + fechaCorta(x.anulado.fecha.slice(0, 10)) : '') +
+      (x.anulado.motivo ? ': ' + esc(x.anulado.motivo) : '') + '. No cuenta en los reportes.' +
+      '<div class="acciones"><button class="linkbtn" data-hanular="no">Desanular</button><span class="aviso" id="hanularaviso"></span></div></div>';
+    return '<div class="anular-b"><details><summary>Anular</summary><p class="nota-a">Queda tachado en el historial y los reportes no lo cuentan. ' +
+      'En Albor no cambia nada: si hace falta, se borra allá a mano.</p>' +
+      '<textarea id="hanulartxt" rows="2" placeholder="Por qué se anula. Ej.: egreso borrado en Albor"></textarea>' +
+      '<div class="acciones"><button class="btn" data-hanular="si">Anular</button><span class="aviso" id="hanularaviso"></span></div></details></div>';
+  }
+
+  async function anularHistorial(si){
+    var i = HIST.abierto, x = HIST.resultados[i], cual = HIST.cual;
+    if(i === null || !x) return;
+    var motivo = si ? $('hanulartxt').value.trim() : '', aviso = $('hanularaviso');
+    if(si && !motivo){ aviso.textContent = 'Escribí por qué se anula.'; return; }
+    aviso.textContent = 'Guardando…';
+    var r = await api('anularHistorial', cual, x.id, si, motivo);
+    if(!r.ok){ aviso.textContent = r.sinConexion ? 'Hace falta señal.' : 'No se pudo: ' + (r.error || ''); return; }
+    x.anulado = r.anulado || null;
+    HIST.detalle = '';
+    HIST.abierto = null;
+    pintarHistorial();
+    abrirHistorial(i);
   }
 
   /* Lo de la planilla de armado de una transferencia del historial (Feli, 2026-10-07), como datosArmadoActual(). */
@@ -3916,6 +3962,8 @@
     var pl = e.target.closest('[data-hplanilla]');
     if(pl){ bajarPlanillaHistorial(pl.getAttribute('data-hplanilla')); return; }
     if(e.target.closest('[data-hnota]')){ guardarNotaHistorial(); return; }
+    var an = e.target.closest('[data-hanular]');
+    if(an){ anularHistorial(an.getAttribute('data-hanular') === 'si'); return; }
     if(e.target.closest('#hdet')) return;            // escribir en la nota no cierra el detalle
     var tr = e.target.closest('tr.uno');
     if(tr) abrirHistorial(Number(tr.getAttribute('data-h')));
@@ -5361,6 +5409,7 @@
     try{ archivos = [archivoParaPython(await libroTransferencia()), archivoParaPython(await libroPendientes())].filter(Boolean); }
     catch(e){ errorP(e.message || String(e)); return; }
     abrirAlbor('Transferencia a ' + dest.nombre + ' · ' + renglones + ' renglones');
+    var paraImprimir = archivos.slice();          // Feli (13/10): al terminar se abre la ventana de imprimir, aunque ya estuvieran bajadas
     archivos = planillasNuevas(archivos);
     archivos.forEach(function(a){ anotarBajada(a.base64, a.nombre); });
     alborLog('Abriendo Albor…');
@@ -5408,6 +5457,42 @@
       refrescarRecibidos();
     }
     terminarAlbor(r, lineas);
+    if(hechos.length) imprimirPlanillas(paraImprimir);
+  }
+
+  /* Al terminar una transferencia, la ventana de imprimir se abre sola con la
+     planilla de armado y después con la de pendientes (Feli, 13/10: "con un
+     toque"; el navegador no deja imprimir sin esa ventana). Una por vez: la
+     segunda se abre cuando se cierra la primera. */
+  async function imprimirPlanillas(lista){
+    for(var i = 0; i < lista.length; i++){
+      var a = lista[i];
+      if(!a || !a.base64) continue;
+      try{ await imprimirPDF(a.base64); }catch(e){ alborLog('No se pudo abrir la ventana de imprimir de «' + a.nombre + '»: está guardada en Descargas.'); }
+    }
+  }
+  function imprimirPDF(base64){
+    return new Promise(function(listo, mal){
+      var bin = atob(base64), bytes = new Uint8Array(bin.length);
+      for(var k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+      var url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      var fr = document.createElement('iframe');
+      fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
+      fr.src = url;
+      var fin = function(){ setTimeout(function(){ fr.remove(); URL.revokeObjectURL(url); }, 1000); listo(); };
+      fr.onload = function(){
+        setTimeout(function(){
+          try{ fr.contentWindow.focus(); fr.contentWindow.print(); }catch(e){ fr.remove(); mal(e); return; }
+          // La ventana de imprimir del PDF no avisa cuando se cierra: se sabe porque la página vuelve a moverse
+          // (mouse, teclado o foco; mientras la ventana está abierta, la página no recibe nada)
+          var EV = ['focus', 'mousemove', 'pointerdown', 'keydown', 'touchstart'];
+          var volvio = function(){ EV.forEach(function(n){ window.removeEventListener(n, volvio, true); }); clearTimeout(t); fin(); };
+          var t = setTimeout(volvio, 5 * 60 * 1000);
+          setTimeout(function(){ EV.forEach(function(n){ window.addEventListener(n, volvio, true); }); }, 1200);
+        }, 400);
+      };
+      document.body.appendChild(fr);
+    });
   }
 
   async function cargarEgresosEnAlbor(){

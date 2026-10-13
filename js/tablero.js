@@ -240,10 +240,13 @@ function abrirPorLink(ref) {
   abrirTarjeta(ref, true);
 }
 
+/** Las columnas que se ven en el tablero: la Tanda verde es una franja aparte (Feli, 13/10). */
+function columnasVisibles() { const t = colTanda(); return columnasTb().filter(function (c) { return c.columna !== t; }); }
+
 function pintarTablero() {
   const cont = $('tablero');
   if (!cont) return;
-  const cols = columnasTb();
+  const cols = columnasVisibles();
   if (!cols.length) {
     cont.innerHTML = '<div class="vacio" style="margin:16px">' +
       (TB.cargando ? 'Cargando el tablero…' : 'Hay poca señal: el tablero se ve cuando vuelva.') + '</div>';
@@ -263,18 +266,12 @@ function pintarTablero() {
     seccionAnterior = c.seccion;
     const orden = ordenDe(c.columna);
     const ts = ordenarPorFecha(porCol[c.columna], orden);
-    // Paso 2-bis: "📤 Mandar a Por cotizar" arriba de la Tanda verde (solo admins)
-    const tanda = admin && c.columna === colTanda() && ts.some(function (t) { return !t.trabajo; });
-    const recordar = tanda ? avisoTanda(ts) : '';
     // Paso 6: entre secciones, una línea del alto de la columna, del color de las otras líneas (Feli, 2026-10-04)
     html.push('<div class="col' + (primera && html.length ? ' nueva-sec' : '') + '" data-columna="' + esc(c.columna) + '" data-seccion="' + esc(c.seccion) + '">' +
       '<div class="col-h"><span class="sec">' + (primera ? esc(c.seccion) : '') + '</span>' +
       '<b>' + esc(c.columna) + '</b><span class="n">' + ts.length + '</span>' +
       '<button type="button" class="col-orden" data-orden-col="' + esc(c.columna) + '" aria-label="Ordenar la columna" title="Ordenar: a mano, más nuevos o más viejos primero (solo en este dispositivo)">' + ORDEN_TEXTO[orden] + '</button>' +
-      // Paso 4: sin el 📤, para no confundirlo con "📤 Pedir cotización" (Feli)
-      (tanda ? '<button type="button" class="btn-chico si tanda-cot" id="tb-tanda-cot"' + (juntandoTanda() ? ' disabled' : '') + '>' +
-        (juntandoTanda() ? 'Juntando la tanda…' : 'Mandar a ' + esc(colPorCotizar())) + '</button>' : '') +
-      (recordar ? '<div class="tanda-aviso">' + esc(recordar) + '</div>' : '') + '</div>' +
+      '</div>' +
       '<div class="lista" data-columna="' + esc(c.columna) + '">' +
       (ts.length ? ts.map(function (t) { return htmlTarjeta(t, c.columna === colPorRecibir()); }).join('')
                  : '<div class="vacia">Sin pedidos</div>') +
@@ -286,8 +283,6 @@ function pintarTablero() {
   cont.querySelectorAll('[data-orden-col]').forEach(function (b) {
     b.addEventListener('click', function () { cambiarOrden(b.dataset.ordenCol); pintarTablero(); });
   });
-  const bt = $('tb-tanda-cot');
-  if (bt) bt.addEventListener('click', mandarTandaACotizar);
   cont.querySelectorAll('.tarjeta').forEach(function (el) {
     const ref = el.dataset.ref;
     el.addEventListener('click', function (e) {
@@ -299,6 +294,7 @@ function pintarTablero() {
       el.addEventListener('mousedown', function (e) { conMouse(e, el, ref); });
     }
   });
+  pintarTanda();
   pintarProcesando();
   pintarStandby();
   pintarSecciones();
@@ -362,6 +358,48 @@ function avisoTanda(ts) {
     }).then(function (ya) { if (ya) abrirPedirCotizacion(r.tarjetas); });
   };
 })();
+
+/* ---------- Tanda verde (Feli, 13/10): plegada, arriba de Procesando ----------
+   Los pedidos 🟢 que esperan la tanda, una línea por pedido, como Stand by.
+   Arriba, "Mandar a Por cotizar" (admins) y el aviso de los días. Se
+   arrastran de la franja a una columna, y de una columna a la franja. */
+const K_TANDA = 'compras_tanda_abierta';
+function pintarTanda() {
+  const cont = $('tb-tanda');
+  if (!cont) return;
+  const tanda = colTanda();
+  cont.hidden = !TB.datos || !tanda;
+  if (cont.hidden) { cont.innerHTML = ''; return; }
+  const admin = APP.yo && APP.yo.admin;
+  const lista = ordenarPorFecha(vista().filter(function (t) { return t.columna === tanda && seVe(t); }), ordenDe(tanda));
+  const abierto = guardado.leer(K_TANDA) === '1';
+  // Paso 4: sin el 📤, para no confundirlo con "📤 Pedir cotización" (Feli)
+  const boton = admin && lista.some(function (t) { return !t.trabajo; });
+  const recordar = boton ? avisoTanda(lista) : '';
+  cont.innerHTML = '<div class="tanda-h"><button type="button" class="proc-h" id="tb-tanda-h" aria-expanded="' + abierto + '">' + (abierto ? '▾' : '▸') +
+    ' 🟢 ' + esc(tanda) + ' <span class="n">(' + lista.length + ')</span>' + (recordar ? ' <span class="tanda-aviso">' + esc(recordar) + '</span>' : '') + '</button>' +
+    (boton ? '<button type="button" class="btn-chico si tanda-cot" id="tb-tanda-cot"' + (juntandoTanda() ? ' disabled' : '') + '>' +
+      (juntandoTanda() ? 'Juntando la tanda…' : 'Mandar a ' + esc(colPorCotizar())) + '</button>' : '') + '</div>' +
+    (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">No hay ninguno. Acá entran los pedidos 🟢 del formulario' + (admin ? '; también se arrastra una tarjeta hasta acá' : '') + '.</p>' : '') +
+    (abierto && lista.length ? '<div class="proc-l">' + lista.map(function (x) {
+      return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
+        '<small>' + (x.trabajo ? '📋 Tarjeta de seguimiento · ' : '') + esc(x.solicitante ? 'Pidió ' + x.solicitante : '') + (x.fecha ? ' · cargado el ' + esc(fechaLinda(x.fecha)) : '') +
+        (x.fueraPadron ? ' · ✋ Fuera del padrón' : '') + '</small></button>';
+    }).join('') + '</div>' : '');
+  $('tb-tanda-h').addEventListener('click', function () {
+    guardado.guardar(K_TANDA, abierto ? '' : '1');
+    pintarTanda();
+  });
+  const bt = $('tb-tanda-cot');
+  if (bt) bt.addEventListener('click', mandarTandaACotizar);
+  cont.querySelectorAll('.proc-i').forEach(function (b) {
+    b.addEventListener('click', function (e) { if (TB.recienArrastrada) { e.preventDefault(); return; } abrirTarjeta(b.dataset.ref); });
+    if (admin) {
+      b.addEventListener('touchstart', function (e) { tocar(e, b, b.dataset.ref); }, { passive: true });
+      b.addEventListener('mousedown', function (e) { conMouse(e, b, b.dataset.ref); });
+    }
+  });
+}
 
 /* ---------- Stand by (Paso 2-ter): plegada, abajo del tablero ----------
    Los pedidos que llevaron 10 días hábiles en Entrantes (o que un admin mandó). */
@@ -444,7 +482,7 @@ function htmlTarjeta(t, enPorRecibir) {
 function pintarSecciones() {
   const cont = $('tb-secciones');
   const secs = [];
-  columnasTb().forEach(function (c) { if (secs.indexOf(c.seccion) === -1) secs.push(c.seccion); });
+  columnasVisibles().forEach(function (c) { if (secs.indexOf(c.seccion) === -1) secs.push(c.seccion); });
   if (cont.dataset.secs !== secs.join('|')) {
     cont.dataset.secs = secs.join('|');
     // En el celular se ven como puntitos (css): el nombre queda para el lector de pantalla y al dejar el dedo encima
@@ -623,7 +661,8 @@ function empezarArrastre(el, ref, x, y, ctx) {
   TB.arrastre = {
     ctx: ctx, ref: ref, el: el, fantasma: fantasma, hueco: hueco, dx: x - r.left, dy: y - r.top, x: x, y: y,
     // Paso 6: también se arrastra desde la franja de Stand by (sus líneas no están en una .lista)
-    origen: el.closest('.lista') ? el.closest('.lista').dataset.columna : colStandby(), despuesDeOriginal: tarjetaAnterior(hueco, el)
+    origen: el.closest('.lista') ? el.closest('.lista').dataset.columna : el.closest('#tb-tanda') ? colTanda() : colStandby(),
+    despuesDeOriginal: tarjetaAnterior(hueco, el)
   };
   document.body.classList.add('con-arrastre');
   requestAnimationFrame(autoDesplazar);
@@ -641,6 +680,11 @@ function seguirArrastre(x, y) {
   a.sobreStandby = !!sb;
   $('tb-standby').classList.toggle('destino', !!sb);
   if (sb) return;
+  // Feli (13/10): soltar sobre la franja de la Tanda verde la manda ahí
+  const tv = a.ctx === CTX_PEDIDOS && colTanda() && bajo && bajo.closest ? bajo.closest('#tb-tanda') : null;
+  a.sobreTanda = !!tv;
+  $('tb-tanda').classList.toggle('destino', !!tv);
+  if (tv) return;
   const col = bajo && bajo.closest ? bajo.closest('.col') : null;
   if (!col) return;
   const lista = col.querySelector('.lista');
@@ -702,6 +746,11 @@ function soltarArrastre(cancelado) {
   TB.recienArrastrada = true;
   setTimeout(function () { TB.recienArrastrada = false; }, 400);
   $('tb-standby').classList.remove('destino');
+  $('tb-tanda').classList.remove('destino');
+  if (!cancelado && a.sobreTanda) {
+    if (a.origen === colTanda()) return a.ctx.repintar();
+    return a.ctx.mover(a.ref, colTanda(), '*');
+  }
   if (!cancelado && a.sobreStandby) {
     if (a.origen === colStandby()) return a.ctx.repintar();
     const t = buscarEnVista(a.ref);
@@ -738,7 +787,9 @@ function irATarjeta(ref) {
   if (!el) {
     const enSb = vista().some(function (t) { return t.ref === ref && t.columna === colStandby(); });
     const enProc = ((TB.datos && TB.datos.procesando) || []).some(function (x) { return x.ref === ref; });
-    if (enSb) { guardado.guardar(K_STANDBY, '1'); pintarStandby(); el = $('tb-standby').querySelector('.proc-i' + sel); }
+    const enTanda = vista().some(function (t) { return t.ref === ref && t.columna === colTanda(); });
+    if (enTanda) { guardado.guardar(K_TANDA, '1'); pintarTanda(); el = $('tb-tanda').querySelector('.proc-i' + sel); }
+    else if (enSb) { guardado.guardar(K_STANDBY, '1'); pintarStandby(); el = $('tb-standby').querySelector('.proc-i' + sel); }
     else if (enProc) { guardado.guardar(K_PROCESANDO, '1'); pintarProcesando(); el = $('tb-procesando').querySelector('.proc-i' + sel); }
   }
   if (!el) return;

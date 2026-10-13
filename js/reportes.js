@@ -2,8 +2,8 @@
 /* ============================================================
    REPORTES (Fase 5, Paso 4; Feli, 9/10 y 10/10): Admin → Reportes
    ------------------------------------------------------------
-   Pestañas: Resumen, Stock (todavía no: espera los egresos de Albor de
-   antes y la charla con el gerente), Flujo, Plata, Proveedores y Padrón.
+   Pestañas: Resumen, Stock (todavía no: espera más meses de egresos y la
+   charla con el gerente), Flujo, Plata, Proveedores, Padrón y Egresos (13/10).
    - Se arman con un botón, nunca solos (Feli), y se bajan a Excel.
    - Los mismos filtros arriba: fechas, granja (sitio), rubro y comprador;
      en Flujo, también qué tablero. "Incluir lo de prueba" suma los DEMO-.
@@ -16,7 +16,8 @@
 const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false };
 const RP_PESTANAS = [
   { id: 'resumen', nombre: 'Resumen' }, { id: 'stock', nombre: 'Stock' }, { id: 'flujo', nombre: 'Flujo' },
-  { id: 'plata', nombre: 'Plata' }, { id: 'proveedores', nombre: 'Proveedores' }, { id: 'padron', nombre: 'Padrón' }
+  { id: 'plata', nombre: 'Plata' }, { id: 'proveedores', nombre: 'Proveedores' }, { id: 'padron', nombre: 'Padrón' },
+  { id: 'egresos', nombre: 'Egresos' }                    // Feli (13/10): lo egresado de cada granja (Transferencias)
 ];
 const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
@@ -49,6 +50,8 @@ function pintarPestanasRp() {
     return '<button type="button" class="rp-pest' + (p.id === RP.pestana ? ' on' : '') + '" data-p="' + p.id + '">' + esc(p.nombre) + '</button>';
   }).join('');
   $('rp-tablero-l').hidden = RP.pestana !== 'flujo';
+  // Egresos: solo fechas y granja (no tiene rubro ni comprador)
+  $('rp-rubro').closest('label').hidden = $('rp-comprador').closest('label').hidden = RP.pestana === 'egresos';
   $('rp-armar').hidden = RP.pestana === 'stock';
   $('rp-excel').hidden = RP.pestana === 'stock' || !RP.datos[RP.pestana];
 }
@@ -92,6 +95,7 @@ function tablasDe(cual, r) {
   if (cual === 'plata') return tablasPlata(r);
   if (cual === 'proveedores') return tablasProveedores(r);
   if (cual === 'padron') return tablasPadron(r);
+  if (cual === 'egresos') return tablasEgresos(r);
   return [];
 }
 
@@ -208,6 +212,26 @@ function tablasPadron(r) {
   ];
 }
 
+/* Egresos (Feli, 13/10): por la fecha contable del comprobante; lo anulado en el Historial no cuenta. Unidades de Albor. */
+function tablasEgresos(r) {
+  const mes = function (m) { const x = String(m).split('-'); return x[1] + '/' + x[0]; };
+  const t = r.totales || {};
+  return [
+    { titulo: 'Por producto', nota: nro(t.comprobantes) + ' comprobantes, ' + nro(t.productos) + ' productos. Cantidades en la unidad de Albor. ' +
+        (r.anulados ? 'Hay ' + nro(r.anulados) + ' anulado' + (r.anulados === 1 ? '' : 's') + ' en el Historial: no se cuentan.' : ''),
+      cab: ['Producto', 'Cuenta', 'Total'].concat(r.granjas).concat(r.meses.length > 1 ? r.meses.map(mes) : []),
+      filas: r.productos.map(function (p) {
+        return [p.insumo, String(p.cuenta || '').replace(/^\d+/, ''), nro(p.total)]
+          .concat(r.granjas.map(function (g) { return p.granjas && p.granjas[g] ? nro(p.granjas[g]) : ''; }))
+          .concat(r.meses.length > 1 ? r.meses.map(function (m) { return p.meses && p.meses[m] ? nro(p.meses[m]) : ''; }) : []);
+      }), vacio: 'Ningún egreso en estas fechas.' },
+    { titulo: 'Por granja y cuenta', cab: ['Granja', 'Cuenta', 'Comprobantes', 'Productos'],
+      filas: r.porGranja.map(function (g) { return [g.granja, g.cuenta, nro(g.comprobantes), nro(g.productos)]; }), vacio: '' },
+    { titulo: 'Comprobantes', cab: ['Fecha', 'Comprobante', 'Granja', 'Cuenta', 'Renglones', 'Cargó'],
+      filas: r.comprobantes.map(function (c) { return [fechaCorta(c.dia), c.comprobante, c.granja, c.cuenta, nro(c.renglones), c.quien || '']; }), vacio: '' }
+  ];
+}
+
 /* ---------- Dibujar ---------- */
 function htmlTabla(t, i) {
   let h = '<div class="ve-bloque"><h3>' + esc(t.titulo) + '</h3>' + (t.nota ? '<p class="nota">' + t.nota + '</p>' : '');
@@ -226,8 +250,8 @@ function htmlTabla(t, i) {
 function pintarReporte() {
   const cual = RP.pestana, cuerpo = $('rp-cuerpo');
   if (cual === 'stock') {
-    cuerpo.innerHTML = '<div class="ve-bloque"><h3>Stock: qué hay y qué comprar</h3><p class="nota">Todavía no: espera los egresos de Albor de los 6 meses anteriores y ' +
-      'la charla con el gerente sobre qué reportes usa (pendientes de Feli). Mientras, las existencias de Albor de cada día ya se están guardando.</p></div>';
+    cuerpo.innerHTML = '<div class="ve-bloque"><h3>Stock: qué hay y qué comprar</h3><p class="nota">Todavía no: espera más meses de egresos y ' +
+      'la charla con el gerente sobre qué reportes usa (pendientes de Feli). Lo egresado de cada granja ya se ve en la pestaña Egresos (desde septiembre).</p></div>';
     return;
   }
   const d = RP.datos[cual];

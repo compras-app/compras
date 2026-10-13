@@ -626,6 +626,14 @@ html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96)
 body.con-arrastre #tb-standby{outline:2px dashed var(--accent);outline-offset:-2px}
 body.con-arrastre #tb-standby .proc-h::after{content:" · Soltá acá para mandarla a Stand by";font-weight:500;color:var(--muted)}
 #tb-standby.destino{background:var(--accent-soft)}
+/* Tanda verde como franja (Feli, 13/10): arriba de Procesando, con "Mandar a Por cotizar" a la derecha */
+.procesando.tanda .tanda-h{display:flex;align-items:center;gap:8px}
+.procesando.tanda .tanda-h .proc-h{flex:1;width:auto}
+.procesando.tanda .tanda-aviso{font-weight:500;font-size:13px;margin:0}
+.procesando.tanda .tanda-cot{flex:none}
+body.con-arrastre #tb-tanda{outline:2px dashed var(--accent);outline-offset:-2px}
+body.con-arrastre #tb-tanda .proc-h::after{content:" · Soltá acá para mandarla a la Tanda verde";font-weight:500;color:var(--muted)}
+#tb-tanda.destino{background:var(--accent-soft)}
 .tarjeta.resaltada,.proc-i.resaltada{outline:3px solid var(--accent);outline-offset:2px;transition:outline-color .3s}
 .tarjeta .sobre.en-entregas{color:#ff8a80}
 .proc-i{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -960,3 +968,6 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .rp-linea circle.prox{fill:none;stroke:var(--accent,#d08a93);stroke-width:2;stroke-dasharray:3 2}
 .rp-linea text{fill:var(--muted);font-size:11px}
 @media (max-width:600px){.rp-filtros .filtro{flex:1 1 40%}.rp-filtros .filtro select,.rp-filtros .filtro input{min-width:0}.rp-caja b{font-size:19px}}
+/* "＋ Agregar proveedor" en Pedir cotización (Feli, 13/10): chiquito, abajo del título del bloque */
+.cotizar .cot-agregar{font-size:12px;margin:-2px 0 6px;padding:0;display:block;text-align:left;width:auto}
+.cotizar .cot-nuevo{display:flex;flex-direction:column;gap:6px;margin:4px 0 8px}

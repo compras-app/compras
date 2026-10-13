@@ -147,7 +147,9 @@
           <label class="filtro" id="tb-resp-l" hidden><span>Responsable</span><select id="tb-resp"></select></label>
         </div>
       </div>
-      <!-- Procesando (Fase 3): pedidos cuyos productos ya están todos en tarjetas de trabajo. Plegada, arriba de la Tanda verde -->
+      <!-- Tanda verde (Feli, 13/10): plegada, arriba de Procesando; sus tarjetas se arrastran a una columna y al revés -->
+      <div class="procesando tanda" id="tb-tanda" hidden></div>
+      <!-- Procesando (Fase 3): pedidos cuyos productos ya están todos en tarjetas de trabajo. Plegada, abajo de la Tanda verde -->
       <div class="procesando" id="tb-procesando" hidden></div>
       <div class="tablero" id="tablero" aria-label="Tablero de pedidos"></div>
       <!-- Stand by (Paso 2-ter): los que llevan muchos días en Entrantes. Plegada, abajo del tablero -->
