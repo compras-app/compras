@@ -1860,17 +1860,31 @@
   }
   /* Fase 5 (Feli, 10/10): cada reporte de existencias que se baja (o se arrastra) también va al servidor, tal cual,
      para el reporte de Stock. Si no hay señal, se reintenta la próxima vez que se abre Transferencias. */
-  var subiendoExist = false;
-  async function subirExistencias(){
-    if(subiendoExist || !ES_ADMIN || !APP.token) return;
+  /* Feli (13/10): antes solo se mandaba si el reporte entraba en lo guardado de la compu (y como pesa 700 KB y comparte
+     lugar con Compras, a veces no entraba y no se mandaba nunca). Ahora se manda apenas se carga, desde la memoria; lo
+     guardado en la compu queda solo para reintentar si no había señal. */
+  var subiendoExist = false, EXIST_SUBIDA = {};
+  async function subirExistencias(texto, nombre){
+    var admin = !!(APP.yo && APP.yo.admin);
+    if(subiendoExist || !admin || !APP.token) return;
     var g = null;
     try{ g = JSON.parse(localStorage.getItem(CLAVE_EXIST) || 'null'); }catch(e){}
-    if(!g || !g.texto || g.subida || !g.idSubida) return;
+    var envio = null;
+    if(texto && g && g.texto === texto && g.subida) return;              // ya está en el servidor
+    if(texto && !EXIST_SUBIDA[texto.length + ':' + texto.slice(-200)]){
+      envio = { id: (g && g.texto === texto && g.idSubida) || ('X' + nuevoId().slice(1)), texto: texto, nombre: nombre || '' };
+    }else if(g && g.texto && !g.subida && g.idSubida){
+      envio = { id: g.idSubida, texto: g.texto, nombre: g.nombre || '' };
+    }
+    if(!envio) return;
     subiendoExist = true;
     try{
-      var r = await apiLenta('guardarExistenciasAlbor', { id: g.idSubida, texto: g.texto, nombre: g.nombre || '', hasta: g.hasta || '',
+      var r = await apiLenta('guardarExistenciasAlbor', { id: envio.id, texto: envio.texto, nombre: envio.nombre, hasta: (g && g.hasta) || '',
                                                          filas: DATA ? DATA.filasLeidas : 0 });
-      if(r.ok) recordarExistencias({ subida: true });
+      if(r.ok){
+        EXIST_SUBIDA[envio.texto.length + ':' + envio.texto.slice(-200)] = true;
+        if(g && g.texto === envio.texto) recordarExistencias({ subida: true });
+      }
     } finally { subiendoExist = false; }
   }
 
@@ -1904,7 +1918,7 @@
     }
     DATA = d;
     if(!recuperando) guardarExistencias(texto, nombreArchivo, fechaArchivo);
-    setTimeout(subirExistencias, 0);   // Fase 5: al servidor (también lo que quedó sin subir)
+    setTimeout(function(){ subirExistencias(texto, nombreArchivo); }, 0);   // Fase 5: al servidor (también lo que quedó sin subir)
     GRANJAS_FUERA = {};              // reporte nuevo: vuelven todas las granjas tildadas
     $('p-hasta').textContent = '';
     DATA.archivoNombre = nombreArchivo || '';

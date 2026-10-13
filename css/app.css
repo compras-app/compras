@@ -976,3 +976,6 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .cotizar .cot-sintel .linkbtn{display:inline;padding:0;min-height:0;margin-left:4px}
 /* Admin → Padrón: varios rubros (Feli, 13/10) */
 .pf-rubros{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
+/* Reportes → Stock: lo que no alcanza (Feli, 13/10) */
+tr.rp-falta td{color:var(--danger)}
+tr.rp-falta td:last-child{font-weight:700}

@@ -2,8 +2,8 @@
 /* ============================================================
    REPORTES (Fase 5, Paso 4; Feli, 9/10 y 10/10): Admin → Reportes
    ------------------------------------------------------------
-   Pestañas: Resumen, Stock (todavía no: espera más meses de egresos y la
-   charla con el gerente), Flujo, Plata, Proveedores, Padrón y Egresos (13/10).
+   Pestañas: Resumen, Stock (13/10: egresos contra la existencia de las
+   oficinas), Flujo, Plata, Proveedores, Padrón y Egresos (13/10).
    - Se arman con un botón, nunca solos (Feli), y se bajan a Excel.
    - Los mismos filtros arriba: fechas, granja (sitio), rubro y comprador;
      en Flujo, también qué tablero. "Incluir lo de prueba" suma los DEMO-.
@@ -50,10 +50,11 @@ function pintarPestanasRp() {
     return '<button type="button" class="rp-pest' + (p.id === RP.pestana ? ' on' : '') + '" data-p="' + p.id + '">' + esc(p.nombre) + '</button>';
   }).join('');
   $('rp-tablero-l').hidden = RP.pestana !== 'flujo';
-  // Egresos: solo fechas y granja (no tiene rubro ni comprador)
-  $('rp-rubro').closest('label').hidden = $('rp-comprador').closest('label').hidden = RP.pestana === 'egresos';
-  $('rp-armar').hidden = RP.pestana === 'stock';
-  $('rp-excel').hidden = RP.pestana === 'stock' || !RP.datos[RP.pestana];
+  // Egresos: solo fechas y granja (no tiene rubro ni comprador). Stock: sin filtros (los meses y las oficinas son fijos)
+  const st = RP.pestana === 'stock';
+  $('rp-rubro').closest('label').hidden = $('rp-comprador').closest('label').hidden = RP.pestana === 'egresos' || st;
+  ['rp-desde', 'rp-hasta', 'rp-sitio'].forEach(function (id) { $(id).closest('label').hidden = st; });
+  $('rp-excel').hidden = !RP.datos[RP.pestana];
 }
 $('rp-pestanas').addEventListener('click', function (e) {
   const b = e.target.closest('[data-p]');
@@ -69,7 +70,7 @@ function leerFiltrosRp() {
 }
 
 async function armarReporte() {
-  if (RP.armando || RP.pestana === 'stock') return;
+  if (RP.armando) return;
   RP.armando = true;
   const cual = RP.pestana, f = leerFiltrosRp();
   notaAd('rp-estado', 'Armando el reporte…');
@@ -96,6 +97,7 @@ function tablasDe(cual, r) {
   if (cual === 'proveedores') return tablasProveedores(r);
   if (cual === 'padron') return tablasPadron(r);
   if (cual === 'egresos') return tablasEgresos(r);
+  if (cual === 'stock') return tablasStock(r);
   return [];
 }
 
@@ -232,6 +234,33 @@ function tablasEgresos(r) {
   ];
 }
 
+/* Stock (Feli, 13/10): lo egresado de las granjas contra la existencia de Albor de la oficina que las abastece.
+   Consumo esperado = promedio de los últimos meses completos con egresos (hasta 6), sin margen. Diferencia negativa = falta. */
+function tablasStock(r) {
+  const mes = function (m) { const x = String(m).split('-'); return x[1] + '/' + x[0]; };
+  const meses = r.meses || [];
+  const deMeses = !meses.length ? 'todavía no hay egresos de meses completos' : meses.length === 1 ? 'lo egresado en ' + mes(meses[0]) : 'el promedio de ' + meses.map(mes).join(', ');
+  return (r.grupos || []).map(function (g) {
+    const ps = r.productos.filter(function (p) { return p.grupo === g.grupo; });
+    const faltan = ps.filter(function (p) { return p.diferencia < 0; }).length;
+    const varias = g.oficinas.length > 1;
+    return {
+      titulo: g.nombre + ' — egresos de ' + g.granjas,
+      nota: 'Consumo esperado del mes que viene: ' + deMeses + '. Existencia: la de Albor' + (r.existencias ? ' del ' + new Date(r.existencias.fecha).toLocaleDateString('es-AR') : '') + '. ' +
+            (faltan ? '<b>' + nro(faltan) + (faltan === 1 ? ' producto no alcanza' : ' productos no alcanzan') + '</b> (arriba, en rojo).' : 'Alcanza para todo.'),
+      cab: ['Producto', 'Tipo'].concat(meses.map(function (m) { return 'Egresado ' + mes(m); })).concat(['Consumo esperado'])
+        .concat(varias ? g.oficinas.map(function (o) { return o.replace('OFICINA ', 'Of. '); }) : []).concat(['Existencia', 'Diferencia']),
+      filas: ps.map(function (p) {
+        return [p.insumo, p.tipo || ''].concat(meses.map(function (m) { return p.meses && p.meses[m] ? nro(p.meses[m]) : ''; }))
+          .concat([nro(p.esperado)]).concat(varias ? g.oficinas.map(function (o) { return nro((p.oficinas || {})[o] || 0); }) : [])
+          .concat([nro(p.existencia), (p.diferencia < 0 ? 'Faltan ' + nro(-p.diferencia) : p.diferencia > 0 ? 'Sobran ' + nro(p.diferencia) : 'Justo')]);
+      }),
+      falta: ps.map(function (p) { return p.diferencia < 0; }),
+      vacio: 'Sin egresos ni existencias para esta oficina.'
+    };
+  });
+}
+
 /* ---------- Dibujar ---------- */
 function htmlTabla(t, i) {
   let h = '<div class="ve-bloque"><h3>' + esc(t.titulo) + '</h3>' + (t.nota ? '<p class="nota">' + t.nota + '</p>' : '');
@@ -239,7 +268,8 @@ function htmlTabla(t, i) {
   h += '<div class="ve-tabla"><table><thead><tr>' + t.cab.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
     t.filas.map(function (f, j) {
       const clic = t.abrir !== undefined || t.variantes || t.linea;
-      return '<tr' + (clic ? ' class="rp-clic" data-t="' + i + '" data-f="' + j + '"' : '') + '>' + f.map(function (c) {
+      const cls = (clic ? 'rp-clic' : '') + (t.falta && t.falta[j] ? ' rp-falta' : '');
+      return '<tr' + (cls ? ' class="' + cls.trim() + '"' : '') + (clic ? ' data-t="' + i + '" data-f="' + j + '"' : '') + '>' + f.map(function (c) {
         if (c && typeof c === 'object' && c.barra !== undefined) return '<td class="rp-barra">' + (c.barra > 0 ? '<span style="width:' + Math.round(Math.min(1, c.barra) * 100) + '%"></span>' : '') + '</td>';
         return '<td>' + esc(c) + '</td>';
       }).join('') + '</tr>';
@@ -249,14 +279,19 @@ function htmlTabla(t, i) {
 
 function pintarReporte() {
   const cual = RP.pestana, cuerpo = $('rp-cuerpo');
-  if (cual === 'stock') {
-    cuerpo.innerHTML = '<div class="ve-bloque"><h3>Stock: qué hay y qué comprar</h3><p class="nota">Todavía no: espera más meses de egresos y ' +
-      'la charla con el gerente sobre qué reportes usa (pendientes de Feli). Lo egresado de cada granja ya se ve en la pestaña Egresos (desde septiembre).</p></div>';
+  const d = RP.datos[cual];
+  if (!d) {
+    cuerpo.innerHTML = '<p class="nota rp-vacio">' + (cual === 'stock' ? 'Compara lo que se egresó de las granjas con la existencia de Albor de la oficina que las abastece: Candelaria y El Cebil con la Oficina JM, La Colorada con la Oficina Casa y la LC 50. Tocá <b>Armar reporte</b>.'
+                                                                      : 'Elegí las fechas y los filtros y tocá <b>Armar reporte</b>.') + '</p>';
     return;
   }
-  const d = RP.datos[cual];
-  if (!d) { cuerpo.innerHTML = '<p class="nota rp-vacio">Elegí las fechas y los filtros y tocá <b>Armar reporte</b>.</p>'; return; }
   const r = d.r;
+  if (cual === 'stock') {
+    RP.tablas = tablasStock(r);
+    cuerpo.innerHTML = (r.existencias ? '' : '<p class="estado warn">Todavía no hay ningún reporte de existencias de Albor guardado: bajalo en Transferencias (Conteo de stock) y armá este reporte de nuevo.</p>') +
+      '<p class="nota rp-de">Armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</p>' + RP.tablas.map(htmlTabla).join('');
+    return;
+  }
   const cab = '<p class="nota rp-de">Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta) + (r.prueba ? ' · con lo de prueba' : '') +
               ' · armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</p>';
   if (cual === 'resumen') { cuerpo.innerHTML = cab + htmlResumen(r); return; }
@@ -279,7 +314,7 @@ function htmlResumen(r) {
     caja('flujo', dias(pap.mediana), 'de punta a punta', 'lo normal, ' + nro(pap.n || 0) + ' entregados') +
     caja('flujo', dias(urg.mediana), 'las urgentes', 'de punta a punta') +
     caja('flujo', nro(r.trabadas), 'trabadas ahora', r.traba ? 'donde más tardan: ' + r.traba : '') +
-    caja('stock', '—', 'insumos a comprar', 'la pestaña Stock, más adelante') +
+    caja('stock', '—', 'qué falta en las oficinas', 'en la pestaña Stock') +
     '</div>';
 }
 
@@ -341,11 +376,12 @@ $('rp-excel').addEventListener('click', async function () {
   tablas.forEach(function (t) {
     const cab = t.cab.filter(function (c, i) { return !(t.barra === i); });
     const filas = t.filas.map(function (f) { return f.filter(function (c, i) { return !(t.barra === i); }); });
-    const hoja = XLSX.utils.aoa_to_sheet([[t.titulo], ['Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta)], []].concat([cab]).concat(filas));
+    const sub = RP.pestana === 'stock' ? String(t.nota || '').replace(/<[^>]*>/g, '') : 'Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta);
+    const hoja = XLSX.utils.aoa_to_sheet([[t.titulo], [sub], []].concat([cab]).concat(filas));
     let nombre = t.titulo.replace(/[\\/?*[\]:]/g, '').slice(0, 28) || 'Hoja';
     while (usados[nombre]) nombre = nombre.slice(0, 26) + ' ' + (Object.keys(usados).length + 1);
     usados[nombre] = 1;
     XLSX.utils.book_append_sheet(libro, hoja, nombre);
   });
-  XLSX.writeFile(libro, 'Reporte ' + nombrePest + ' ' + r.desde + ' a ' + r.hasta + '.xlsx');
+  XLSX.writeFile(libro, 'Reporte ' + nombrePest + ' ' + (RP.pestana === 'stock' ? hoyAr() : r.desde + ' a ' + r.hasta) + '.xlsx');
 });
