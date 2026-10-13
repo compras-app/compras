@@ -89,12 +89,14 @@ async function abrirPedirCotizacion(refs) {
   let varios = null;              // el panel de "Proveedores para varios": {lineas: {}, provs: {}, q}
   let nuevo = null;               // "＋ Agregar proveedor" (Feli, 13/10): {clave, nombre, tel, guardando}
   const provsDe = function (x) { return puntual[x.id] || x.sugeridos; };
-  const pendientes = function (x) { return provsDe(x).filter(function (p) { return (deNuevo || !x.ya[p]) && provs[p] && provs[p].activo !== false; }); };
+  // Feli (13/10): a quién proponer lo decide el servidor (rubro + activo); un particular no activo también recibe
+  const pendientes = function (x) { return provsDe(x).filter(function (p) { return (deNuevo || !x.ya[p]) && provs[p]; }); };
+  let telAbierto = null;          // "cargar teléfono": el ID del proveedor al que se le está cargando
   const bloqueDe = function (x) {
     const c = varias ? x.cref + '|' : '';          // con varias tarjetas, cada una con sus bloques
     if (puntual[x.id]) return { clave: c + 'u:' + puntual[x.id].slice().sort().join(','), titulo: '🎯 ' + puntual[x.id].map(nombreProv).join(', '), sub: 'Solo esta vez', provs: puntual[x.id], puntual: true };
     if (x.particulares) return { clave: c + 'p:' + x.sugeridos.slice().sort().join(','), titulo: '🎯 ' + x.sugeridos.map(nombreProv).join(', '), sub: 'Proveedores particulares', provs: x.sugeridos };
-    return { clave: c + 'r:' + x.rubro, titulo: 'Proveedores de ' + x.rubro, provs: x.sugeridos, rubro: x.rubro };
+    return { clave: c + 'r:' + x.rubro, titulo: 'Proveedores de ' + x.rubro.split('|').join(' + '), provs: x.sugeridos, rubro: x.rubro };
   };
   const llega = function (p) { return !!provs[p] && (provs[p].telefono || r.prueba.si); };
   /** [{ref, mensajes: [{proveedor, lineas}]}]: un pedido de cotización por tarjeta, un mensaje por proveedor. */
@@ -141,8 +143,10 @@ async function abrirPedirCotizacion(refs) {
       return cab + htmlBloque(b);
     }).join('');
     function htmlBloque(b) {
-      const activos = b.provs.filter(function (p) { return provs[p] && provs[p].activo !== false; });
+      const activos = b.provs.filter(function (p) { return provs[p]; });
       const sinNadie = !activos.length;
+      // Sin teléfono (Feli, 13/10): se proponen igual, con el aviso y la opción de cargarlo ahí mismo
+      const sinTel = r.prueba.si ? [] : activos.filter(function (p) { return !provs[p].telefono; });
       const k = esc(b.clave);
       return '<div class="cot-bloque">' +
         '<div class="cot-bloque-h"><div><b>' + esc(b.titulo) + '</b>' + (activos.length ? ' <span class="n">(' + activos.length + ')</span>' : '') +
@@ -157,7 +161,14 @@ async function abrirPedirCotizacion(refs) {
             '<button type="button" class="btn2" id="cz-n-no">Cancelar</button></div></div>'
           : '<button type="button" class="linkbtn cot-agregar" data-nuevo="' + k + '">＋ Agregar proveedor</button>') +
         (abiertos[b.clave] ? '<div class="cot-ver">' + activos.map(function (p) {
-          return '<div>' + esc(nombreProv(p)) + (provs[p].telefono ? '' : r.prueba.si ? ' <small>(sin teléfono: en modo prueba sale igual)</small>' : ' <small>(sin teléfono: no le llega)</small>') + '</div>';
+          return '<div>' + esc(nombreProv(p)) + (provs[p].activo === false ? ' <small>(no activo: va porque es particular)</small>' : '') +
+            (provs[p].telefono ? '' : r.prueba.si ? ' <small>(sin teléfono: en modo prueba sale igual)</small>' : ' <small>(sin teléfono: no le llega)</small>') + '</div>';
+        }).join('') + '</div>' : '') +
+        (sinTel.length ? '<div class="cot-sintel">' + sinTel.map(function (p) {
+          return telAbierto === p
+            ? '<div class="cot-nuevo"><b>📱 Teléfono de ' + esc(nombreProv(p)) + '</b><input type="tel" id="cz-t-tel" placeholder="WhatsApp: 549 + característica + número">' +
+              '<div class="cot-varios-b"><button type="button" class="btn" id="cz-t-ok">Guardar</button><button type="button" class="btn2" id="cz-t-no">Cancelar</button></div></div>'
+            : '<p class="estado warn">⚠️ ' + esc(nombreProv(p)) + ' no tiene teléfono: no le llega. <button type="button" class="linkbtn" data-tel="' + esc(p) + '">Cargar teléfono</button></p>';
         }).join('') + '</div>' : '') +
         (sinNadie ? '<p class="estado warn">' + (b.rubro === 'Sin rubro' || b.rubro === 'OTROS' ? '✋ ' + esc(b.rubro) + ': ' + (b.productos.length === 1 ? 'este producto debe' : 'estos productos deben') + ' ser gestionado' + (b.productos.length === 1 ? '' : 's') + ' manualmente. Si igual querés pedirlo desde acá, usá "🎯 Proveedores para varios".'
           : 'No hay proveedores para ' + esc(b.rubro) + '. Usá "🎯 Proveedores para varios".') + '</p>' : '') +
@@ -177,7 +188,7 @@ async function abrirPedirCotizacion(refs) {
     if (!varios) html += '<button type="button" class="btn2" id="cz-varios">🎯 Proveedores para varios</button>';
     else {
       const q = sinTildes(varios.q || '');
-      const lista = r.proveedores.filter(function (p) { return p.activo !== false && (!q || sinTildes(p.nombre).indexOf(q) !== -1); }).slice(0, 40);
+      const lista = r.proveedores.filter(function (p) { return !q || sinTildes(p.nombre).indexOf(q) !== -1; }).slice(0, 40);
       html += '<div class="cot-varios"><b>🎯 Proveedores para varios</b><p class="nota" style="margin:4px 0 8px">Solo esta vez: no cambia el rubro ni el padrón.</p>' +
         '<small class="sub">Productos</small>' + r.productos.map(function (x) {
           return '<button type="button" class="choice sub-choice" data-vl="' + esc(x.id) + '" aria-checked="' + !!varios.lineas[x.id] + '"><span class="marca">' +
@@ -189,7 +200,7 @@ async function abrirPedirCotizacion(refs) {
         }).join('') +
         lista.map(function (p) {
           return '<button type="button" class="choice sub-choice" data-vp="' + esc(p.id) + '" aria-checked="' + !!varios.provs[p.id] + '"><span class="marca">' +
-            (varios.provs[p.id] ? '☑' : '☐') + '</span><span>' + esc(p.nombre) + (p.telefono ? '' : ' <small>(sin teléfono)</small>') + '</span></button>';
+            (varios.provs[p.id] ? '☑' : '☐') + '</span><span>' + esc(p.nombre) + (p.activo === false ? ' <small>(no activo)</small>' : '') + (p.telefono ? '' : ' <small>(sin teléfono)</small>') + '</span></button>';
         }).join('') +
         '<div class="cot-varios-b"><button type="button" class="btn" id="cz-varios-ok">Aplicar</button><button type="button" class="btn2" id="cz-varios-no">Cancelar</button></div></div>';
     }
@@ -214,6 +225,23 @@ async function abrirPedirCotizacion(refs) {
       $('cz-n-tel').addEventListener('input', function (e) { nuevo.tel = e.target.value; });
       $('cz-n-no').addEventListener('click', function () { nuevo = null; pintar(); });
       $('cz-n-ok').addEventListener('click', agregarProveedor);
+    }
+    cuerpo.querySelectorAll('[data-tel]').forEach(function (el) {
+      el.addEventListener('click', function () { telAbierto = el.dataset.tel; pintar(); const t = $('cz-t-tel'); if (t) t.focus(); });
+    });
+    if (telAbierto && $('cz-t-ok')) {
+      $('cz-t-no').addEventListener('click', function () { telAbierto = null; pintar(); });
+      $('cz-t-ok').addEventListener('click', async function () {
+        const b = this, tel = $('cz-t-tel').value.replace(/\D/g, ''), id = telAbierto;
+        if (!tel) return aviso('Escribí el WhatsApp, con 549 adelante.', 'bad');
+        b.disabled = true; b.textContent = 'Comprobando…';
+        const g = await api('telefonoProveedor', id, tel);
+        if (!g.ok) { b.disabled = false; b.textContent = 'Guardar'; return aviso(g.sinConexion ? '📶 Para cargar el teléfono hace falta señal.' : g.error, 'bad'); }
+        provs[id].telefono = true;
+        telAbierto = null;
+        pintar();
+        aviso('✅ Teléfono guardado: ' + nombreProv(id) + ' va en este envío.');
+      });
     }
     if ($('cz-varios')) $('cz-varios').addEventListener('click', function () { varios = { lineas: {}, provs: {}, q: '' }; pintar(); });
     if ($('cz-denuevo')) $('cz-denuevo').addEventListener('click', function () { deNuevo = !deNuevo; pintar(); });
@@ -242,7 +270,7 @@ async function abrirPedirCotizacion(refs) {
     }
     const n = cuantos(), ok = $('dg-ok');
     if (ok) {
-      ok.disabled = !n || !!varios || !!nuevo;
+      ok.disabled = !n || !!varios || !!nuevo || !!telAbierto;
       ok.textContent = !n ? 'Enviar' : varias ? 'Enviar ' + n + (n === 1 ? ' mensaje' : ' mensajes') : 'Enviar a ' + n + (n === 1 ? ' proveedor' : ' proveedores');
     }
   };

@@ -2027,7 +2027,7 @@ function armarSelectorProv(o) {
     const l2 = q ? o.proveedores.filter(function (x) { return coincide(x.nombre, q); })
                  : o.proveedores.filter(function (x) { return rubro && x.canales.indexOf(rubro) !== -1; });   // sin buscar: los del rubro
     return l2.filter(function (x) { return !yaElegido(x); }).slice(0, 8)
-      .map(function (x) { return { texto: x.nombre, sub: x.canales.join(', '), valor: x }; });
+      .map(function (x) { return { texto: x.nombre, sub: x.canales.join(', ') + (x.activo === false ? (x.canales.length ? ' · ' : '') + 'no activo' : ''), valor: x }; });
   }, function (x) { provs.push({ id: x.id, nombre: x.nombre }); $('sp-q').value = ''; pintar(); });
   $('sp-nuevo-b').addEventListener('click', function () {
     $('sp-nuevo').hidden = false;
@@ -2113,7 +2113,10 @@ async function editarProducto(ref, id, pre) {
       $('ep-cant').value = inicial.cantidad;
       const sel = $('ep-rubro');
       sel.innerHTML = '<option value="">Sin rubro</option>' + canales.map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('');
-      sel.value = pre && pre.canal ? pre.canal : inicial.canal;
+      const elegido = pre && pre.canal ? pre.canal : inicial.canal;
+      // Varios rubros ("A|B", Feli 13/10): se eligen en Admin → Padrón; acá se ven como una opción más
+      if (elegido && canales.indexOf(elegido) === -1) sel.insertAdjacentHTML('beforeend', '<option value="' + esc(elegido) + '">' + esc(elegido.split('|').join(' + ')) + '</option>');
+      sel.value = elegido;
       const revisar = function () {
         const cant = Number($('ep-cant').value.trim().replace(',', '.'));
         const c = cambios(), nombre = $('ep-nombre').value.trim();

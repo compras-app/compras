@@ -607,7 +607,7 @@ function padronFiltrado() {
   const q = sinTildes($('pa-q').value.trim()), rubro = $('pa-rubro').value, inactivos = $('pa-inactivos').checked;
   return ((PA.datos && PA.datos.familias) || []).filter(function (f) {
     if (!inactivos && !f.activa) return false;
-    if (rubro === '__sin' ? (f.canal || f.proveedores.length) : (rubro && f.canal !== rubro)) return false;
+    if (rubro === '__sin' ? (f.canal || f.proveedores.length) : (rubro && String(f.canal || '').split('|').indexOf(rubro) === -1)) return false;
     if (!q) return true;
     return sinTildes(f.familia).indexOf(q) !== -1 || f.variantes.some(function (v) { return sinTildes(v).indexOf(q) !== -1; });
   });
@@ -619,7 +619,7 @@ function pintarPadron() {
   $('pa-lista').innerHTML = !PA.datos ? '' : !l.length ? '<p class="nota">No hay productos con ese filtro.</p>' :
     '<p class="nota" style="margin:0 0 6px">' + l.length + (l.length === 1 ? ' producto' : ' productos') + '</p>' +
     l.slice(0, PA.mostrar).map(function (f) {
-      const donde = f.proveedores.length ? '🎯 ' + f.proveedores.map(function (x) { return x.nombre; }).join(', ') : (f.canal || 'Sin rubro');
+      const donde = f.proveedores.length ? '🎯 ' + f.proveedores.map(function (x) { return x.nombre; }).join(', ') : (f.canal ? f.canal.split('|').join(' + ') : 'Sin rubro');
       return '<button type="button" class="pa-item' + (f.activa ? '' : ' inactivo') + '" data-fam="' + esc(f.familia) + '">' +
         '<b>' + esc(f.familia) + (f.activa ? '' : ' <small>(desactivado)</small>') + '</b><small class="sub">' + esc(donde) + '</small>' +
         (f.variantes.length ? '<small class="sub">Variantes: ' + esc(f.variantes.join(', ')) + '</small>' : '') +
@@ -649,12 +649,14 @@ async function editarFamiliaUI(nombre) {
   const datos = await datosProductos();
   const provs = f ? f.proveedores.map(function (x) { return { id: x.id, nombre: x.nombre }; }) : [];
   const canales = (PA.datos.canales || []).slice();
-  if (f && f.canal && canales.indexOf(f.canal) === -1) canales.push(f.canal);
+  // Uno o varios rubros (Feli, 13/10): se guardan como "A|B"
+  const elegidos = f && f.canal ? f.canal.split('|').map(function (x) { return x.trim(); }).filter(String) : [];
+  elegidos.forEach(function (k) { if (canales.indexOf(k) === -1) canales.push(k); });
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML =
     campoDlg('pf-nombre', 'Nombre', f ? f.familia : '', { max: 120, placeholder: 'Ej: Guantes de nitrilo', nota: 'Sin paréntesis: la medida o el tamaño van en la especificación de cada pedido.' + (f ? ' Si lo cambiás, el nombre de ahora queda como variante y los pedidos en curso pasan al nuevo.' : '') }) +
-    '<div class="campo"><label for="pf-rubro">Rubro</label><select id="pf-rubro"></select><p class="nota" id="pf-rubro-nota" hidden>Con proveedores particulares va sin rubro.</p></div>' +
+    '<div class="campo"><label>Rubros <small>(uno o varios)</small></label><div class="pf-rubros" id="pf-rubro"></div><p class="nota" id="pf-rubro-nota" hidden>Con proveedores particulares va sin rubro: el pedido les llega solo a ellos.</p></div>' +
     '<div class="campo"><label for="sp-q">Proveedores particulares (opcional)</label>' + htmlSelectorProv() + '</div>' +
     // Variantes: en uno nuevo se guardan junto con el producto (Feli, 2026-10-04); en uno que ya está, al momento
     '<div class="campo"><label for="pf-var">Variantes (cómo lo escriben)</label><div class="pila" id="pf-vars" style="gap:6px"></div>' +
@@ -685,22 +687,34 @@ async function editarFamiliaUI(nombre) {
       el.appendChild(d);
     });
   };
-  const botones = [{ texto: f ? 'Guardar' : 'Agregar al padrón', clase: 'btn', id: 'dg-ok', valor: function () { return { guardar: true, nombre: $('pf-nombre').value.trim(), canal: $('pf-rubro').value }; } }];
+  const botones = [{ texto: f ? 'Guardar' : 'Agregar al padrón', clase: 'btn', id: 'dg-ok', valor: function () { return { guardar: true, nombre: $('pf-nombre').value.trim(), canales: elegidos.slice() }; } }];
   if (f) botones.push({ texto: f.activa ? 'Desactivar (borrar)' : 'Volver a activar', clase: 'btn2', valor: { activar: !f.activa } });
   botones.push({ texto: 'Volver', valor: null });
   const res = await dialogo({
     titulo: f ? 'Editar producto del padrón' : 'Agregar producto al padrón', cuerpo: cuerpo, botones: botones,
     alAbrir: function () {
       const sel = $('pf-rubro');
-      sel.innerHTML = '<option value="">Sin rubro</option>' + canales.map(function (k) { return '<option>' + esc(k) + '</option>'; }).join('');
-      sel.value = f ? f.canal : '';
+      const pintarRubros = function () {
+        sel.innerHTML = canales.map(function (k) {
+          const si = elegidos.indexOf(k) !== -1;
+          return '<button type="button" class="choice sub-choice" data-rubro="' + esc(k) + '" aria-checked="' + si + '"><span class="marca">' + (si ? '☑' : '☐') + '</span><span>' + esc(k) + '</span></button>';
+        }).join('');
+        sel.querySelectorAll('[data-rubro]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            const k = b.dataset.rubro, i = elegidos.indexOf(k);
+            if (i === -1) elegidos.push(k); else elegidos.splice(i, 1);
+            pintarRubros();
+          });
+        });
+      };
+      pintarRubros();
       const revisar = function () {
         sel.hidden = provs.length > 0;
         $('pf-rubro-nota').hidden = !provs.length;
         $('dg-ok').disabled = $('pf-nombre').value.trim().length < 2;
       };
       $('pf-nombre').addEventListener('input', revisar);
-      armarSelectorProv({ provs: provs, proveedores: datos ? datos.proveedores.slice() : [], datos: datos, rubro: function () { return sel.value; }, alCambiar: revisar });
+      armarSelectorProv({ provs: provs, proveedores: datos ? datos.proveedores.slice() : [], datos: datos, rubro: function () { return elegidos[0] || ''; }, alCambiar: revisar });
       pintarVars();
       const sumarVariante = async function () {
         const t = $('pf-var').value.trim().replace(/\s+/g, ' ');
@@ -737,7 +751,7 @@ async function editarFamiliaUI(nombre) {
     aviso(res.activar ? 'Listo: "' + f.familia + '" volvió al padrón.' : 'Listo: "' + f.familia + '" quedó desactivado.');
     return padronCambiado();
   }
-  const d = { original: f ? f.familia : '', nombre: res.nombre, canal: provs.length ? '' : res.canal, proveedores: provs.map(function (x) { return x.id; }) };
+  const d = { original: f ? f.familia : '', nombre: res.nombre, canales: provs.length ? [] : res.canales, proveedores: provs.map(function (x) { return x.id; }) };
   if (!f) d.variantes = variantes.slice();
   const r = await api('guardarFamilia', d);
   if (!r.ok) return aviso(textoDeError(r), 'bad');

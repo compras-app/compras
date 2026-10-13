@@ -971,3 +971,8 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 /* "＋ Agregar proveedor" en Pedir cotización (Feli, 13/10): chiquito, abajo del título del bloque */
 .cotizar .cot-agregar{font-size:12px;margin:-2px 0 6px;padding:0;display:block;text-align:left;width:auto}
 .cotizar .cot-nuevo{display:flex;flex-direction:column;gap:6px;margin:4px 0 8px}
+/* Proveedores sin teléfono en Pedir cotización (Feli, 13/10) */
+.cotizar .cot-sintel .estado{margin:4px 0}
+.cotizar .cot-sintel .linkbtn{display:inline;padding:0;min-height:0;margin-left:4px}
+/* Admin → Padrón: varios rubros (Feli, 13/10) */
+.pf-rubros{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
