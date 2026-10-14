@@ -18,8 +18,11 @@ const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false, vista
 const RP_PESTANAS = [                                     // nombres de Feli (13/10)
   { id: 'resumen', nombre: 'Resumen' }, { id: 'stock', nombre: 'Consumo mensual' }, { id: 'flujo', nombre: 'Flujo de tarjetas' },
   { id: 'plata', nombre: 'Gastos' }, { id: 'proveedores', nombre: 'Proveedores' }, { id: 'padron', nombre: 'Padrón' },
-  { id: 'egresos', nombre: 'Egresos' }                    // Feli (13/10): lo egresado de cada granja (Transferencias)
+  { id: 'egresos', nombre: 'Egresos' },                   // Feli (13/10): lo egresado de cada granja (Transferencias)
+  { id: 'historial', nombre: 'Historial' }                // Feli (13/10): los reportes que se guardan solos el último día de cada mes
 ];
+const MESES_RP = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+function nombreMes(m) { const x = String(m).split('-'); return MESES_RP[Number(x[1]) - 1] + ' ' + x[0]; }
 const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
 pantalla('reportes', { titulo: 'Reportes', tab: 'admin', alMostrar: mostrarReportes });
@@ -59,12 +62,14 @@ function pintarPestanasRp() {
   }).join('');
   $('rp-tablero-l').hidden = RP.pestana !== 'flujo';
   // Egresos: solo fechas y granja (no tiene rubro ni comprador). Consumo mensual: sin filtros (el mes y las oficinas son fijos),
-  // con "Ver: Resumen / Detallado"
-  const st = RP.pestana === 'stock';
-  $('rp-rubro').closest('label').hidden = $('rp-comprador').closest('label').hidden = RP.pestana === 'egresos' || st;
-  ['rp-desde', 'rp-hasta', 'rp-sitio'].forEach(function (id) { $(id).closest('label').hidden = st; });
+  // con "Ver: Resumen / Detallado". Historial y lo guardado: sin filtros ni "Armar reporte" (en Flujo, qué tablero sí).
+  const st = RP.pestana === 'stock', fijo = RP.pestana === 'historial' || !!RP.guardado;
+  $('rp-rubro').closest('label').hidden = $('rp-comprador').closest('label').hidden = RP.pestana === 'egresos' || st || fijo;
+  ['rp-desde', 'rp-hasta', 'rp-sitio'].forEach(function (id) { $(id).closest('label').hidden = st || fijo; });
+  if (RP.pestana === 'historial') $('rp-tablero-l').hidden = true;
   $('rp-vista-l').hidden = !st;
-  $('rp-excel').hidden = !RP.datos[RP.pestana] || RP.pestana === 'resumen';     // el Resumen no se baja (Feli, 13/10)
+  $('rp-armar').hidden = fijo;
+  $('rp-excel').hidden = !RP.datos[RP.pestana] || RP.pestana === 'resumen' || RP.pestana === 'historial';     // el Resumen no se baja (Feli, 13/10)
 }
 $('rp-pestanas').addEventListener('click', function (e) {
   const b = e.target.closest('[data-p]');
@@ -100,6 +105,49 @@ async function armarReporte() {
 }
 $('rp-armar').addEventListener('click', armarReporte);
 $('rp-vista').addEventListener('change', function () { RP.vista = this.value; pintarReporte(); });
+$('rp-tablero').addEventListener('change', function () {                   // lo guardado: Flujo de cada tablero
+  if (!RP.guardado) return;
+  const fl = (RP.guardado.reportes.flujo || {})[this.value];
+  if (fl) RP.datos.flujo = { r: fl, f: {} }; else delete RP.datos.flujo;
+  pintarPestanasRp(); pintarReporte();
+});
+
+/* ---------- Historial (Feli, 13/10): los reportes que se guardan solos el último día de cada mes ----------
+   Al abrir un mes, todas las pestañas muestran lo guardado (con un cartel arriba) hasta "Volver a los de ahora".
+   Los que se arman a mano no se guardan. */
+async function pintarHistorialRp() {
+  const cuerpo = $('rp-cuerpo');
+  cuerpo.innerHTML = '<p class="nota">Cargando…</p>';
+  const r = await api('getReportesGuardados');
+  if (RP.pestana !== 'historial') return;
+  if (!r.ok) { cuerpo.innerHTML = '<p class="estado warn">' + esc(textoDeError(r)) + '</p>'; return; }
+  cuerpo.innerHTML = '<p class="nota">El último día de cada mes, a las 23:00, se arman solos todos los reportes del mes (del 1 al último día) y quedan acá. ' +
+    'Los que armás a mano no se guardan.</p>' +
+    (r.meses.length ? '<div class="rp-meses">' + r.meses.map(function (m) {
+      return '<button type="button" class="rp-caja" data-mes="' + esc(m.mes) + '"><b>' + esc(nombreMes(m.mes)) + '</b><small>armados el ' +
+        new Date(m.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</small></button>';
+    }).join('') + '</div>' : '<p class="nota rp-vacio">Todavía no hay ninguno: el primero se guarda el último día de este mes.</p>');
+}
+async function abrirMesGuardado(mes) {
+  notaAd('rp-estado', 'Abriendo ' + nombreMes(mes) + '…');
+  const r = await apiLenta('getReporteGuardado', mes);
+  if (!r.ok) return notaAd('rp-estado', textoDeError(r));
+  notaAd('rp-estado', '');
+  if (!RP.guardado) RP.vivos = RP.datos;
+  RP.guardado = r.guardado;
+  RP.datos = {};
+  Object.keys(r.guardado.reportes).forEach(function (k) { if (k !== 'flujo') RP.datos[k] = { r: r.guardado.reportes[k], f: {} }; });
+  const fl = (r.guardado.reportes.flujo || {})[$('rp-tablero').value || 'compras'];
+  if (fl) RP.datos.flujo = { r: fl, f: {} };
+  RP.pestana = 'resumen';
+  pintarPestanasRp(); pintarReporte();
+}
+function volverAhoraRp() {
+  RP.guardado = null;
+  RP.datos = RP.vivos || {};
+  RP.vivos = null;
+  pintarPestanasRp(); pintarReporte();
+}
 
 /* ---------- Cada pestaña: sus tablas ---------- */
 function tablasDe(cual, r) {
@@ -313,8 +361,9 @@ function htmlTabla(t, i) {
   return h;
 }
 
-function pintarReporte() {
+function pintarCuerpoRp() {
   const cual = RP.pestana, cuerpo = $('rp-cuerpo');
+  if (cual === 'historial') return pintarHistorialRp();
   const d = RP.datos[cual];
   if (!d) {
     cuerpo.innerHTML = '<p class="nota rp-vacio">' + (cual === 'stock' ? 'Compara lo que se egresó de las granjas en el último mes con la existencia de Albor de las oficinas de cada empresa: La Quimera (Oficina JM y Oficina LC 50) contra Candelaria, Candelaria Engorde, El Cebil y la mitad de La Colorada; Consultores Asociados (Oficina Casa) contra la otra mitad de La Colorada. Tocá <b>Armar reporte</b>.'
@@ -367,7 +416,20 @@ function htmlResumen(r) {
     '</div>';
 }
 
+/** Con un mes guardado abierto, el cartel arriba de cada pestaña. */
+function pintarReporte() {
+  pintarCuerpoRp();
+  if (!RP.guardado || RP.pestana === 'historial') return;
+  const g = RP.guardado;
+  $('rp-cuerpo').insertAdjacentHTML('afterbegin', '<div class="estado warn rp-guardado">📁 Estás viendo los reportes guardados de <b>' + esc(nombreMes(g.mes)) +
+    '</b> (armados el ' + new Date(g.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '). ' +
+    '<button type="button" class="linkbtn" data-rp-ahora>Volver a los de ahora</button></div>');
+}
+
 $('rp-cuerpo').addEventListener('click', function (e) {
+  if (e.target.closest('[data-rp-ahora]')) return volverAhoraRp();
+  const mes = e.target.closest('[data-mes]');
+  if (mes) return abrirMesGuardado(mes.dataset.mes);
   const caja = e.target.closest('.rp-caja');
   if (caja) { RP.pestana = caja.dataset.ir; pintarPestanasRp(); pintarReporte(); return; }
   const tr = e.target.closest('tr.rp-clic');
