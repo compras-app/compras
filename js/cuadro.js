@@ -291,10 +291,16 @@ function elegirCasillero(linea, pid) {
 function elegirTodo(pid) {
   const col = columnaDe(pid);
   let n = 0;
-  // También lo no pedido (Feli, 2026-10-07), salvo lo que la IA preguntó y nadie contestó (Paso 8)
-  CQ.datos.productos.forEach(function (p) { if (!p.duda && sePuedeElegir(col, p.linea)) { CQ.sel[p.linea] = pid; n++; } });
+  // Solo lo que pedimos (Feli, 13/10): lo "No pedido" se elige a mano. Tampoco lo que la IA preguntó y nadie contestó (Paso 8)
+  let np = 0;
+  CQ.datos.productos.forEach(function (p) {
+    if (p.duda || !sePuedeElegir(col, p.linea)) return;
+    if (p.noPedido) { np++; return; }
+    CQ.sel[p.linea] = pid; n++;
+  });
   pintarCuadro();
-  aviso(n ? 'Elegidos ' + n + ' producto' + (n === 1 ? '' : 's') + ' de ' + col.nombre + '.' : col.nombre + ' no tiene productos para elegir.');
+  aviso((n ? 'Elegidos ' + n + ' producto' + (n === 1 ? '' : 's') + ' de ' + col.nombre + '.' : col.nombre + ' no tiene productos pedidos para elegir.') +
+        (np ? ' Lo no pedido (' + np + ') se elige a mano.' : ''));
 }
 
 /** El marcado como más barato; si lo cotizó uno solo, ese; con monedas distintas, ninguno (y lo avisa). */
@@ -302,7 +308,7 @@ function elegirBaratos() {
   let sinElegir = 0;
   CQ.datos.productos.forEach(function (p) {
     const cs = CQ.datos.columnas.filter(function (col) { return sePuedeElegir(col, p.linea); });
-    if (!cs.length || p.comprado || p.duda) return;                     // lo no pedido también (lo cotizó uno solo: ese); lo preguntado por la IA, no
+    if (!cs.length || p.comprado || p.duda || p.noPedido) return;       // lo no pedido se elige a mano (Feli, 13/10); lo preguntado por la IA, tampoco
     const barato = cs.filter(function (col) { return col.casilleros[p.linea].masBarato; })[0];
     if (barato) CQ.sel[p.linea] = barato.proveedor;
     else if (cs.length === 1) CQ.sel[p.linea] = cs[0].proveedor;
