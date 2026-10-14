@@ -43,7 +43,7 @@ const NOMBRE_ROL = { admin: 'Administrador', encargado: 'Encargado de granja', e
 
 /** La barra según quién sos (se vuelve a pintar si inicioApp trae algo nuevo). */
 function pintarBarra() {
-  $('b-nombre').textContent = APP.yo.nombre + (APP.yo.prueba ? ' · 🧪 ' + (APP.yo.rol === 'encargado' ? 'encargado' : 'empleado') : '');
+  $('b-nombre').textContent = APP.yo.nombre;
   $('b-inicial').textContent = APP.yo.nombre.charAt(0).toUpperCase();
   pintarApartados($('b-apartados'), APP.yo, 'compras');
   if (sinCompras()) $('b-apartados').hidden = true;
@@ -70,19 +70,6 @@ function pantallaCuenta() {
     a.addEventListener('click', function () { guardado.guardar(K_APARTADO, id); });
     $('c-apartados-lista').appendChild(a);
   });
-  // Probar como encargado o empleado (Feli, provisorio)
-  $('b-prueba').hidden = $('b-prueba2').hidden = !APP.yo.adminReal;
-  if (APP.yo.prueba) {
-    $('b-prueba').textContent = 'Volver a ser administrador en este dispositivo';
-    $('b-prueba').dataset.como = '';
-    $('b-prueba2').textContent = APP.yo.rol === 'encargado' ? '🧪 Probar como empleado' : '🧪 Probar como encargado de granja';
-    $('b-prueba2').dataset.como = APP.yo.rol === 'encargado' ? 'empleado' : 'encargado';
-  } else {
-    $('b-prueba').textContent = '🧪 Probar como encargado de granja en este dispositivo';
-    $('b-prueba').dataset.como = 'encargado';
-    $('b-prueba2').textContent = '🧪 Probar como empleado en este dispositivo';
-    $('b-prueba2').dataset.como = 'empleado';
-  }
   $('c-disp').textContent = dispositivo();
   $('c-host').textContent = location.host + (instalada() ? ' (app instalada)' : '');
   $('c-version').textContent = VERSION_APP;
@@ -146,21 +133,6 @@ document.querySelectorAll('.tabs .tab[data-tab]').forEach(function (t) {
 $('b-cuenta').addEventListener('click', function () { abrir('cuenta'); });
 $('b-volver').addEventListener('click', volver);
 $('b-salir').addEventListener('click', salir);
-// Solo para probar (Feli): este dispositivo como encargado o empleado. Se recarga para armar todo de nuevo.
-async function probarComo() {
-  this.disabled = true;
-  estado('e-cuenta', 'Cambiando…', 'run');
-  const r = await api('probarComoEncargado', this.dataset.como || '');
-  this.disabled = false;
-  if (!r.ok) return estado('e-cuenta', r.sinConexion ? 'Hace falta señal para cambiarlo.' : r.error, 'bad');
-  const inicio = guardado.leerJSON(K.inicio, {}) || {};
-  inicio.yo = Object.assign(inicio.yo || {}, r.yo);
-  guardado.guardarJSON(K.inicio, inicio);
-  location.hash = '';
-  location.reload();
-}
-$('b-prueba').addEventListener('click', probarComo);
-$('b-prueba2').addEventListener('click', probarComo);
 
 // Pedidos del formulario que quedaron guardados en este teléfono: la app también los manda
 PedidosGuardados.alCambiar(function () {

@@ -125,7 +125,7 @@ async function abrirPedirCotizacion(refs) {
       porClave[b.clave].productos.push(x);
     });
     const desde = r0.desde || null;
-    let html = (r.prueba.si ? '<p class="estado warn">🧪 Modo prueba: todos los mensajes le llegan al número de prueba (' + esc(r.prueba.numero) + '), no a los proveedores.</p>' : '') +
+    let html = '' +
       // Paso 7: desde qué WhatsApp sale
       (desde && !desde.propio && desde.usuario ? '<p class="estado warn">📱 Este pedido se va a mandar desde el número de ' + esc(desde.usuario) + '.</p>'
         : desde && desde.varias ? '<p class="nota">📱 Sale desde tu WhatsApp.</p>' : '') +
@@ -355,7 +355,7 @@ function pintarCotizaciones() {
     (lista.length ? lista.map(function (s) {
       const e = reintento[s.id] ? '⏳ Reintentando…' : (ESTADO_COT[s.estado] || s.estado);
       return '<div class="cot-fila' + (s.estado === 'No salió' ? ' mal' : '') + '"><div><b>' + esc(s.nombre) + '</b> <small>· ' + esc(s.codigo) + ' · ' + esc(fechaCorta(s.fecha)) +
-        (s.prueba ? ' · 🧪 prueba' : '') + '</small></div>' +
+        '</small></div>' +
         (s.pidio ? '<div class="sub">Cotización pedida por ' + esc(s.pidio) + (s.desde && s.desde !== 'WhatsApp de ' + s.pidio && s.desde !== 'WhatsApp de la app' ? ' (desde el ' + esc(s.desde) + ')' : '') + '</div>' : '') +   // Paso 7
         '<div class="sub">' + esc(s.productos.join(', ')) + '</div>' +
         '<div class="sub">' + esc(e) + (s.notas ? ' · ' + esc(s.notas) : '') + '</div>' +

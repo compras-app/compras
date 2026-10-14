@@ -5664,7 +5664,7 @@
      a Tu cuenta, en la app). */
   function pintarQuienSoy(){
     var yo = APP.yo || {};
-    $('yo').textContent = (yo.nombre || '') + (yo.prueba ? ' · 🧪 ' + (yo.rol === 'encargado' ? 'encargado' : 'empleado') : '');
+    $('yo').textContent = yo.nombre || '';
     pintarApartados($('apartados'), yo, 'transferencias');
     [].forEach.call(document.querySelectorAll('.tab[data-admin]'), function(t){ t.hidden = !ES_ADMIN; });
   }

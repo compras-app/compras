@@ -2,21 +2,22 @@
 /* ============================================================
    REPORTES (Fase 5, Paso 4; Feli, 9/10 y 10/10): Admin → Reportes
    ------------------------------------------------------------
-   Pestañas: Resumen, Stock (13/10: egresos contra la existencia de las
-   oficinas), Flujo, Plata, Proveedores, Padrón y Egresos (13/10).
-   - Se arman con un botón, nunca solos (Feli), y se bajan a Excel.
-   - Los mismos filtros arriba: fechas, granja (sitio), rubro y comprador;
-     en Flujo, también qué tablero. "Incluir lo de prueba" suma los DEMO-.
+   Pestañas: Resumen, Consumo mensual (13/10: los egresos del último mes contra
+   la existencia de las oficinas de cada empresa), Flujo de tarjetas, Gastos,
+   Proveedores, Padrón y Egresos (13/10, con el precio de Albor).
+   - Se arman con un botón, nunca solos (Feli), y se bajan a Excel (el Resumen no).
+   - Los mismos filtros arriba: fechas (desde hace un mes), granja (sitio), rubro
+     y comprador; en Flujo, también qué tablero. Lo de prueba no entra nunca.
    - Las cuentas las hace la base (getReporte → reportes.armar). Acá solo se
      dibujan: cada pestaña arma una lista de tablas ({titulo, nota, cab,
      filas}) que sirve para la pantalla y para el Excel.
    - Lo ven todos los admins; el gerente es admin.
    ============================================================ */
 
-const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false };
-const RP_PESTANAS = [
-  { id: 'resumen', nombre: 'Resumen' }, { id: 'stock', nombre: 'Stock' }, { id: 'flujo', nombre: 'Flujo' },
-  { id: 'plata', nombre: 'Plata' }, { id: 'proveedores', nombre: 'Proveedores' }, { id: 'padron', nombre: 'Padrón' },
+const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false, vista: 'resumen' };
+const RP_PESTANAS = [                                     // nombres de Feli (13/10)
+  { id: 'resumen', nombre: 'Resumen' }, { id: 'stock', nombre: 'Consumo mensual' }, { id: 'flujo', nombre: 'Flujo de tarjetas' },
+  { id: 'plata', nombre: 'Gastos' }, { id: 'proveedores', nombre: 'Proveedores' }, { id: 'padron', nombre: 'Padrón' },
   { id: 'egresos', nombre: 'Egresos' }                    // Feli (13/10): lo egresado de cada granja (Transferencias)
 ];
 const XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
@@ -25,6 +26,13 @@ pantalla('reportes', { titulo: 'Reportes', tab: 'admin', alMostrar: mostrarRepor
 
 function hoyAr() { return new Date(Date.now() - 3 * 36e5).toISOString().slice(0, 10); }
 function haceDias(n) { return new Date(Date.now() - 3 * 36e5 - n * 864e5).toISOString().slice(0, 10); }
+/** El mismo día del mes pasado (Feli, 13/10: los reportes salen del último mes exacto); el 31 de marzo → el 28 de febrero. */
+function haceUnMes() {
+  const d = new Date(hoyAr() + 'T12:00:00Z'), dia = d.getUTCDate();
+  d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1);
+  d.setUTCDate(Math.min(dia, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()));
+  return d.toISOString().slice(0, 10);
+}
 function nro(n, dec) {
   if (n === null || n === undefined || n === '') return '—';
   return Number(n).toLocaleString('es-AR', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec === undefined ? 1 : dec });
@@ -35,7 +43,7 @@ function fechaCorta(iso) { if (!iso) return '—'; const d = String(iso).slice(0
 
 function mostrarReportes() {
   if (!RP.filtros) {
-    RP.filtros = { desde: haceDias(30), hasta: hoyAr(), sitio: '', rubro: '', comprador: '', tablero: 'compras', prueba: false };
+    RP.filtros = { desde: haceUnMes(), hasta: hoyAr(), sitio: '', rubro: '', comprador: '', tablero: 'compras' };
     $('rp-desde').value = RP.filtros.desde;
     $('rp-hasta').value = RP.filtros.hasta;
     $('rp-sitio').innerHTML = '<option value="">Todas</option>' + ((APP.config && APP.config.sitios) || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
@@ -50,11 +58,13 @@ function pintarPestanasRp() {
     return '<button type="button" class="rp-pest' + (p.id === RP.pestana ? ' on' : '') + '" data-p="' + p.id + '">' + esc(p.nombre) + '</button>';
   }).join('');
   $('rp-tablero-l').hidden = RP.pestana !== 'flujo';
-  // Egresos: solo fechas y granja (no tiene rubro ni comprador). Stock: sin filtros (los meses y las oficinas son fijos)
+  // Egresos: solo fechas y granja (no tiene rubro ni comprador). Consumo mensual: sin filtros (el mes y las oficinas son fijos),
+  // con "Ver: Resumen / Detallado"
   const st = RP.pestana === 'stock';
   $('rp-rubro').closest('label').hidden = $('rp-comprador').closest('label').hidden = RP.pestana === 'egresos' || st;
   ['rp-desde', 'rp-hasta', 'rp-sitio'].forEach(function (id) { $(id).closest('label').hidden = st; });
-  $('rp-excel').hidden = !RP.datos[RP.pestana];
+  $('rp-vista-l').hidden = !st;
+  $('rp-excel').hidden = !RP.datos[RP.pestana] || RP.pestana === 'resumen';     // el Resumen no se baja (Feli, 13/10)
 }
 $('rp-pestanas').addEventListener('click', function (e) {
   const b = e.target.closest('[data-p]');
@@ -66,7 +76,7 @@ $('rp-pestanas').addEventListener('click', function (e) {
 
 function leerFiltrosRp() {
   return { desde: $('rp-desde').value || '', hasta: $('rp-hasta').value || '', sitio: $('rp-sitio').value, rubro: $('rp-rubro').value,
-           comprador: $('rp-comprador').value, tablero: $('rp-tablero').value, prueba: $('rp-prueba').checked };
+           comprador: $('rp-comprador').value, tablero: $('rp-tablero').value };
 }
 
 async function armarReporte() {
@@ -89,6 +99,7 @@ async function armarReporte() {
   pintarReporte();
 }
 $('rp-armar').addEventListener('click', armarReporte);
+$('rp-vista').addEventListener('change', function () { RP.vista = this.value; pintarReporte(); });
 
 /* ---------- Cada pestaña: sus tablas ---------- */
 function tablasDe(cual, r) {
@@ -97,7 +108,7 @@ function tablasDe(cual, r) {
   if (cual === 'proveedores') return tablasProveedores(r);
   if (cual === 'padron') return tablasPadron(r);
   if (cual === 'egresos') return tablasEgresos(r);
-  if (cual === 'stock') return tablasStock(r);
+  if (cual === 'stock') return tablasStock(r, RP.vista);
   return [];
 }
 
@@ -209,8 +220,9 @@ function tablasPadron(r) {
       vacio: 'Todavía ninguna familia se pidió 3 veces desde la misma granja.' },
     { titulo: 'Fuera del padrón, una y otra vez', nota: 'Candidatos a sumar al padrón.',
       cab: ['Lo que escribieron', 'Pedidos', 'Granjas'], filas: r.fueraDelPadron.map(function (x) { return [x.texto, nro(x.veces), x.granjas || '']; }), vacio: 'Nada repetido fuera del padrón.' },
-    { titulo: 'Variantes que nunca se pidieron (' + nro(r.nuncaPedidas.cantidad) + ')', nota: 'En estas fechas. Se muestran hasta 500.',
-      cab: ['Familia', 'Variante'], filas: r.nuncaPedidas.lista.map(function (x) { return [x.familia, x.variante]; }), vacio: 'Todas se pidieron.' }
+    { titulo: 'Familias que nunca se pidieron (' + nro(r.nuncaPedidas.cantidad) + ')',
+      nota: 'Las del padrón (activas) que no salieron en ningún pedido desde que se usa la app, sin importar las fechas elegidas. Se muestran hasta 500.',
+      cab: ['Familia', 'Rubro'], filas: r.nuncaPedidas.lista.map(function (x) { return [x.familia, x.rubro || 'Sin rubro']; }), vacio: 'Todas se pidieron alguna vez.' }
   ];
 }
 
@@ -218,53 +230,64 @@ function tablasPadron(r) {
 function tablasEgresos(r) {
   const mes = function (m) { const x = String(m).split('-'); return x[1] + '/' + x[0]; };
   const t = r.totales || {};
+  const pesos = function (n) { return n === null || n === undefined ? 'sin precio' : '$ ' + nro(n, 2); };
   return [
-    { titulo: 'Por producto', nota: nro(t.comprobantes) + ' comprobantes, ' + nro(t.productos) + ' productos. Cantidades en la unidad de Albor. ' +
+    { titulo: 'Por producto', nota: nro(t.comprobantes) + ' comprobantes, ' + nro(t.productos) + ' productos: <b>$ ' + nro(t.importe, 2) + '</b>. ' +
+        'Cantidades en la unidad de Albor; el precio unitario es el de Albor en el último reporte de existencias que tiene el producto' +
+        (t.sinPrecio ? ' (' + nro(t.sinPrecio) + ' sin precio: no suman)' : '') + '. ' +
         (r.anulados ? 'Hay ' + nro(r.anulados) + ' anulado' + (r.anulados === 1 ? '' : 's') + ' en el Historial: no se cuentan.' : ''),
-      cab: ['Producto', 'Cuenta', 'Total'].concat(r.granjas).concat(r.meses.length > 1 ? r.meses.map(mes) : []),
+      cab: ['Producto', 'Cuenta', 'Total', 'Precio unitario', 'Precio total'].concat(r.granjas).concat(r.meses.length > 1 ? r.meses.map(mes) : []),
       filas: r.productos.map(function (p) {
-        return [p.insumo, String(p.cuenta || '').replace(/^\d+/, ''), nro(p.total)]
+        return [p.insumo, String(p.cuenta || '').replace(/^\d+/, ''), nro(p.total), pesos(p.precio), p.precio === null || p.precio === undefined ? '' : pesos(p.importe)]
           .concat(r.granjas.map(function (g) { return p.granjas && p.granjas[g] ? nro(p.granjas[g]) : ''; }))
           .concat(r.meses.length > 1 ? r.meses.map(function (m) { return p.meses && p.meses[m] ? nro(p.meses[m]) : ''; }) : []);
       }), vacio: 'Ningún egreso en estas fechas.' },
-    { titulo: 'Por granja y cuenta', cab: ['Granja', 'Cuenta', 'Comprobantes', 'Productos'],
-      filas: r.porGranja.map(function (g) { return [g.granja, g.cuenta, nro(g.comprobantes), nro(g.productos)]; }), vacio: '' },
+    { titulo: 'Por granja y cuenta', cab: ['Granja', 'Cuenta', 'Comprobantes', 'Productos', 'Precio total'],
+      filas: r.porGranja.map(function (g) { return [g.granja, g.cuenta, nro(g.comprobantes), nro(g.productos), '$ ' + nro(g.importe || 0, 2)]; }), vacio: '' },
     { titulo: 'Comprobantes', cab: ['Fecha', 'Comprobante', 'Granja', 'Cuenta', 'Renglones', 'Cargó'],
       filas: r.comprobantes.map(function (c) { return [fechaCorta(c.dia), c.comprobante, c.granja, c.cuenta, nro(c.renglones), c.quien || '']; }), vacio: '' }
   ];
 }
 
-/* Stock (Feli, 13/10): lo egresado de las granjas contra la existencia de Albor de la oficina que las abastece.
-   Consumo esperado (Egresos totales) = promedio por mes de los últimos meses completos con egresos (hasta 6), sin margen.
-   Por oficina, tres tablas: en negativo, justos y sobran. La diferencia va con su signo (Feli: sin "faltan" ni "sobran"). */
-function tablasStock(r) {
-  const mes = function (m) { const x = String(m).split('-'); return x[1] + '/' + x[0]; };
-  const meses = r.meses || [];
-  const prom = meses.length > 1 ? ' (promedio por mes)' : '';
-  const deMeses = !meses.length ? 'todavía no hay egresos de meses completos' : meses.length === 1 ? 'lo egresado en ' + mes(meses[0]) : 'el promedio por mes de ' + meses.map(mes).join(', ');
-  const conSigno = function (n) { return n > 0 ? '+' + nro(n) : n < 0 ? '−' + nro(-n) : '0'; };
+/* Consumo mensual (antes Stock; Feli, 13/10): lo egresado en el último mes exacto contra la existencia de Albor de las
+   oficinas de cada empresa. La Quimera: Oficina JM + Oficina LC 50 contra Candelaria, Candelaria Engorde, El Cebil
+   (El Cebil Engorde) y la mitad de La Colorada. Consultores Asociados: Oficina Casa contra la otra mitad de La Colorada.
+   Por empresa, tres partes: en negativo, justos y sobran. La diferencia va con su signo (sin "faltan" ni "sobran").
+   vista: 'resumen' (egresos totales contra existencias totales) o 'detallado' (cada granja y cada oficina). Sin "Tipo",
+   para que entre en una pantalla. Cada tabla trae también `datos` (números de verdad) para el Excel. */
+const STOCK_FIJAS = ['Candelaria', 'El Cebil', 'La Colorada'];
+function nombreGranjaStock(c) { return c === 'La Colorada' ? 'La Colorada ÷ 2' : c; }
+function nombreOficina(o) { return o.replace(/^OFICINA /, 'Oficina ').replace('Oficina CASA', 'Oficina Casa'); }
+function conSigno(n) { return n > 0 ? '+' + nro(n) : n < 0 ? '−' + nro(-n) : '0'; }
+function tablasStock(r, vista) {
+  const det = vista === 'detallado', hay = r.conEgresos || [];
   const tablas = [];
   (r.grupos || []).forEach(function (g) {
     const ps = r.productos.filter(function (p) { return p.grupo === g.grupo; });
-    const cols = g.columnas || [], ofs = g.oficinas || [], varias = ofs.length > 1;
-    const cab = ['Producto', 'Tipo'].concat(cols.map(function (c) { return 'Egreso ' + c + prom; })).concat(['Egresos totales' + prom])
-      .concat(varias ? ofs.map(function (o) { return o.replace('OFICINA ', 'Oficina ').replace('Oficina CASA', 'Oficina Casa'); }).concat(['Existencias totales']) : ['Existencia ' + ofs[0].replace('OFICINA ', 'Oficina ')])
-      .concat(['Diferencia']);
-    const fila = function (p) {
-      return [p.insumo, p.tipo || ''].concat(cols.map(function (c) { return p.granjas && p.granjas[c] ? nro(p.granjas[c]) : ''; }))
-        .concat([nro(p.esperado)])
-        .concat(varias ? ofs.map(function (o) { return nro((p.oficinas || {})[o] || 0); }) : [])
-        .concat([nro(p.existencia), conSigno(p.diferencia)]);
+    // Las granjas sin egresos en el mes no ocupan lugar (salvo Candelaria, El Cebil y La Colorada)
+    const cols = det ? (g.columnas || []).filter(function (c) { return hay.indexOf(c) !== -1 || STOCK_FIJAS.indexOf(c) !== -1; }) : [];
+    const ofs = det ? g.oficinas || [] : [];
+    const cab = ['Producto'].concat(cols.map(function (c) { return 'Egreso ' + nombreGranjaStock(c); })).concat(['Egresos totales'])
+      .concat(ofs.length > 1 ? ofs.map(nombreOficina) : []).concat([ofs.length === 1 ? 'Existencia ' + nombreOficina(ofs[0]) : 'Existencias totales', 'Diferencia']);
+    const datos = function (p) {
+      return [p.insumo].concat(cols.map(function (c) { return p.granjas && p.granjas[c] ? Number(p.granjas[c]) : null; })).concat([Number(p.esperado)])
+        .concat(ofs.length > 1 ? ofs.map(function (o) { return Number((p.oficinas || {})[o] || 0); }) : []).concat([Number(p.existencia), Number(p.diferencia)]);
     };
-    [['negativo', 'en negativo', function (p) { return p.diferencia < 0; }],
-     ['justo', 'justos', function (p) { return p.diferencia === 0; }],
-     ['sobra', 'sobran', function (p) { return p.diferencia > 0; }]].forEach(function (parte, k) {
-      const lista = ps.filter(parte[2]);
+    [['negativo', 'En negativo', function (p) { return p.diferencia < 0; }],
+     ['justo', 'Justos', function (p) { return p.diferencia === 0; }],
+     ['sobra', 'Sobran', function (p) { return p.diferencia > 0; }]].forEach(function (parte, k) {
+      const lista = ps.filter(parte[2]), filas = lista.map(datos);
       tablas.push({
-        titulo: g.nombre + ' · ' + parte[1] + ' (' + nro(lista.length) + ')',
-        nota: k ? '' : 'Egresos de ' + g.granjas + '. Egresos totales = consumo esperado del mes que viene: ' + deMeses +
-              '. Existencia: la de Albor' + (r.existencias ? ' del ' + new Date(r.existencias.fecha).toLocaleDateString('es-AR') : '') + '. Diferencia = existencia − egresos totales.',
-        cab: cab, filas: lista.map(fila), falta: parte[0] === 'negativo' ? lista.map(function () { return true; }) : null,
+        grupo: g.grupo, empresa: g.nombre, parte: parte[1] + ' (' + nro(lista.length) + ')',
+        titulo: g.nombre + ' · ' + parte[1].toLowerCase() + ' (' + nro(lista.length) + ')',
+        nota: k ? '' : (g.grupo === 'QUIMERA' ? 'Oficina JM + Oficina LC 50 contra los egresos de Candelaria, Candelaria Engorde, El Cebil y la mitad de La Colorada.'
+                                              : 'Oficina Casa contra la otra mitad de los egresos de La Colorada.') +
+              ' La Colorada = G4 + Granja La Colorada. Diferencia = existencias − egresos.',
+        cab: cab, datos: filas,
+        filas: filas.map(function (f) {
+          return f.map(function (x, i) { return i === 0 ? x : i === f.length - 1 ? conSigno(x) : x === null ? '' : nro(x); });
+        }),
+        falta: parte[0] === 'negativo' ? lista.map(function () { return true; }) : null,
         vacio: parte[0] === 'negativo' ? 'Ninguno: alcanza para todo.' : 'Ninguno.'
       });
     });
@@ -292,40 +315,53 @@ function pintarReporte() {
   const cual = RP.pestana, cuerpo = $('rp-cuerpo');
   const d = RP.datos[cual];
   if (!d) {
-    cuerpo.innerHTML = '<p class="nota rp-vacio">' + (cual === 'stock' ? 'Compara lo que se egresó de las granjas con la existencia de Albor de la oficina que las abastece: Candelaria y El Cebil con la Oficina JM, La Colorada con la Oficina Casa y la LC 50. Tocá <b>Armar reporte</b>.'
+    cuerpo.innerHTML = '<p class="nota rp-vacio">' + (cual === 'stock' ? 'Compara lo que se egresó de las granjas en el último mes con la existencia de Albor de las oficinas de cada empresa: La Quimera (Oficina JM y Oficina LC 50) contra Candelaria, Candelaria Engorde, El Cebil y la mitad de La Colorada; Consultores Asociados (Oficina Casa) contra la otra mitad de La Colorada. Tocá <b>Armar reporte</b>.'
                                                                       : 'Elegí las fechas y los filtros y tocá <b>Armar reporte</b>.') + '</p>';
     return;
   }
   const r = d.r;
   if (cual === 'stock') {
-    RP.tablas = tablasStock(r);
+    RP.tablas = tablasStock(r, RP.vista);
+    const sinLc50 = r.existencias && !r.productos.some(function (p) { return p.oficinas && p.oficinas['OFICINA LC 50'] !== undefined; });
     cuerpo.innerHTML = (r.existencias ? '' : '<p class="estado warn">Todavía no hay ningún reporte de existencias de Albor guardado: bajalo en Transferencias (Conteo de stock) y armá este reporte de nuevo.</p>') +
-      '<p class="nota rp-de">Armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</p>' + RP.tablas.map(htmlTabla).join('');
+      (sinLc50 ? '<p class="estado warn">El último reporte de existencias no trae la Oficina LC 50: en Albor, al bajarlo, tiene que estar tildada la empresa que la tiene.</p>' : '') +
+      '<p class="nota rp-de">' + subtituloStock(r) + '</p>' + RP.tablas.map(htmlTabla).join('');
     return;
   }
-  const cab = '<p class="nota rp-de">Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta) + (r.prueba ? ' · con lo de prueba' : '') +
+  const cab = '<p class="nota rp-de">Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta) +
               ' · armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</p>';
   if (cual === 'resumen') { cuerpo.innerHTML = cab + htmlResumen(r); return; }
   RP.tablas = tablasDe(cual, r);
   cuerpo.innerHTML = cab + RP.tablas.map(htmlTabla).join('');
 }
 
+/** Consumo mensual: de qué mes son los egresos y de cuándo la existencia. */
+function subtituloStock(r) {
+  const p = r.periodo || {};
+  return 'Egresos del ' + fechaCorta(p.desde) + ' al ' + fechaCorta(p.hasta) +
+    (r.existencias ? ' · existencias de Albor del ' + new Date(r.existencias.fecha).toLocaleDateString('es-AR') : '') +
+    ' · armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
 function htmlResumen(r) {
   const comp = (r.compras || []).map(function (t) { return plata(t.total, t.moneda); }).join(' + ') || '$ 0';
   const nComp = (r.compras || []).reduce(function (n, t) { return n + t.compras; }, 0);
   const ah = (r.ahorro || []).map(function (t) { return plata(t.ahorrado, t.moneda); }).join(' + ') || '—';
+  const eg = r.egresos || {};
   const pap = r.puntaApunta || {}, urg = r.urgentesPuntaApunta || {};
   const caja = function (ir, num, que, sub) {
     return '<button type="button" class="rp-caja" data-ir="' + ir + '"><b>' + esc(num) + '</b><span>' + esc(que) + '</span>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</button>';
   };
   return '<div class="rp-cajas">' +
     caja('flujo', nro(r.pedidos), 'pedidos', nro(r.urgentes) + ' urgentes' + (r.servicios ? ' · ' + nro(r.servicios) + ' servicios' : '')) +
-    caja('plata', comp, 'en compras', nro(nComp) + (nComp === 1 ? ' compra' : ' compras')) +
+    caja('plata', comp, 'Compras', nro(nComp) + (nComp === 1 ? ' compra' : ' compras')) +
+    caja('egresos', plata(eg.importe || 0), 'Gastos en egresos', nro(eg.productos || 0) + ' productos egresados de las granjas' +
+         (eg.sinPrecio ? ' (' + nro(eg.sinPrecio) + ' sin precio)' : '')) +
     caja('plata', ah, 'ahorrado', 'contra el promedio de los presupuestos') +
     caja('flujo', dias(pap.mediana), 'de punta a punta', 'lo normal, ' + nro(pap.n || 0) + ' entregados') +
     caja('flujo', dias(urg.mediana), 'las urgentes', 'de punta a punta') +
     caja('flujo', nro(r.trabadas), 'trabadas ahora', r.traba ? 'donde más tardan: ' + r.traba : '') +
-    caja('stock', '—', 'qué falta en las oficinas', 'en la pestaña Stock') +
+    caja('stock', '—', 'qué falta en las oficinas', 'en Consumo mensual') +
     '</div>';
 }
 
@@ -377,22 +413,49 @@ $('rp-excel').addEventListener('click', async function () {
   try { await cargarXlsx(); } catch (e) { return notaAd('rp-estado', e.message); }
   const libro = XLSX.utils.book_new();
   const r = d.r, nombrePest = RP_PESTANAS.filter(function (p) { return p.id === RP.pestana; })[0].nombre;
-  const tablas = RP.pestana === 'resumen'
-    ? [{ titulo: 'Resumen', cab: ['Qué', 'Cuánto'], filas: [['Pedidos', r.pedidos], ['Urgentes', r.urgentes], ['Servicios', r.servicios],
-        ['Compras', (r.compras || []).map(function (t) { return plata(t.total, t.moneda); }).join(' + ')],
-        ['Ahorrado', (r.ahorro || []).map(function (t) { return plata(t.ahorrado, t.moneda); }).join(' + ')],
-        ['De punta a punta (días, lo normal)', r.puntaApunta && r.puntaApunta.mediana], ['Trabadas ahora', r.trabadas]] }]
-    : tablasDe(RP.pestana, r);
+  if (RP.pestana === 'stock') return excelStock(libro, r);
+  const tablas = tablasDe(RP.pestana, r);
   const usados = {};
   tablas.forEach(function (t) {
     const cab = t.cab.filter(function (c, i) { return !(t.barra === i); });
     const filas = t.filas.map(function (f) { return f.filter(function (c, i) { return !(t.barra === i); }); });
-    const sub = RP.pestana === 'stock' ? String(t.nota || '').replace(/<[^>]*>/g, '') : 'Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta);
+    const sub = 'Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta);
     const hoja = XLSX.utils.aoa_to_sheet([[t.titulo], [sub], []].concat([cab]).concat(filas));
     let nombre = t.titulo.replace(/[\\/?*[\]:]/g, '').slice(0, 28) || 'Hoja';
     while (usados[nombre]) nombre = nombre.slice(0, 26) + ' ' + (Object.keys(usados).length + 1);
     usados[nombre] = 1;
     XLSX.utils.book_append_sheet(libro, hoja, nombre);
   });
-  XLSX.writeFile(libro, 'Reporte ' + nombrePest + ' ' + (RP.pestana === 'stock' ? hoyAr() : r.desde + ' a ' + r.hasta) + '.xlsx');
+  XLSX.writeFile(libro, 'Reporte ' + nombrePest + ' ' + r.desde + ' a ' + r.hasta + '.xlsx');
 });
+
+/* Consumo mensual en Excel (Feli, 13/10): cuatro hojas. 1) La Quimera, resumen; 2) Consultores Asociados, resumen;
+   3) y 4) lo mismo, detallado. En cada hoja, primero lo negativo, después lo justo y al final lo que sobra, separados.
+   Los números van como números (la diferencia, con su signo + o −). */
+function excelStock(libro, r) {
+  const sub = subtituloStock(r);
+  ['resumen', 'detallado'].forEach(function (vista) {
+    const tablas = tablasStock(r, vista);
+    (r.grupos || []).forEach(function (g) {
+      const partes = tablas.filter(function (t) { return t.grupo === g.grupo; });
+      const filas = [[g.nombre + ' · consumo mensual (' + vista + ')'], [sub], [String(partes[0].nota || '')], []];
+      const signos = [];
+      partes.forEach(function (t) {
+        filas.push([t.parte]);
+        filas.push(t.cab);
+        t.datos.forEach(function (f) { signos.push(filas.length); filas.push(f); });
+        if (!t.datos.length) filas.push([t.vacio]);
+        filas.push([]);
+      });
+      const hoja = XLSX.utils.aoa_to_sheet(filas);
+      const col = partes[0].cab.length - 1;      // la diferencia, con su signo
+      signos.forEach(function (fila) {
+        const c = hoja[XLSX.utils.encode_cell({ r: fila, c: col })];
+        if (c && typeof c.v === 'number') c.z = Number.isInteger(c.v) ? '+#,##0;-#,##0;0' : '+#,##0.0#;-#,##0.0#;0';
+      });
+      hoja['!cols'] = [{ wch: 44 }].concat(partes[0].cab.slice(1).map(function (x) { return { wch: Math.max(12, x.length + 2) }; }));
+      XLSX.utils.book_append_sheet(libro, hoja, (g.grupo === 'QUIMERA' ? 'La Quimera' : 'Consultores') + ' ' + vista);
+    });
+  });
+  XLSX.writeFile(libro, 'Consumo mensual ' + hoyAr() + '.xlsx');
+}

@@ -88,7 +88,7 @@ function pintarPersonas() {
         '<dt>Avisos por WhatsApp</dt><dd>' + (p.avisos ? 'Sí (menciones, recordatorios)' : 'No') + '</dd></dl>' +
         (p.activo ? '<h3>Dispositivos</h3>' + (n ? '<ul class="ad-disp">' + p.dispositivos.map(function (d) {
             const este = d.id === AD.sesion;
-            return '<li><span><b>' + esc(d.dispositivo || 'Dispositivo') + (este ? ' · este' : '') + (d.prueba ? ' · 🧪 prueba' : '') + '</b>' +
+            return '<li><span><b>' + esc(d.dispositivo || 'Dispositivo') + (este ? ' · este' : '') + '</b>' +
               '<small>Último uso: ' + esc(d.ultimoUso ? hace(d.ultimoUso) : '—') + ' · entró ' + esc(d.creada ? new Date(d.creada).toLocaleDateString('es-AR') : '') + '</small></span>' +
               '<button type="button" class="btn-chico" data-cerrar="' + esc(d.id) + '">Cerrar sesión</button></li>';
           }).join('') + '</ul>' : '<p class="nota">No tiene la app abierta en ningún dispositivo.</p>') : '') +
@@ -337,8 +337,6 @@ function pintarAjustes() {
   $('aj-cot-ok').disabled = !(a && a.cotizar);
   if (a && a.cotizar && !AD.cotizarPintado) {           // Pedir cotización (Fase 3): se llena una vez, para no pisar lo que se escribe
     AD.cotizarPintado = true;
-    $('aj-prueba').checked = a.cotizar.prueba;
-    $('aj-numero').value = a.cotizar.numeroPrueba || '';
     $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';
     $('aj-msj-conf').value = a.cotizar.msjConfirmar || '';
     $('aj-msj-recprov').value = a.cotizar.msjRecordatorioProv || '';         // Fase 4, Paso 6
@@ -445,7 +443,7 @@ $('aj-predis-mas').addEventListener('click', function () { sumarPredisenado('').
 function a_siHay(id) { return AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.msjRecepcion !== undefined ? $(id).value : undefined; }
 $('aj-cot-ok').addEventListener('click', async function () {
   const r = await api('guardarAjustesCotizar', {
-    numeroPrueba: $('aj-numero').value, prueba: $('aj-prueba').checked, msjCotizacion: $('aj-msj-cot').value,
+    msjCotizacion: $('aj-msj-cot').value,
     msjConfirmar: $('aj-msj-conf').value, aprobador: $('aj-aprobador').value || undefined,
     msjRecepcion: a_siHay('aj-msj-recep'), msjRecepcionRecordatorio: a_siHay('aj-msj-recep2'),
     msjRecordatorioProv: AD.ajustes && AD.ajustes.cotizar && AD.ajustes.cotizar.msjRecordatorioProv !== undefined ? $('aj-msj-recprov').value : undefined,
@@ -454,7 +452,7 @@ $('aj-cot-ok').addEventListener('click', async function () {
   });
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   AD.ajustes.cotizar = r.cotizar;
-  aviso(r.cotizar.prueba ? 'Listo. 🧪 Modo prueba prendido: todo le llega al número de prueba.' : 'Listo. ⚠️ Modo prueba apagado: los pedidos de cotización les llegan a los proveedores.');
+  aviso('Listo.');
 });
 
 $('aj-dias-ok').addEventListener('click', async function () {
