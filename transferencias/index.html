@@ -3812,10 +3812,26 @@
     if(cual === 'conteos'){
       h.push('<b>Planilla de conteo de stock</b> · ' + fechaCorta(x.dia) + ' · responsable ' + esc(r.conteo.responsable || '—') +
              (r.conteo.hasta ? ' · existencias al ' + esc(r.conteo.hasta) : '') + ' · guardó ' + esc(r.conteo.quien));
-      h.push(tablaSimple(['Insumo', 'Sistema', 'Conteo real', 'Diferencia'], r.filas.map(function(f){
-        return [esc(f.nombre) + (f.comentario ? '<div class="notacom">' + esc(f.comentario) + '</div>' : ''), fmt(f.sistema),
-                f.conteo === null ? '' : fmt(f.conteo), f.diferencia === null ? '' : textoDif(String(f.conteo).replace('.', ','), f.sistema)];
-      })));
+      // Feli (13/10): como la pantalla del conteo: cada oficina, el total de las oficinas, el conteo real y la diferencia,
+      // agrupado por categoría. Los conteos de antes del 13/10 no guardaban las oficinas: solo el total.
+      var ofs = [];
+      r.filas.forEach(function(f){ Object.keys(f.oficinas || {}).forEach(function(p){ if(ofs.indexOf(p) === -1) ofs.push(p); }); });
+      ofs.sort(function(a, b){ return a.localeCompare(b); });
+      var cab = ['Insumo'].concat(ofs).concat([ofs.length ? 'Total oficinas' : 'Sistema', 'Conteo real', 'Diferencia']);
+      var porCat = r.filas.slice().sort(function(a, b){ return (a.cat || '').localeCompare(b.cat || '') || a.nombre.localeCompare(b.nombre); });
+      var filasH = [], catAct = null;
+      porCat.forEach(function(f){
+        if(f.cat && f.cat !== catAct){ catAct = f.cat; filasH.push({ cat: f.cat }); }
+        filasH.push([esc(f.nombre) + (f.comentario ? '<div class="notacom">' + esc(f.comentario) + '</div>' : '')]
+          .concat(ofs.map(function(p){ return f.oficinas && p in f.oficinas ? fmt(f.oficinas[p]) : ''; }))
+          .concat([fmt(f.sistema), f.conteo === null ? '' : fmt(f.conteo), f.diferencia === null ? '' : textoDif(String(f.conteo).replace('.', ','), f.sistema)]));
+      });
+      h.push('<table><thead><tr>' + cab.map(function(c, n){ return '<th class="' + (n ? '' : 'name') + '">' + esc(c) + '</th>'; }).join('') +
+             '</tr></thead><tbody>' + filasH.map(function(f){
+               if(f.cat) return '<tr class="cat"><td colspan="' + cab.length + '">' + esc(f.cat) + '</td></tr>';
+               return '<tr>' + f.map(function(v, n){ return '<td class="' + (n ? 'num' : '') + '">' + v + '</td>'; }).join('') + '</tr>';
+             }).join('') + '</tbody></table>');
+      if(!ofs.length) h.push('<div class="obs">Este conteo es de antes de que se guardara lo de cada oficina: se ve solo el total.</div>');
       if(r.conteo.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(r.conteo.observaciones) + '</div>');
       h.push(editorNota(r, 'el depósito se contó al otro día'));
     }else if(cual === 'pedidos'){
@@ -5613,7 +5629,7 @@
     var filas = DATA.insumos.map(function(it){
       var v = numEscrito(CONTEO[clave(it.cod)]), nota = NOTAS[clave(it.cod)] || '';
       return v === null && !nota ? null
-        : { cod: it.cod, nombre: it.nombre, cat: it.cat, sistema: it.total, conteo: v, nota: nota };
+        : { cod: it.cod, nombre: it.nombre, cat: it.cat, sistema: it.total, conteo: v, nota: nota, oficinas: oficinasDe(it) };
     }).filter(Boolean);
     if(!filas.length){ aviso.textContent = 'Todavía no cargaste ningún conteo real.'; return; }
     if(!confirm('¿Guardar en el historial el conteo de ' + filas.length + ' insumos?\n\n' +
@@ -5629,6 +5645,12 @@
                              : (r.sinConexion ? 'Hace falta señal para guardarlo. Probá de nuevo en un rato.' : 'No se pudo: ' + (r.error || ''));
   }
   $('conteoguardar').addEventListener('click', guardarConteoEnHistorial);
+  // Lo que hay en cada oficina (Feli, 13/10: el historial muestra el conteo como esta pantalla)
+  function oficinasDe(it){
+    var o = {};
+    DATA.oficinas.forEach(function(p){ if(p in it.por) o[p] = it.por[p]; });
+    return o;
+  }
 
   /* ============ Arranque ============ */
 

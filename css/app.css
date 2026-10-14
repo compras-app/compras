@@ -967,7 +967,6 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .rp-linea text{fill:var(--muted);font-size:11px}
 @media (max-width:600px){.rp-filtros .filtro{flex:1 1 40%}.rp-filtros .filtro select,.rp-filtros .filtro input{min-width:0}.rp-caja b{font-size:19px}}
 /* "＋ Agregar proveedor" en Pedir cotización (Feli, 13/10): chiquito, abajo del título del bloque */
-.cotizar .cot-agregar{font-size:12px;margin:-2px 0 6px;padding:0;display:block;text-align:left;width:auto}
 .cotizar .cot-nuevo{display:flex;flex-direction:column;gap:6px;margin:4px 0 8px}
 /* Proveedores sin teléfono en Pedir cotización (Feli, 13/10) */
 .cotizar .cot-sintel .estado{margin:4px 0}

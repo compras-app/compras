@@ -235,7 +235,8 @@ function tablasEgresos(r) {
     { titulo: 'Por producto', nota: nro(t.comprobantes) + ' comprobantes, ' + nro(t.productos) + ' productos: <b>$ ' + nro(t.importe, 2) + '</b>. ' +
         'Cantidades en la unidad de Albor; el precio unitario es el de Albor en el último reporte de existencias que tiene el producto' +
         (t.sinPrecio ? ' (' + nro(t.sinPrecio) + ' sin precio: no suman)' : '') + '. ' +
-        (r.anulados ? 'Hay ' + nro(r.anulados) + ' anulado' + (r.anulados === 1 ? '' : 's') + ' en el Historial: no se cuentan.' : ''),
+        (r.anulados ? 'Hay ' + nro(r.anulados) + ' anulado' + (r.anulados === 1 ? '' : 's') + ' en el Historial: no se cuentan. ' : '') +
+        (r.granjas.some(function (g) { return /COLORADA/i.test(g); }) ? 'La Colorada: G4 se abastece de la Oficina LC 50 (La Quimera) y Granja La Colorada de la Oficina Casa (Consultores Asociados); por ahora, en Consumo mensual, sus egresos van mitad y mitad.' : ''),
       cab: ['Producto', 'Cuenta', 'Total', 'Precio unitario', 'Precio total'].concat(r.granjas).concat(r.meses.length > 1 ? r.meses.map(mes) : []),
       filas: r.productos.map(function (p) {
         return [p.insumo, String(p.cuenta || '').replace(/^\d+/, ''), nro(p.total), pesos(p.precio), p.precio === null || p.precio === undefined ? '' : pesos(p.importe)]
@@ -282,7 +283,8 @@ function tablasStock(r, vista) {
         titulo: g.nombre + ' · ' + parte[1].toLowerCase() + ' (' + nro(lista.length) + ')',
         nota: k ? '' : (g.grupo === 'QUIMERA' ? 'Oficina JM + Oficina LC 50 contra los egresos de Candelaria, Candelaria Engorde, El Cebil y la mitad de La Colorada.'
                                               : 'Oficina Casa contra la otra mitad de los egresos de La Colorada.') +
-              ' La Colorada = G4 + Granja La Colorada. Diferencia = existencias − egresos.',
+              ' La Oficina LC 50 va con La Colorada (G4) y la Oficina Casa con Granja La Colorada; mientras los egresos de La Colorada se carguen' +
+              ' todos juntos, se reparten mitad y mitad (G4 + Granja La Colorada, ÷ 2). Diferencia = existencias − egresos.',
         cab: cab, datos: filas,
         filas: filas.map(function (f) {
           return f.map(function (x, i) { return i === 0 ? x : i === f.length - 1 ? conSigno(x) : x === null ? '' : nro(x); });

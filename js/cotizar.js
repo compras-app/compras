@@ -87,7 +87,6 @@ async function abrirPedirCotizacion(refs) {
   const fuera = {};               // ID Línea → true: destildado (no va en este envío)
   const abiertos = {};            // bloques con "ver cuáles" abierto
   let varios = null;              // el panel de "Proveedores para varios": {lineas: {}, provs: {}, q}
-  let nuevo = null;               // "＋ Agregar proveedor" (Feli, 13/10): {clave, nombre, tel, guardando}
   const provsDe = function (x) { return puntual[x.id] || x.sugeridos; };
   // Feli (13/10): a quién proponer lo decide el servidor (rubro + activo); un particular no activo también recibe
   const pendientes = function (x) { return provsDe(x).filter(function (p) { return (deNuevo || !x.ya[p]) && provs[p]; }); };
@@ -153,13 +152,6 @@ async function abrirPedirCotizacion(refs) {
           (b.sub ? '<small class="sub">' + esc(b.sub) + '</small>' : '') + '</div>' +
           (activos.length ? '<button type="button" class="linkbtn" data-ver="' + k + '">' + (abiertos[b.clave] ? 'ocultar' : 'ver cuáles') + '</button>' : '') +
           (b.puntual ? '<button type="button" class="linkbtn" data-deshacer="' + k + '">deshacer</button>' : '') + '</div>' +
-        // Feli (13/10): un proveedor nuevo, con su número; queda en el padrón (con este rubro) y va en este envío
-        (nuevo && nuevo.clave === b.clave
-          ? '<div class="cot-nuevo"><input type="text" id="cz-n-nombre" placeholder="Nombre del proveedor" maxlength="80" value="' + esc(nuevo.nombre) + '">' +
-            '<input type="tel" id="cz-n-tel" placeholder="WhatsApp: 549 + característica + número" value="' + esc(nuevo.tel) + '">' +
-            '<div class="cot-varios-b"><button type="button" class="btn" id="cz-n-ok"' + (nuevo.guardando ? ' disabled' : '') + '>' + (nuevo.guardando ? 'Guardando…' : 'Agregar') + '</button>' +
-            '<button type="button" class="btn2" id="cz-n-no">Cancelar</button></div></div>'
-          : '<button type="button" class="linkbtn cot-agregar" data-nuevo="' + k + '">＋ Agregar proveedor</button>') +
         (abiertos[b.clave] ? '<div class="cot-ver">' + activos.map(function (p) {
           return '<div>' + esc(nombreProv(p)) + (provs[p].activo === false ? ' <small>(no activo: va porque es particular)</small>' : '') +
             (provs[p].telefono ? '' : r.prueba.si ? ' <small>(sin teléfono: en modo prueba sale igual)</small>' : ' <small>(sin teléfono: no le llega)</small>') + '</div>';
@@ -217,15 +209,6 @@ async function abrirPedirCotizacion(refs) {
         pintar();
       });
     });
-    cuerpo.querySelectorAll('[data-nuevo]').forEach(function (el) {
-      el.addEventListener('click', function () { nuevo = { clave: el.dataset.nuevo, nombre: '', tel: '' }; pintar(); const n = $('cz-n-nombre'); if (n) n.focus(); });
-    });
-    if (nuevo && $('cz-n-ok')) {
-      $('cz-n-nombre').addEventListener('input', function (e) { nuevo.nombre = e.target.value; });
-      $('cz-n-tel').addEventListener('input', function (e) { nuevo.tel = e.target.value; });
-      $('cz-n-no').addEventListener('click', function () { nuevo = null; pintar(); });
-      $('cz-n-ok').addEventListener('click', agregarProveedor);
-    }
     cuerpo.querySelectorAll('[data-tel]').forEach(function (el) {
       el.addEventListener('click', function () { telAbierto = el.dataset.tel; pintar(); const t = $('cz-t-tel'); if (t) t.focus(); });
     });
@@ -270,37 +253,10 @@ async function abrirPedirCotizacion(refs) {
     }
     const n = cuantos(), ok = $('dg-ok');
     if (ok) {
-      ok.disabled = !n || !!varios || !!nuevo || !!telAbierto;
+      ok.disabled = !n || !!varios || !!telAbierto;
       ok.textContent = !n ? 'Enviar' : varias ? 'Enviar ' + n + (n === 1 ? ' mensaje' : ' mensajes') : 'Enviar a ' + n + (n === 1 ? ' proveedor' : ' proveedores');
     }
   };
-  /** Guarda el proveedor nuevo (se comprueba que tenga WhatsApp) con el rubro del bloque, y lo suma a este envío. */
-  async function agregarProveedor() {
-    const nombre = nuevo.nombre.trim(), tel = nuevo.tel.replace(/\D/g, '');
-    if (nombre.length < 2) return aviso('Escribí el nombre del proveedor.', 'bad');
-    if (!tel) return aviso('Escribí el WhatsApp del proveedor, con 549 adelante.', 'bad');
-    const b = r.productos.map(bloqueDe).filter(function (x) { return x.clave === nuevo.clave; })[0];
-    if (!b) { nuevo = null; return pintar(); }
-    nuevo.guardando = true; pintar();
-    const g = await api('guardarProveedor', { nombre: nombre, telefono: tel });
-    if (!g.ok) { nuevo.guardando = false; pintar(); return aviso(g.sinConexion ? '📶 Para agregar un proveedor hace falta señal.' : g.error, 'bad'); }
-    const id = g.id;
-    const conRubro = b.rubro && b.rubro !== 'Sin rubro' && b.rubro !== 'OTROS';
-    if (conRubro) {
-      const rb = await api('rubrosProveedor', id, [b.rubro]);
-      if (!rb.ok) aviso('El proveedor quedó guardado, pero sin el rubro ' + b.rubro + ': ponéselo en Admin → Proveedores.', 'bad');
-    }
-    provs[id] = { id: id, nombre: nombre, telefono: true, activo: true };
-    r.proveedores.push(provs[id]);
-    r.productos.forEach(function (x) {
-      if (bloqueDe(x).clave !== b.clave && !(conRubro && !puntual[x.id] && !x.particulares && x.rubro === b.rubro)) return;
-      if (puntual[x.id] || !conRubro) puntual[x.id] = provsDe(x).concat([id]);
-      else if (x.sugeridos.indexOf(id) === -1) x.sugeridos.push(id);
-    });
-    nuevo = null;
-    pintar();
-    aviso('✅ ' + nombre + ' quedó en Proveedores' + (conRubro ? ', en ' + b.rubro : '') + ', y va en este envío.');
-  }
   const listo = await dialogo({
     titulo: '📤 Pedir cotización', cuerpo: cuerpo,
     botones: [{ texto: 'Enviar', clase: 'btn', id: 'dg-ok', valor: function () { return envios(); } }, { texto: 'Volver', valor: null }],
