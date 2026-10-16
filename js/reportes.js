@@ -303,10 +303,10 @@ function tablasEgresos(r) {
    Oficina CASA (Granja La Colorada). Cada parte, en tres presentaciones (vista):
    - 'resumen': Producto, Egresos totales, Existencia, Diferencia; primero lo negativo, después lo justo y lo que sobra;
    - 'detallado': lo mismo con el egreso de cada granja;
-   - 'faltantes': Producto, Faltante, Precio (lo que falta por el precio unitario de Albor), solo lo que falta.
+   - 'faltantes': Producto, Faltante, Precio de última compra (el unitario de Albor) y Precio (vacía), solo lo que falta.
    La diferencia va con su signo (sin "faltan" ni "sobran"). Cada tabla trae también `datos` (números de verdad) para el Excel. */
 const STOCK_FIJAS = ['Candelaria', 'El Cebil', 'La Colorada', 'Granja La Colorada'];
-const VISTAS_STOCK = { resumen: 'Resumen', detallado: 'Detallado', faltantes: 'Faltante y precio' };
+const VISTAS_STOCK = { resumen: 'Resumen', detallado: 'Detallado', faltantes: 'Faltante y precio' };   // las tres presentaciones
 function conSigno(n) { return n > 0 ? '+' + nro(n) : n < 0 ? '−' + nro(-n) : '0'; }
 function tablasStock(r, vista) {
   const hay = r.conEgresos || [], tablas = [];
@@ -317,13 +317,13 @@ function tablasStock(r, vista) {
       : 'Egresos de Granja La Colorada contra la existencia de la Oficina Casa.';
     const pres = VISTAS_STOCK[vista] || VISTAS_STOCK.resumen;
     if (vista === 'faltantes') {
+      // Feli (16/10): Producto, Faltante, Precio de última compra (el de Albor, por unidad) y Precio, vacía (para completar)
       const lista = ps.filter(function (p) { return p.diferencia < 0; });
-      const datos = lista.map(function (p) { return [p.insumo, -Number(p.diferencia), p.precio === null || p.precio === undefined ? null : Math.round(-p.diferencia * p.precio * 100) / 100]; });
-      const total = datos.reduce(function (t, f) { return t + (f[2] || 0); }, 0), sinPrecio = datos.filter(function (f) { return f[2] === null; }).length;
+      const datos = lista.map(function (p) { return [p.insumo, -Number(p.diferencia), p.precio === null || p.precio === undefined ? null : Number(p.precio), null]; });
       tablas.push({ grupo: g.grupo, parte: g.nombre, titulo: g.nombre + ' · ' + pres + ' (' + nro(lista.length) + ')',
-        nota: nota + ' Precio = faltante × el precio unitario de Albor. Total: <b>$ ' + nro(total, 2) + '</b>' + (sinPrecio ? ' (' + nro(sinPrecio) + ' sin precio)' : '') + '.',
-        cab: ['Producto', 'Faltante', 'Precio'], datos: datos, pesos: [2],
-        filas: datos.map(function (f) { return [f[0], nro(f[1]), f[2] === null ? 'sin precio' : '$ ' + nro(f[2], 2)]; }),
+        nota: nota + ' Precio de última compra: el precio unitario de Albor. La columna Precio va vacía.',
+        cab: ['Producto', 'Faltante', 'Precio de última compra', 'Precio'], datos: datos,
+        filas: datos.map(function (f) { return [f[0], nro(f[1]), f[2] === null ? 'sin precio' : '$ ' + nro(f[2], 2), '']; }),
         vacio: 'No falta nada.' });
       return;
     }
@@ -525,7 +525,7 @@ function excelStock(libro, r) {
         const c = hoja[XLSX.utils.encode_cell({ r: fila, c: col })];
         if (c && typeof c.v === 'number') c.z = Number.isInteger(c.v) ? '+#,##0;-#,##0;0' : '+#,##0.0#;-#,##0.0#;0';
       });
-      conPesos.forEach(function (fila) {                // el precio, en pesos
+      conPesos.forEach(function (fila) {                // el precio de última compra, en pesos
         const c = hoja[XLSX.utils.encode_cell({ r: fila, c: 2 })];
         if (c && typeof c.v === 'number') c.z = '"$ "#,##0.00';
       });
