@@ -974,6 +974,12 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 /* Admin → Padrón: varios rubros (Feli, 13/10) */
 .pf-rubros{display:flex;flex-direction:column;gap:4px;max-height:220px;overflow-y:auto}
 /* Reportes → Stock: lo que no alcanza (Feli, 13/10) */
+/* Reportes (Feli, 16/10): todo el ancho de la pantalla, así los cuadros con muchas columnas (Egresos) entran enteros;
+   el nombre del producto puede ocupar dos renglones y las celdas son un poco más angostas */
+body[data-pantalla="reportes"] .contenido{max-width:none;padding-left:20px;padding-right:20px}
+#s-reportes .ve-tabla th,#s-reportes .ve-tabla td{padding:6px 8px}
+#s-reportes .ve-tabla td:first-child{white-space:normal;min-width:200px;max-width:340px}
+#s-reportes .ve-tabla th{white-space:normal;vertical-align:bottom}
 tr.rp-falta td{color:var(--danger)}
 .rp-meses{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:8px 0 18px}
 .rp-guardado{margin:4px 0 12px}
