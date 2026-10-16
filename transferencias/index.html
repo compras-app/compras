@@ -481,14 +481,17 @@
   .sugerencias .cod{color:var(--ink-faint);font-size:12px;font-variant-numeric:tabular-nums}
   .sugerencias .tipo{margin-left:auto;color:var(--ink-faint);font-size:11.5px}
   .sugerencias .nada{padding:12px;color:var(--ink-soft);font-size:13px}
+  .ptipo{gap:6px;margin-bottom:10px}
+  #mtablehost{margin-top:10px;border:1px solid var(--line);border-radius:8px}
+  #mtablehost thead th{position:static}
 
   td.cant input.ci{width:100%}
   /* La Colorada: solo pares (Feli, 2026-10-07) */
-  #atablehost td.cant.impar input.ci{border-color:#d9534f;box-shadow:0 0 0 1px #d9534f}
+  #atablehost td.cant.impar input.ci,#mtablehost td.cant.impar input.ci{border-color:#d9534f;box-shadow:0 0 0 1px #d9534f}
   /* Armar pedido: la cantidad ocupa todo el casillero y se ve como un campo (Feli, 2026-10-03) */
-  #atablehost th.count{width:150px}
-  #atablehost td.cant{padding:3px 4px}
-  #atablehost td.cant input.ci{min-height:36px;font-size:15px;text-align:center;border:1px solid var(--line-strong);
+  #atablehost th.count,#mtablehost th.count{width:150px}
+  #atablehost td.cant,#mtablehost td.cant{padding:3px 4px}
+  #atablehost td.cant input.ci,#mtablehost td.cant input.ci{min-height:36px;font-size:15px;text-align:center;border:1px solid var(--line-strong);
                                border-radius:7px;background:var(--bg)}
   /* Elegir del catálogo (Feli, 2026-10-06) */
   .acat{margin-top:10px;border:1px solid var(--line);border-radius:7px;padding:8px 12px}
@@ -827,7 +830,28 @@
     </div>
 
     <div class="paso" id="paso2">
-      <h3><span class="n">2</span>Pedido de la granja</h3>
+      <h3><span class="n">2</span><span id="ptitulo2">Pedido de la granja</span></h3>
+      <!-- Feli (16/10): o un pedido de la granja, o una transferencia armada acá mismo (solo admins) -->
+      <div class="fila ptipo" id="ptipo" hidden>
+        <button class="btn" type="button" data-ptipo="granja">Pedido de la granja</button>
+        <button class="btn2" type="button" data-ptipo="manual">Transferencia manual</button>
+      </div>
+      <div id="pmanual" hidden>
+        <div class="fila">
+          <label class="field" style="flex:1">Buscar
+            <input type="text" id="mbuscar" placeholder="nombre o código, y la cantidad al final: draxxin 6"
+                   autocomplete="off" style="width:100%">
+          </label>
+        </div>
+        <div class="sugerencias" id="msugerencias"></div>
+        <p class="nota">Elegí de la lista con <b>Enter</b> o un clic, y seguí escribiendo el próximo.
+           Si ponés la cantidad al final (<code>draxxin 6</code>) entra ya con la cantidad. La granja se elige abajo, en <b>Envío</b>.
+           Lo que no alcance queda como pendiente, igual que en un pedido de la granja.</p>
+        <div id="mtablehost"></div>
+        <div class="fila"><span class="contado" id="maviso"></span><span class="sep" style="flex:1"></span>
+          <button class="linkbtn" id="mvaciar" type="button">vaciar la lista</button></div>
+      </div>
+      <div id="pgranja">
       <div class="recibidos" id="precibidos"></div>
       <div class="fila">
         <button class="btn" id="pfilebtn">Elegir archivo</button>
@@ -847,6 +871,7 @@
         <label class="field">Cuenta <select class="select" id="ccta"></select></label>
       </div>
       <div class="descartes" id="pdescartes"></div>
+      </div>
     </div>
 
     <div class="paso" id="paso3">
@@ -4647,11 +4672,11 @@
     $('arapidaaviso').innerHTML = h.join(' · ');
   }
 
-  function buscarEnCatalogo(texto){
+  function buscarEnCatalogo(texto, lista){
     var q = norm(texto.trim());
     if(!q) return [];
     var ya = {};
-    ARMANDO.forEach(function(i){ ya[clave(i.cod)] = true; });
+    (lista || ARMANDO).forEach(function(i){ ya[clave(i.cod)] = true; });
     return CATALOGO.filter(function(i){
       if(ya[clave(i.cod)]) return false;
       return norm(i.nombre).indexOf(q) >= 0 || norm(i.cod).indexOf(q) >= 0;
@@ -4941,6 +4966,7 @@
   /* Los que mandaron las granjas y todavía no se transfirieron. */
   async function refrescarRecibidos(){
     if(!ES_ADMIN) return;
+    if($('ptipo').hidden){ pintarTipoPedido(); if(esManual()) pedidoDeManual(); }   // la primera vez: transferencia manual (Feli, 16/10)
     var r = await api('listarPedidosGranja', ['Enviado'], true);
     if(!r.ok){ if(!r.sinConexion) errorP('No se pudieron traer los pedidos: ' + (r.error || '')); return; }
     RECIBIDOS = (r.pedidos || []).map(function(p){
@@ -5047,6 +5073,197 @@
     pintarRecibidos();
     actualizarBadge();
   }
+
+  /* ---------- Transferencia manual (Feli, 16/10) ----------
+     Un admin arma la transferencia acá mismo, sin pedido de la granja: el mismo buscador de Armar pedido
+     (catálogo, "draxxin 6"), y la granja es la del Envío. Lo de abajo (resumen, planillas, Albor) no cambia.
+     Al cargarla en Albor queda como un pedido de esa granja ("Transferencia manual"), Transferido, con sus
+     pendientes: aparecen en la lista para transferirlos cuando haya insumos. La lista queda en la compu
+     hasta que se carga en Albor. */
+  var K_MANUAL = 'programa-compras:transf_manual';
+  var MANUAL = { on: false, items: [] };
+  try{
+    var mGuardado = JSON.parse(localStorage.getItem(K_MANUAL) || 'null');
+    if(mGuardado && Array.isArray(mGuardado.items)) MANUAL = { on: !!mGuardado.on, items: mGuardado.items };
+  }catch(e){}
+  function guardarManual(){ try{ localStorage.setItem(K_MANUAL, JSON.stringify(MANUAL)); }catch(e){} }
+  function esManual(){ return ES_ADMIN && MANUAL.on; }
+
+  function pintarTipoPedido(){
+    $('ptipo').hidden = !ES_ADMIN;
+    var man = esManual();
+    [].forEach.call($('ptipo').querySelectorAll('[data-ptipo]'), function(b){
+      b.className = b.getAttribute('data-ptipo') === (man ? 'manual' : 'granja') ? 'btn' : 'btn2';
+    });
+    $('pmanual').hidden = !man;
+    $('pgranja').hidden = man;
+    $('ptitulo2').textContent = man ? 'Transferencia manual' : 'Pedido de la granja';
+    if(man) pintarManual();
+  }
+  function cambiarTipoPedido(tipo){
+    var man = tipo === 'manual';
+    if(man === esManual()) return;
+    MANUAL.on = man; guardarManual();
+    limpiarErrorP();
+    PEDIDO_ELEGIDO = null; PEDIDO = null;
+    $('ppedido').classList.remove('ok'); $('ppedido').classList.add('falta');
+    $('ppedidotxt').textContent = 'Ningún pedido cargado';
+    pintarTipoPedido();
+    if(man){ pedidoDeManual(); $('mbuscar').focus(); }
+    else analizar();
+    pintarRecibidos();
+  }
+
+  /* La lista manual pasa a ser el pedido (solo lo que tiene cantidad), como uno que llega de la granja. */
+  function pedidoDeManual(){
+    if(!esManual()) return;
+    var con = MANUAL.items.filter(function(i){ return numEscrito(i.unidad) > 0; });
+    PEDIDO = con.length ? {
+      cab: ['codigo', 'nombre', 'unidad', 'cuenta'],
+      filas: con.map(function(i){ return [i.cod, i.nombre, numEscrito(i.unidad), i.cuenta || '']; }),
+      filaCab: -1, mapa: { cod: 0, nom: 1, cant: 2, cta: 3 },
+      nombre: 'Transferencia manual', manual: true
+    } : null;
+    PEDIDO_ELEGIDO = null;
+    analizar();
+  }
+  var tManual = null;
+  function pedidoDeManualLuego(){ clearTimeout(tManual); tManual = setTimeout(pedidoDeManual, 350); }
+
+  function manualPares(){ return destinoActual() && destinoActual().modo === 'doble'; }
+  function pintarManual(){
+    var pares = manualPares();
+    var h = ['<table><thead><tr><th class="name">Insumo</th><th>Unidad</th><th class="count">Cantidad</th><th></th></tr></thead><tbody>'];
+    if(!MANUAL.items.length){
+      h.push('<tr><td class="name" colspan="4">Todavía no agregaste ningún insumo. Buscalo arriba y hacé clic para sumarlo.</td></tr>');
+    }
+    MANUAL.items.forEach(function(it, n){
+      h.push('<tr class="row' + (n % 2 ? ' alt' : '') + '"><td class="name">' + esc(it.nombre) + '<span class="marca">' + esc(it.cod) + '</span></td>' +
+             '<td class="name">' + esc(it.medida || '') + '</td>' +
+             '<td class="count cant' + (pares && esImpar(it.unidad) ? ' impar' : '') + '"><input class="ci" type="text" inputmode="decimal" autocomplete="off" data-m="' + n +
+             '" aria-label="Cantidad de ' + esc(it.nombre) + '" value="' + esc(it.unidad) + '"></td>' +
+             '<td><button class="quitar" data-mquitar="' + n + '" title="Quitar">×</button></td></tr>');
+    });
+    h.push('</tbody></table>');
+    $('mtablehost').innerHTML = h.join('');
+    avisoManual();
+  }
+  function avisoManual(){
+    var pares = manualPares();
+    var cargados = MANUAL.items.filter(function(i){ return numEscrito(i.unidad) > 0; }).length;
+    var impares = pares ? MANUAL.items.filter(function(i){ return esImpar(i.unidad); }).length : 0;
+    $('maviso').innerHTML = MANUAL.items.length
+      ? '<b>' + MANUAL.items.length + '</b> insumos · ' + cargados + ' con cantidad puesta' +
+        (pares ? (impares ? ' · <span style="color:#d9534f">' + impares + ' con cantidad impar: La Colorada va solo en pares</span>' : ' · La Colorada: solo cantidades pares') : '')
+      : '';
+    $('mvaciar').hidden = !MANUAL.items.length;
+  }
+
+  var CANT_MANUAL = '';
+  function pintarSugerenciasManual(){
+    var caja = $('msugerencias'), texto = $('mbuscar').value;
+    if(!texto.trim()){ caja.classList.remove('on'); caja.innerHTML = ''; return; }
+    var hallados = buscarEnCatalogo(texto, MANUAL.items);
+    CANT_MANUAL = '';
+    if(!hallados.length){
+      var conCant = partirEntrada(texto).filter(function(o){ return o.cant; })[0];
+      if(conCant){
+        hallados = buscarEnCatalogo(conCant.texto, MANUAL.items);
+        if(hallados.length) CANT_MANUAL = conCant.cant;
+      }
+    }
+    if(!hallados.length){
+      caja.innerHTML = '<div class="nada">Ningún insumo con «' + esc(texto.trim()) + '».' +
+        (CATALOGO.length ? '' : ' El catálogo todavía no está publicado.') + '</div>';
+      caja.classList.add('on');
+      return;
+    }
+    caja.innerHTML = hallados.map(function(i, n){
+      return '<div class="op' + (n === 0 ? ' marcada' : '') + '" data-cod="' + esc(i.cod) + '">' +
+             '<span class="cod">' + esc(i.cod) + '</span><span>' + esc(i.nombre) + '</span>' +
+             '<span class="tipo">' + esc(i.tipo || '') + '</span>' +
+             (CANT_MANUAL ? '<span class="tipo"><b>cantidad ' + esc(CANT_MANUAL) + '</b></span>' : '') + '</div>';
+    }).join('');
+    caja.classList.add('on');
+  }
+  function agregarManual(cod){
+    var ins = CATALOGO.filter(function(i){ return clave(i.cod) === clave(cod); })[0];
+    if(!ins || MANUAL.items.some(function(i){ return clave(i.cod) === clave(cod); })) return;
+    MANUAL.items.push(renglonDe(ins, CANT_MANUAL));
+    guardarManual();
+    $('mbuscar').value = '';
+    pintarSugerenciasManual();
+    pintarManual();
+    pedidoDeManual();
+    if(!CANT_MANUAL){
+      var ult = $('mtablehost').querySelector('input[data-m="' + (MANUAL.items.length - 1) + '"]');
+      if(ult){ ult.focus(); return; }
+    }
+    $('mbuscar').focus();
+  }
+
+  $('ptipo').addEventListener('click', function(e){
+    var b = e.target.closest ? e.target.closest('[data-ptipo]') : null;
+    if(b) cambiarTipoPedido(b.getAttribute('data-ptipo'));
+  });
+  $('mbuscar').addEventListener('input', pintarSugerenciasManual);
+  $('mbuscar').addEventListener('keydown', function(e){
+    var caja = $('msugerencias');
+    if(!caja.classList.contains('on')) return;
+    var ops = [].slice.call(caja.querySelectorAll('.op'));
+    if(!ops.length) return;
+    var i = ops.findIndex(function(o){ return o.classList.contains('marcada'); });
+    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      ops[Math.max(0, i)].classList.remove('marcada');
+      var j = (i + (e.key === 'ArrowDown' ? 1 : -1) + ops.length) % ops.length;
+      ops[j].classList.add('marcada');
+      ops[j].scrollIntoView({block:'nearest'});
+    }else if(e.key === 'Enter'){
+      e.preventDefault();
+      agregarManual(ops[Math.max(0, i)].getAttribute('data-cod'));
+    }
+  });
+  $('msugerencias').addEventListener('click', function(e){
+    var op = e.target.closest ? e.target.closest('.op') : null;
+    if(op) agregarManual(op.getAttribute('data-cod'));
+  });
+  $('mtablehost').addEventListener('input', function(e){
+    var inp = e.target;
+    if(!inp.classList || !inp.classList.contains('ci')) return;
+    var n = parseInt(inp.getAttribute('data-m'), 10);
+    if(!MANUAL.items[n]) return;
+    MANUAL.items[n].unidad = inp.value.trim();
+    guardarManual();
+    if(inp.parentNode && inp.parentNode.classList) inp.parentNode.classList.toggle('impar', manualPares() && esImpar(inp.value));
+    avisoManual();
+    pedidoDeManualLuego();
+  });
+  $('mtablehost').addEventListener('keydown', function(e){
+    var inp = e.target;
+    if(!inp.classList || !inp.classList.contains('ci')) return;
+    var salto = (e.key === 'Enter' || e.key === 'ArrowDown') ? 1 : (e.key === 'ArrowUp' ? -1 : 0);
+    if(!salto) return;
+    e.preventDefault();
+    if(e.key === 'Enter'){ $('mbuscar').focus(); return; }
+    var todos = [].slice.call($('mtablehost').querySelectorAll('input.ci'));
+    var sig = todos[todos.indexOf(inp) + salto];
+    if(sig){ sig.focus(); sig.select(); } else { $('mbuscar').focus(); }
+  });
+  $('mtablehost').addEventListener('click', function(e){
+    var q = e.target.getAttribute && e.target.getAttribute('data-mquitar');
+    if(q === null || q === undefined) return;
+    MANUAL.items.splice(parseInt(q, 10), 1);
+    guardarManual();
+    pintarManual();
+    pedidoDeManual();
+  });
+  $('mvaciar').addEventListener('click', function(){
+    if(!confirm('¿Vaciar la lista de la transferencia manual?')) return;
+    MANUAL.items = []; guardarManual();
+    pintarManual(); pedidoDeManual();
+  });
+  $('pdestino').addEventListener('change', function(){ if(esManual()) pintarManual(); });
 
   /* ---------- Avisos de Armar pedido ---------- */
 
@@ -5521,7 +5738,7 @@
                 '\n\nVas a poder revisar cada comprobante antes de aplicarlo.')) return;
     limpiarErrorP();
 
-    var pedido = PEDIDO_ELEGIDO;
+    var pedido = PEDIDO_ELEGIDO, manual = !!(PEDIDO && PEDIDO.manual);
     var archivos;
     try{ archivos = [archivoParaPython(await libroTransferencia()), archivoParaPython(await libroPendientes())].filter(Boolean); }
     catch(e){ errorP(e.message || String(e)); return; }
@@ -5539,6 +5756,18 @@
 
     var hechos = (r && r.hechos) || [];
     if(hechos.length){ TRANSFERIDO_CON = { data: DATA, envio: dest.nombre }; recordarExistencias({ transferido: dest.nombre }); }
+    /* Transferencia manual (Feli, 16/10): queda como un pedido de esa granja, así se marca Transferido con sus
+       pendientes, igual que uno que mandó la granja. */
+    var avisoManualAlbor = '';
+    if(manual && r && r.ok && hechos.length){
+      var pm = { id: 'T' + nuevoId().slice(1), granja: granjaDeEnvio(dest), fecha: $('pfecha').value,
+                 observaciones: 'Transferencia manual', manual: true,
+                 items: ANALISIS.items.map(function(i){ return { cod: i.cod, nombre: i.nombre, cantidad: i.pedido, cuenta: i.cuenta || '' }; }) };
+      var cm = await api('enviarPedidoGranja', pm);
+      if(cm.ok){ pedido = { id: cm.id || pm.id, granja: pm.granja }; MANUAL.items = []; guardarManual(); pintarManual(); }
+      else avisoManualAlbor = '<li style="color:#b3261e">No se pudo anotar la transferencia manual como pedido de ' + esc(pm.granja) + ': ' +
+                              esc(cm.error || (cm.sinConexion ? 'sin señal' : '')) + '. Los pendientes quedan solo en la planilla. La transferencia en Albor quedó hecha.</li>';
+    }
     // Feli (2026-10-07): el envío, la fecha contable y los pendientes, para bajar sus planillas desde el historial
     var arm = datosArmadoActual();
     anotarMovimientos('Transferencia', bloques, hechos, pedido,
@@ -5548,6 +5777,7 @@
              esc(x.comprobante || 'sin número') + '</b> · ' + x.cargados + ' de ' + x.total +
              lineaFallados(x.fallados) + '</li>';
     });
+    if(avisoManualAlbor) lineas.push(avisoManualAlbor);
 
     /* El pedido de la granja ya se usó: en la planilla queda "Transferido",
        con lo que faltó en la columna Pendientes (Feli). Si eran los
@@ -5565,7 +5795,8 @@
       }else{
         m = await api('marcarTransferido', pedido.id, { comprobantes: nros,
               items: ANALISIS.items.map(function(i){ return { cod: i.cod, transferido: i.total, pendiente: i.pendiente }; }) });
-        if(m.ok) lineas.push('<li>El pedido de ' + esc(pedido.granja || '') + ' quedó como Transferido' +
+        if(m.ok) lineas.push('<li>' + (manual ? 'La transferencia manual quedó anotada como un pedido de ' + esc(pedido.granja || '') + ', Transferido'
+                                              : 'El pedido de ' + esc(pedido.granja || '') + ' quedó como Transferido') +
                              (m.quedan ? ', con ' + m.quedan + ' pendiente' + (m.quedan === 1 ? '' : 's') + '.' : '.') + '</li>');
       }
       if(!m.ok) lineas.push('<li style="color:#b3261e">No se pudo anotar en la planilla: ' + esc(m.error || '') +
