@@ -589,6 +589,12 @@
   tr.row:hover .notabtn,.notabtn:focus,.notabtn.tiene{opacity:1}
   .notabtn:hover{background:var(--accent-soft)}
   .notacom{font-size:12px;color:var(--ink-soft);font-style:italic;margin-top:3px;white-space:pre-wrap}
+  /* Historial: modificar un conteo (Feli, 16/10) */
+  #hconteo input.ci,#hconteo input.hce-nota{background:transparent;color:inherit;border:1px solid var(--line);border-radius:4px;padding:3px 5px;font:inherit}
+  #hconteo input.ci{width:80px;text-align:right}
+  #hconteo input.hce-nota{width:100%;min-width:160px}
+  #hconteo textarea{width:100%;box-sizing:border-box;margin-top:4px}
+  .hconteo-b{flex-wrap:wrap;gap:6px}
   .notaedit{display:block;width:100%;margin-top:4px;font-size:12px;line-height:1.35;font-family:inherit;color:var(--ink);
             background:var(--bg);border:1px solid var(--accent);border-radius:6px;padding:5px 7px;resize:vertical}
   .notaayuda{font-size:11px;color:var(--ink-faint);margin-top:2px}
@@ -3810,29 +3816,8 @@
   function detalleHistorial(cual, x, r){
     var h = [];
     if(cual === 'conteos'){
-      h.push('<b>Planilla de conteo de stock</b> · ' + fechaCorta(x.dia) + ' · responsable ' + esc(r.conteo.responsable || '—') +
-             (r.conteo.hasta ? ' · existencias al ' + esc(r.conteo.hasta) : '') + ' · guardó ' + esc(r.conteo.quien));
-      // Feli (13/10): como la pantalla del conteo: cada oficina, el total de las oficinas, el conteo real y la diferencia,
-      // agrupado por categoría. Los conteos de antes del 13/10 no guardaban las oficinas: solo el total.
-      var ofs = [];
-      r.filas.forEach(function(f){ Object.keys(f.oficinas || {}).forEach(function(p){ if(ofs.indexOf(p) === -1) ofs.push(p); }); });
-      ofs.sort(function(a, b){ return a.localeCompare(b); });
-      var cab = ['Insumo'].concat(ofs).concat([ofs.length ? 'Total oficinas' : 'Sistema', 'Conteo real', 'Diferencia']);
-      var porCat = r.filas.slice().sort(function(a, b){ return (a.cat || '').localeCompare(b.cat || '') || a.nombre.localeCompare(b.nombre); });
-      var filasH = [], catAct = null;
-      porCat.forEach(function(f){
-        if(f.cat && f.cat !== catAct){ catAct = f.cat; filasH.push({ cat: f.cat }); }
-        filasH.push([esc(f.nombre) + (f.comentario ? '<div class="notacom">' + esc(f.comentario) + '</div>' : '')]
-          .concat(ofs.map(function(p){ return f.oficinas && p in f.oficinas ? fmt(f.oficinas[p]) : ''; }))
-          .concat([fmt(f.sistema), f.conteo === null ? '' : fmt(f.conteo), f.diferencia === null ? '' : textoDif(String(f.conteo).replace('.', ','), f.sistema)]));
-      });
-      h.push('<table><thead><tr>' + cab.map(function(c, n){ return '<th class="' + (n ? '' : 'name') + '">' + esc(c) + '</th>'; }).join('') +
-             '</tr></thead><tbody>' + filasH.map(function(f){
-               if(f.cat) return '<tr class="cat"><td colspan="' + cab.length + '">' + esc(f.cat) + '</td></tr>';
-               return '<tr>' + f.map(function(v, n){ return '<td class="' + (n ? 'num' : '') + '">' + v + '</td>'; }).join('') + '</tr>';
-             }).join('') + '</tbody></table>');
-      if(!ofs.length) h.push('<div class="obs">Este conteo es de antes de que se guardara lo de cada oficina: se ve solo el total.</div>');
-      if(r.conteo.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(r.conteo.observaciones) + '</div>');
+      HIST.conteo = { r: r, editando: false, filtro: HIST.conteo && HIST.conteo.r && HIST.conteo.r.conteo.id === r.conteo.id ? HIST.conteo.filtro : '' };
+      h.push('<div id="hconteo">' + htmlConteoHist() + '</div>');
       h.push(editorNota(r, 'el depósito se contó al otro día'));
     }else if(cual === 'pedidos'){
       var p = r.pedido;
@@ -3888,6 +3873,84 @@
       'En Albor no cambia nada: si hace falta, se borra allá a mano.</p>' +
       '<textarea id="hanulartxt" rows="2" placeholder="Por qué se anula. Ej.: egreso borrado en Albor"></textarea>' +
       '<div class="acciones"><button class="btn" data-hanular="si">Anular</button><span class="aviso" id="hanularaviso"></span></div></details></div>';
+  }
+
+  /* Un conteo del historial (Feli, 13/10 y 16/10): como la pantalla del conteo (cada oficina, Total oficinas, Conteo real
+     y Diferencia, por categoría), con el filtro Con / Sin comentario y "✏️ Modificar el conteo" (conteo real, comentarios y
+     observaciones; lo demás queda como se guardó). Los conteos de antes del 13/10 no guardaban las oficinas. */
+  function htmlConteoHist(){
+    var C = HIST.conteo, r = C.r, ed = C.editando, h = [];
+    h.push('<b>Planilla de conteo de stock</b> · ' + fechaCorta((r.conteo.fecha || '').slice(0, 10)) + ' · responsable ' + esc(r.conteo.responsable || '—') +
+           (r.conteo.hasta ? ' · existencias al ' + esc(r.conteo.hasta) : '') + ' · guardó ' + esc(r.conteo.quien) +
+           (r.conteo.modifico ? ' · <b>modificó ' + esc(r.conteo.modifico) + (r.conteo.modificado ? ' el ' + fechaCorta(r.conteo.modificado.slice(0, 10)) : '') + '</b>' : ''));
+    var conCom = r.filas.filter(function(f){ return f.comentario; }).length;
+    h.push('<div class="acciones hconteo-b">' +
+      ['', 'con', 'sin'].map(function(k){
+        var n = k === 'con' ? conCom : k === 'sin' ? r.filas.length - conCom : r.filas.length;
+        return '<button class="' + (C.filtro === k ? 'btn' : 'btn2') + '" data-hcfiltro="' + k + '">' + (k === 'con' ? 'Con comentario' : k === 'sin' ? 'Sin comentario' : 'Todos') + ' (' + n + ')</button>';
+      }).join('') +
+      (ed ? '' : '<button class="btn2" data-hceditar>✏️ Modificar el conteo</button>') + '</div>');
+    var ofs = [];
+    r.filas.forEach(function(f){ Object.keys(f.oficinas || {}).forEach(function(p){ if(ofs.indexOf(p) === -1) ofs.push(p); }); });
+    ofs.sort(function(a, b){ return a.localeCompare(b); });
+    var cab = ['Insumo'].concat(ofs).concat([ofs.length ? 'Total oficinas' : 'Sistema', 'Conteo real', 'Diferencia']).concat(ed ? ['Comentario'] : []);
+    var lista = r.filas.filter(function(f){ return !C.filtro || (C.filtro === 'con' ? !!f.comentario : !f.comentario); })
+      .sort(function(a, b){ return (a.cat || '').localeCompare(b.cat || '') || a.nombre.localeCompare(b.nombre); });
+    var filasH = [], catAct = null;
+    lista.forEach(function(f){
+      if(f.cat && f.cat !== catAct){ catAct = f.cat; filasH.push({ cat: f.cat }); }
+      var esc0 = ed && C.escrito && C.escrito[f.cod] || {};            // lo ya escrito (aunque el filtro lo haya escondido)
+      var real = esc0.conteo !== undefined ? esc0.conteo : f.conteo === null ? '' : String(f.conteo).replace('.', ',');
+      var com = esc0.nota !== undefined ? esc0.nota : f.comentario || '';
+      filasH.push([esc(f.nombre) + (!ed && f.comentario ? '<div class="notacom">' + esc(f.comentario) + '</div>' : '')]
+        .concat(ofs.map(function(p){ return f.oficinas && p in f.oficinas ? fmt(f.oficinas[p]) : ''; }))
+        .concat([fmt(f.sistema),
+                 ed ? '<input class="ci hce-real" type="text" inputmode="decimal" data-cod="' + esc(f.cod) + '" data-total="' + f.sistema + '" value="' + esc(real) + '">' : (f.conteo === null ? '' : fmt(f.conteo)),
+                 '<span data-hcdif="' + esc(f.cod) + '">' + textoDif(real, f.sistema) + '</span>'])
+        .concat(ed ? ['<input class="hce-nota" type="text" data-cod="' + esc(f.cod) + '" maxlength="500" value="' + esc(com) + '" placeholder="Comentario">'] : []));
+    });
+    h.push('<table><thead><tr>' + cab.map(function(c, n){ return '<th class="' + (n ? '' : 'name') + '">' + esc(c) + '</th>'; }).join('') +
+           '</tr></thead><tbody>' + (filasH.length ? filasH.map(function(f){
+             if(f.cat) return '<tr class="cat"><td colspan="' + cab.length + '">' + esc(f.cat) + '</td></tr>';
+             return '<tr>' + f.map(function(v, n){ return '<td class="' + (n ? 'num' : '') + '">' + v + '</td>'; }).join('') + '</tr>';
+           }).join('') : '<tr><td colspan="' + cab.length + '">Ningún producto ' + (C.filtro === 'con' ? 'con' : 'sin') + ' comentario.</td></tr>') + '</tbody></table>');
+    if(!ofs.length) h.push('<div class="obs">Este conteo es de antes de que se guardara lo de cada oficina: se ve solo el total.</div>');
+    if(ed){
+      h.push('<div class="obs"><b>Observaciones</b><textarea id="hce-obs" rows="2">' + esc(C.obs !== undefined ? C.obs : r.conteo.observaciones || '') + '</textarea></div>' +
+             '<div class="acciones"><button class="btn" data-hceguardar>Guardar cambios</button><button class="btn2" data-hcecancelar>Cancelar</button>' +
+             '<span class="aviso" id="hceaviso">Un producto sin conteo real ni comentario sale del conteo.</span></div>');
+    }else if(r.conteo.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(r.conteo.observaciones) + '</div>');
+    return h.join('');
+  }
+  function repintarConteoHist(){
+    if($('hconteo')) $('hconteo').innerHTML = htmlConteoHist();
+    if($('hdet')) HIST.detalle = $('hdet').innerHTML;
+  }
+  /* Lo que se escribió en los casilleros (también lo que el filtro tiene escondido: se guarda en C.escrito). */
+  function leerEdicionConteo(){
+    var C = HIST.conteo; C.escrito = C.escrito || {};
+    [].forEach.call(document.querySelectorAll('#hconteo .hce-real'), function(x){ (C.escrito[x.getAttribute('data-cod')] = C.escrito[x.getAttribute('data-cod')] || {}).conteo = x.value; });
+    [].forEach.call(document.querySelectorAll('#hconteo .hce-nota'), function(x){ (C.escrito[x.getAttribute('data-cod')] = C.escrito[x.getAttribute('data-cod')] || {}).nota = x.value; });
+    if($('hce-obs')) C.obs = $('hce-obs').value;
+  }
+  async function guardarEdicionConteo(){
+    var C = HIST.conteo, i = HIST.abierto, x = HIST.resultados[i];
+    leerEdicionConteo();
+    var filas = [], mal = '';
+    Object.keys(C.escrito).forEach(function(cod){
+      var e = C.escrito[cod], txt = String(e.conteo === undefined ? '' : e.conteo).trim(), v = txt === '' ? null : numEscrito(txt);
+      if(txt !== '' && v === null) mal = mal || cod;
+      filas.push({ cod: cod, conteo: v, nota: String(e.nota === undefined ? (C.r.filas.filter(function(f){ return f.cod === cod; })[0] || {}).comentario || '' : e.nota).trim() });
+    });
+    if(mal){ $('hceaviso').textContent = 'Revisá el conteo real: hay uno que no es un número.'; return; }
+    $('hceaviso').textContent = 'Guardando…';
+    var r = await api('editarConteo', x.id, { filas: filas, observaciones: C.obs === undefined ? undefined : C.obs.trim() });
+    if(!r.ok){ $('hceaviso').textContent = r.sinConexion ? 'Hace falta señal para guardarlo.' : 'No se pudo: ' + (r.error || ''); return; }
+    HIST.conteo = { r: null, filtro: C.filtro };
+    HIST.detalle = '';
+    HIST.abierto = null;
+    pintarHistorial();
+    abrirHistorial(i);
   }
 
   async function anularHistorial(si){
@@ -3987,11 +4050,23 @@
     $('hproducto').value = ''; $('hdesde').value = ''; $('hhasta').value = ''; $('hgranja').value = '';
     buscarHistorial();
   });
+  // Modificar un conteo: la diferencia se recalcula al escribir
+  $('hresultado').addEventListener('input', function(e){
+    var x = e.target.closest('.hce-real');
+    if(!x) return;
+    var d = document.querySelector('[data-hcdif="' + x.getAttribute('data-cod').replace(/"/g, '\\"') + '"]');
+    if(d) d.innerHTML = textoDif(x.value, Number(x.getAttribute('data-total')));
+  });
   $('hresultado').addEventListener('click', function(e){
     if(e.target.closest('[data-himprimir]')){ imprimirDetalle(); return; }
     var pl = e.target.closest('[data-hplanilla]');
     if(pl){ bajarPlanillaHistorial(pl.getAttribute('data-hplanilla')); return; }
     if(e.target.closest('[data-hnota]')){ guardarNotaHistorial(); return; }
+    var cf = e.target.closest('[data-hcfiltro]');       // conteos: con / sin comentario (Feli, 16/10)
+    if(cf){ if(HIST.conteo.editando) leerEdicionConteo(); HIST.conteo.filtro = cf.getAttribute('data-hcfiltro'); repintarConteoHist(); return; }
+    if(e.target.closest('[data-hceditar]')){ HIST.conteo.editando = true; HIST.conteo.escrito = {}; HIST.conteo.obs = undefined; repintarConteoHist(); return; }
+    if(e.target.closest('[data-hcecancelar]')){ HIST.conteo.editando = false; HIST.conteo.escrito = {}; repintarConteoHist(); return; }
+    if(e.target.closest('[data-hceguardar]')){ guardarEdicionConteo(); return; }
     var an = e.target.closest('[data-hanular]');
     if(an){ anularHistorial(an.getAttribute('data-hanular') === 'si'); return; }
     if(e.target.closest('#hdet')) return;            // escribir en la nota no cierra el detalle

@@ -14,7 +14,7 @@
    - Lo ven todos los admins; el gerente es admin.
    ============================================================ */
 
-const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false, vista: 'resumen' };
+const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false, vista: 'detallado' };
 const RP_PESTANAS = [                                     // nombres de Feli (13/10)
   { id: 'resumen', nombre: 'Resumen' }, { id: 'stock', nombre: 'Consumo mensual' }, { id: 'flujo', nombre: 'Flujo de tarjetas' },
   { id: 'plata', nombre: 'Gastos' }, { id: 'proveedores', nombre: 'Proveedores' }, { id: 'padron', nombre: 'Padrón' },
@@ -300,13 +300,13 @@ function tablasEgresos(r) {
 
 /* Consumo mensual (antes Stock; Feli, 13/10 y 16/10): lo egresado en el último mes exacto contra la existencia de Albor,
    en tres partes: Faltantes Oficina JM (Candelaria y El Cebil), Faltantes Oficina LC 50 (La Colorada) y Faltantes
-   Oficina CASA (Granja La Colorada). Cada parte, en tres presentaciones (vista):
-   - 'resumen': Producto, Egresos totales, Existencia, Diferencia; primero lo negativo, después lo justo y lo que sobra;
-   - 'detallado': lo mismo con el egreso de cada granja;
+   Oficina CASA (Granja La Colorada). Cada parte, en dos presentaciones (vista; el resumen se sacó: Feli, 16/10):
+   - 'detallado': Producto, el egreso de cada granja, Egresos totales, Existencia, Diferencia; primero lo negativo, después
+     lo justo y lo que sobra (lleva solo el nombre de la parte);
    - 'faltantes': Producto, Faltante, Precio de última compra (el unitario de Albor) y Precio (vacía), solo lo que falta.
    La diferencia va con su signo (sin "faltan" ni "sobran"). Cada tabla trae también `datos` (números de verdad) para el Excel. */
 const STOCK_FIJAS = ['Candelaria', 'El Cebil', 'La Colorada', 'Granja La Colorada'];
-const VISTAS_STOCK = { resumen: 'Resumen', detallado: 'Detallado', faltantes: 'Faltante y precio' };   // las tres presentaciones
+const VISTAS_STOCK = { detallado: '', faltantes: 'Faltante y precio' };   // las dos presentaciones (la primera, sin nombre)
 function conSigno(n) { return n > 0 ? '+' + nro(n) : n < 0 ? '−' + nro(-n) : '0'; }
 function tablasStock(r, vista) {
   const hay = r.conEgresos || [], tablas = [];
@@ -315,7 +315,8 @@ function tablasStock(r, vista) {
     const nota = g.grupo === 'JM' ? 'Egresos de Candelaria (y Candelaria Engorde) y El Cebil contra la existencia de la Oficina JM.'
       : g.grupo === 'LC50' ? 'Egresos de La Colorada (G4) contra la existencia de la Oficina LC 50.'
       : 'Egresos de Granja La Colorada contra la existencia de la Oficina Casa.';
-    const pres = VISTAS_STOCK[vista] || VISTAS_STOCK.resumen;
+    if (vista !== 'faltantes') vista = 'detallado';
+    const pres = VISTAS_STOCK[vista];
     if (vista === 'faltantes') {
       // Feli (16/10): Producto, Faltante, Precio de última compra (el de Albor, por unidad) y Precio, vacía (para completar)
       const lista = ps.filter(function (p) { return p.diferencia < 0; });
@@ -327,8 +328,7 @@ function tablasStock(r, vista) {
         vacio: 'No falta nada.' });
       return;
     }
-    const det = vista === 'detallado';
-    const cols = det ? (g.columnas || []).filter(function (c) { return hay.indexOf(c) !== -1 || STOCK_FIJAS.indexOf(c) !== -1; }) : [];
+    const cols = (g.columnas || []).filter(function (c) { return hay.indexOf(c) !== -1 || STOCK_FIJAS.indexOf(c) !== -1; });
     const cab = ['Producto'].concat(cols.map(function (c) { return 'Egreso ' + c; })).concat(['Egresos totales', 'Existencia ' + g.oficina, 'Diferencia']);
     const datos = function (p) {
       return [p.insumo].concat(cols.map(function (c) { return p.granjas && p.granjas[c] ? Number(p.granjas[c]) : null; }))
@@ -340,7 +340,7 @@ function tablasStock(r, vista) {
       const lista = ps.filter(parte[2]), filas = lista.map(datos);
       tablas.push({
         grupo: g.grupo, parte: g.nombre, subparte: parte[1] + ' (' + nro(lista.length) + ')', signo: true,
-        titulo: g.nombre + ' · ' + pres + ' · ' + parte[1].toLowerCase() + ' (' + nro(lista.length) + ')',
+        titulo: g.nombre + ' · ' + parte[1].toLowerCase() + ' (' + nro(lista.length) + ')',
         nota: k ? '' : nota + ' Diferencia = existencia − egresos.',
         cab: cab, datos: filas,
         filas: filas.map(function (f) {
@@ -502,15 +502,15 @@ $('rp-excel').addEventListener('click', async function () {
   XLSX.writeFile(libro, 'Reporte ' + nombrePest + ' ' + r.desde + ' a ' + r.hasta + '.xlsx');
 });
 
-/* Consumo mensual en Excel (Feli, 16/10): por cada parte (Oficina JM, Oficina LC 50, Oficina CASA), tres hojas: resumen,
-   detallado y faltante y precio. Cada hoja empieza con el título de la parte y su presentación. En las dos primeras,
-   primero lo negativo, después lo justo y al final lo que sobra, separados. Los números van como números. */
+/* Consumo mensual en Excel (Feli, 16/10): por cada parte (Oficina JM, Oficina LC 50, Oficina CASA), dos hojas: la de
+   egresos y existencia ("JM") y la de faltante y precio ("JM Faltante y precio"). Cada hoja empieza con el título de la
+   parte. En la primera, primero lo negativo, después lo justo y al final lo que sobra, separados. Los números, como números. */
 function excelStock(libro, r) {
   const sub = subtituloStock(r);
   (r.grupos || []).forEach(function (g) {
     Object.keys(VISTAS_STOCK).forEach(function (vista) {
       const partes = tablasStock(r, vista).filter(function (t) { return t.grupo === g.grupo; });
-      const filas = [[g.nombre + ' · ' + VISTAS_STOCK[vista]], [sub], [String(partes[0].nota || '').replace(/<[^>]*>/g, '')], []];
+      const filas = [[g.nombre + (VISTAS_STOCK[vista] ? ' · ' + VISTAS_STOCK[vista] : '')], [sub], [String(partes[0].nota || '').replace(/<[^>]*>/g, '')], []];
       const conSignoF = [], conPesos = [];
       partes.forEach(function (t) {
         if (t.subparte) filas.push([t.subparte]);
@@ -530,7 +530,7 @@ function excelStock(libro, r) {
         if (c && typeof c.v === 'number') c.z = '"$ "#,##0.00';
       });
       hoja['!cols'] = [{ wch: 44 }].concat(partes[0].cab.slice(1).map(function (x) { return { wch: Math.max(12, x.length + 2) }; }));
-      XLSX.utils.book_append_sheet(libro, hoja, (g.oficina.replace('Oficina ', '') + ' ' + VISTAS_STOCK[vista]).slice(0, 31));
+      XLSX.utils.book_append_sheet(libro, hoja, (g.oficina.replace('Oficina ', '') + (VISTAS_STOCK[vista] ? ' ' + VISTAS_STOCK[vista] : '')).slice(0, 31));
     });
   });
   XLSX.writeFile(libro, 'Consumo mensual ' + hoyAr() + '.xlsx');
