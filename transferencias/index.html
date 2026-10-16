@@ -596,6 +596,7 @@
   #hconteo textarea{width:100%;box-sizing:border-box;margin-top:4px}
   .hconteo-b{flex-wrap:wrap;gap:6px;align-items:center}
   .hconteo-b .hce-mod{margin-left:auto;background:none;border:0;padding:2px 4px;font:inherit;font-size:12px;color:var(--ink-soft);cursor:pointer}
+  .nocont{font-size:11px;color:var(--ink-soft);white-space:nowrap}
   .hconteo-b .hce-mod:hover{color:var(--accent);text-decoration:underline}
   .notaedit{display:block;width:100%;margin-top:4px;font-size:12px;line-height:1.35;font-family:inherit;color:var(--ink);
             background:var(--bg);border:1px solid var(--accent);border-radius:6px;padding:5px 7px;resize:vertical}
@@ -3753,7 +3754,7 @@
     var c = HIST.cual;
     if(c === 'conteos')
       return ['<td>' + fechaCorta(x.dia) + coinciden(x) + notaFila(x) + '</td>', '<td>' + esc(x.responsable || x.quien) + '</td>',
-              '<td class="num">' + x.insumos + '</td>',
+              '<td class="num">' + x.insumos + (x.noContados ? ' <span class="nocont" title="Sin contar">(+' + x.noContados + ' sin contar)</span>' : '') + '</td>',
               '<td class="num">' + x.conDiferencia + '</td>', '<td class="num">' + (x.comentarios || '') + (x.observaciones ? ' 📝' : '') + '</td>'];
     if(c === 'pedidos')
       return ['<td>' + fechaCorta(x.dia) + coinciden(x) + '</td>', '<td>' + esc(x.granja) + '</td>', '<td>' + esc(x.quien) + '</td>',
@@ -3885,20 +3886,23 @@
     h.push('<b>Planilla de conteo de stock</b> · ' + fechaCorta((r.conteo.fecha || '').slice(0, 10)) + ' · responsable ' + esc(r.conteo.responsable || '—') +
            (r.conteo.hasta ? ' · existencias al ' + esc(r.conteo.hasta) : '') + ' · guardó ' + esc(r.conteo.quien) +
            (r.conteo.modifico ? ' · <b>modificó ' + esc(r.conteo.modifico) + (r.conteo.modificado ? ' el ' + fechaCorta(r.conteo.modificado.slice(0, 10)) : '') + '</b>' : ''));
-    var conCom = r.filas.filter(function(f){ return f.comentario; }).length;
-    // Feli (16/10): "Todos" y "Con comentario"; a la derecha, chiquito y sin botón, "Modificar ✏️"
+    // Feli (16/10): "Todos", "Con comentario" y "No contado" (sin conteo real ni comentario: se guardan desde el 16/10);
+    // a la derecha, chiquito y sin botón, "Modificar ✏️"
     if(C.filtro === 'sin') C.filtro = '';
+    var FILTROS = { '': ['Todos', function(){ return true; }], con: ['Con comentario', function(f){ return !!f.comentario; }],
+                    no: ['No contado', function(f){ return f.conteo === null && !f.comentario; }] };
+    var nNo = r.filas.filter(FILTROS.no[1]).length;
+    if(C.filtro === 'no' && !nNo && !ed) C.filtro = '';
     h.push('<div class="acciones hconteo-b">' +
-      ['', 'con'].map(function(k){
-        var n = k === 'con' ? conCom : r.filas.length;
-        return '<button class="' + (C.filtro === k ? 'btn' : 'btn2') + '" data-hcfiltro="' + k + '">' + (k === 'con' ? 'Con comentario' : 'Todos') + ' (' + n + ')</button>';
+      ['', 'con', 'no'].filter(function(k){ return k !== 'no' || nNo || C.filtro === 'no'; }).map(function(k){
+        return '<button class="' + (C.filtro === k ? 'btn' : 'btn2') + '" data-hcfiltro="' + k + '">' + FILTROS[k][0] + ' (' + r.filas.filter(FILTROS[k][1]).length + ')</button>';
       }).join('') +
       (ed ? '' : '<button class="linkbtn hce-mod" data-hceditar>Modificar ✏️</button>') + '</div>');
     var ofs = [];
     r.filas.forEach(function(f){ Object.keys(f.oficinas || {}).forEach(function(p){ if(ofs.indexOf(p) === -1) ofs.push(p); }); });
     ofs.sort(function(a, b){ return a.localeCompare(b); });
     var cab = ['Insumo'].concat(ofs).concat([ofs.length ? 'Total oficinas' : 'Sistema', 'Conteo real', 'Diferencia']).concat(ed ? ['Comentario'] : []);
-    var lista = r.filas.filter(function(f){ return !C.filtro || (C.filtro === 'con' ? !!f.comentario : !f.comentario); })
+    var lista = r.filas.filter((FILTROS[C.filtro] || FILTROS[''])[1])
       .sort(function(a, b){ return (a.cat || '').localeCompare(b.cat || '') || a.nombre.localeCompare(b.nombre); });
     var filasH = [], catAct = null;
     lista.forEach(function(f){
@@ -3917,12 +3921,12 @@
            '</tr></thead><tbody>' + (filasH.length ? filasH.map(function(f){
              if(f.cat) return '<tr class="cat"><td colspan="' + cab.length + '">' + esc(f.cat) + '</td></tr>';
              return '<tr>' + f.map(function(v, n){ return '<td class="' + (n ? 'num' : '') + '">' + v + '</td>'; }).join('') + '</tr>';
-           }).join('') : '<tr><td colspan="' + cab.length + '">Ningún producto con comentario.</td></tr>') + '</tbody></table>');
+           }).join('') : '<tr><td colspan="' + cab.length + '">' + (C.filtro === 'no' ? 'No queda ningún producto sin contar.' : 'Ningún producto con comentario.') + '</td></tr>') + '</tbody></table>');
     if(!ofs.length) h.push('<div class="obs">Este conteo es de antes de que se guardara lo de cada oficina: se ve solo el total.</div>');
     if(ed){
       h.push('<div class="obs"><b>Observaciones</b><textarea id="hce-obs" rows="2">' + esc(C.obs !== undefined ? C.obs : r.conteo.observaciones || '') + '</textarea></div>' +
              '<div class="acciones"><button class="btn" data-hceguardar>Guardar cambios</button><button class="btn2" data-hcecancelar>Cancelar</button>' +
-             '<span class="aviso" id="hceaviso">Un producto sin conteo real ni comentario sale del conteo.</span></div>');
+             '<span class="aviso" id="hceaviso">Lo que quede sin conteo real ni comentario queda como "No contado".</span></div>');
     }else if(r.conteo.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(r.conteo.observaciones) + '</div>');
     return h.join('');
   }
@@ -3950,6 +3954,8 @@
     $('hceaviso').textContent = 'Guardando…';
     var r = await api('editarConteo', x.id, { filas: filas, observaciones: C.obs === undefined ? undefined : C.obs.trim() });
     if(!r.ok){ $('hceaviso').textContent = r.sinConexion ? 'Hace falta señal para guardarlo.' : 'No se pudo: ' + (r.error || ''); return; }
+    if(x){ x.insumos = r.n; x.noContados = r.noContados || 0; x.comentarios = r.comentarios; x.conDiferencia = r.conDiferencia;   // la fila de la lista, al día
+           x.observaciones = C.obs === undefined ? x.observaciones : C.obs.trim(); }
     HIST.conteo = { r: null, filtro: C.filtro };
     HIST.detalle = '';
     HIST.abierto = null;
@@ -5705,13 +5711,18 @@
   async function guardarConteoEnHistorial(){
     var aviso = $('conteoaviso');
     if(!DATA){ aviso.textContent = 'Primero cargá las existencias.'; return; }
+    // Feli (16/10): lo que no se contó (de las oficinas, sin los excluidos si está tildado "Solo lo que se usa") también va,
+    // sin conteo real: en el Historial sale como "No contado" y se puede contar al modificarlo.
+    var ex = $('usarexcl').checked;
     var filas = DATA.insumos.map(function(it){
       var v = numEscrito(CONTEO[clave(it.cod)]), nota = NOTAS[clave(it.cod)] || '';
-      return v === null && !nota ? null
-        : { cod: it.cod, nombre: it.nombre, cat: it.cat, sistema: it.total, conteo: v, nota: nota, oficinas: oficinasDe(it) };
+      if(v === null && !nota && (!it.enOficina || (ex && esExcluido(it)))) return null;
+      return { cod: it.cod, nombre: it.nombre, cat: it.cat, sistema: it.total, conteo: v, nota: nota, oficinas: oficinasDe(it) };
     }).filter(Boolean);
-    if(!filas.length){ aviso.textContent = 'Todavía no cargaste ningún conteo real.'; return; }
-    if(!confirm('¿Guardar en el historial el conteo de ' + filas.length + ' insumos?\n\n' +
+    var contados = filas.filter(function(f){ return f.conteo !== null || f.nota; }).length, sinContar = filas.length - contados;
+    if(!contados){ aviso.textContent = 'Todavía no cargaste ningún conteo real.'; return; }
+    if(!confirm('¿Guardar en el historial el conteo de ' + contados + ' insumos?' +
+                (sinContar ? '\n\n' + sinContar + ' sin contar quedan como "No contado": los podés contar después con "Modificar".' : '') + '\n\n' +
                 'Queda en la planilla para siempre, con los comentarios y las observaciones. ' +
                 'En esta computadora sigue como está.')) return;
     var b = $('conteoguardar');
@@ -5720,7 +5731,7 @@
                                          hasta: DATA.hasta || '', filas: filas,
                                          observaciones: $('conteoobs').value.trim() });
     b.disabled = false;
-    aviso.textContent = r.ok ? 'Guardado en el historial: ' + r.n + ' insumos.'
+    aviso.textContent = r.ok ? 'Guardado en el historial: ' + r.n + ' insumos' + (r.sinContar ? ' (' + r.sinContar + ' sin contar)' : '') + '.'
                              : (r.sinConexion ? 'Hace falta señal para guardarlo. Probá de nuevo en un rato.' : 'No se pudo: ' + (r.error || ''));
   }
   $('conteoguardar').addEventListener('click', guardarConteoEnHistorial);
