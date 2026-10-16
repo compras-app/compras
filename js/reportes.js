@@ -3,7 +3,7 @@
    REPORTES (Fase 5, Paso 4; Feli, 9/10 y 10/10): Admin → Reportes
    ------------------------------------------------------------
    Pestañas: Resumen, Consumo mensual (13/10: los egresos del último mes contra
-   la existencia de las oficinas de cada empresa), Flujo de tarjetas, Gastos,
+   la existencia de cada oficina: JM, LC 50 y CASA), Flujo de tarjetas, Gastos,
    Proveedores, Padrón y Egresos (13/10, con el precio de Albor).
    - Se arman con un botón, nunca solos (Feli), y se bajan a Excel (el Resumen no).
    - Los mismos filtros arriba: fechas (desde hace un mes), granja (sitio), rubro
@@ -284,7 +284,7 @@ function tablasEgresos(r) {
         'Cantidades en la unidad de Albor; el precio unitario es el de Albor en el último reporte de existencias que tiene el producto' +
         (t.sinPrecio ? ' (' + nro(t.sinPrecio) + ' sin precio: no suman)' : '') + '. ' +
         (r.anulados ? 'Hay ' + nro(r.anulados) + ' anulado' + (r.anulados === 1 ? '' : 's') + ' en el Historial: no se cuentan. ' : '') +
-        (r.granjas.some(function (g) { return /COLORADA/i.test(g); }) ? 'La Colorada: G4 se abastece de la Oficina LC 50 (La Quimera) y Granja La Colorada de la Oficina Casa (Consultores Asociados); por ahora, en Consumo mensual, sus egresos van mitad y mitad.' : ''),
+        (r.granjas.some(function (g) { return /COLORADA/i.test(g); }) ? 'La Colorada (G4) se abastece de la Oficina LC 50 y Granja La Colorada de la Oficina Casa.' : ''),
       cab: ['Producto', 'Cuenta', 'Total', 'Precio unitario', 'Precio total'].concat(r.granjas).concat(r.meses.length > 1 ? r.meses.map(mes) : []),
       filas: r.productos.map(function (p) {
         return [p.insumo, String(p.cuenta || '').replace(/^\d+/, ''), nro(p.total), pesos(p.precio), p.precio === null || p.precio === undefined ? '' : pesos(p.importe)]
@@ -298,41 +298,50 @@ function tablasEgresos(r) {
   ];
 }
 
-/* Consumo mensual (antes Stock; Feli, 13/10): lo egresado en el último mes exacto contra la existencia de Albor de las
-   oficinas de cada empresa. La Quimera: Oficina JM + Oficina LC 50 contra Candelaria, Candelaria Engorde, El Cebil
-   (El Cebil Engorde) y la mitad de La Colorada. Consultores Asociados: Oficina Casa contra la otra mitad de La Colorada.
-   Por empresa, tres partes: en negativo, justos y sobran. La diferencia va con su signo (sin "faltan" ni "sobran").
-   vista: 'resumen' (egresos totales contra existencias totales) o 'detallado' (cada granja y cada oficina). Sin "Tipo",
-   para que entre en una pantalla. Cada tabla trae también `datos` (números de verdad) para el Excel. */
-const STOCK_FIJAS = ['Candelaria', 'El Cebil', 'La Colorada'];
-function nombreGranjaStock(c) { return c === 'La Colorada' ? 'La Colorada ÷ 2' : c; }
-function nombreOficina(o) { return o.replace(/^OFICINA /, 'Oficina ').replace('Oficina CASA', 'Oficina Casa'); }
+/* Consumo mensual (antes Stock; Feli, 13/10 y 16/10): lo egresado en el último mes exacto contra la existencia de Albor,
+   en tres partes: Faltantes Oficina JM (Candelaria y El Cebil), Faltantes Oficina LC 50 (La Colorada) y Faltantes
+   Oficina CASA (Granja La Colorada). Cada parte, en tres presentaciones (vista):
+   - 'resumen': Producto, Egresos totales, Existencia, Diferencia; primero lo negativo, después lo justo y lo que sobra;
+   - 'detallado': lo mismo con el egreso de cada granja;
+   - 'faltantes': Producto, Faltante, Precio (lo que falta por el precio unitario de Albor), solo lo que falta.
+   La diferencia va con su signo (sin "faltan" ni "sobran"). Cada tabla trae también `datos` (números de verdad) para el Excel. */
+const STOCK_FIJAS = ['Candelaria', 'El Cebil', 'La Colorada', 'Granja La Colorada'];
+const VISTAS_STOCK = { resumen: 'Resumen', detallado: 'Detallado', faltantes: 'Faltante y precio' };
 function conSigno(n) { return n > 0 ? '+' + nro(n) : n < 0 ? '−' + nro(-n) : '0'; }
 function tablasStock(r, vista) {
-  const det = vista === 'detallado', hay = r.conEgresos || [];
-  const tablas = [];
+  const hay = r.conEgresos || [], tablas = [];
   (r.grupos || []).forEach(function (g) {
     const ps = r.productos.filter(function (p) { return p.grupo === g.grupo; });
-    // Las granjas sin egresos en el mes no ocupan lugar (salvo Candelaria, El Cebil y La Colorada)
+    const nota = g.grupo === 'JM' ? 'Egresos de Candelaria (y Candelaria Engorde) y El Cebil contra la existencia de la Oficina JM.'
+      : g.grupo === 'LC50' ? 'Egresos de La Colorada (G4) contra la existencia de la Oficina LC 50.'
+      : 'Egresos de Granja La Colorada contra la existencia de la Oficina Casa.';
+    const pres = VISTAS_STOCK[vista] || VISTAS_STOCK.resumen;
+    if (vista === 'faltantes') {
+      const lista = ps.filter(function (p) { return p.diferencia < 0; });
+      const datos = lista.map(function (p) { return [p.insumo, -Number(p.diferencia), p.precio === null || p.precio === undefined ? null : Math.round(-p.diferencia * p.precio * 100) / 100]; });
+      const total = datos.reduce(function (t, f) { return t + (f[2] || 0); }, 0), sinPrecio = datos.filter(function (f) { return f[2] === null; }).length;
+      tablas.push({ grupo: g.grupo, parte: g.nombre, titulo: g.nombre + ' · ' + pres + ' (' + nro(lista.length) + ')',
+        nota: nota + ' Precio = faltante × el precio unitario de Albor. Total: <b>$ ' + nro(total, 2) + '</b>' + (sinPrecio ? ' (' + nro(sinPrecio) + ' sin precio)' : '') + '.',
+        cab: ['Producto', 'Faltante', 'Precio'], datos: datos, pesos: [2],
+        filas: datos.map(function (f) { return [f[0], nro(f[1]), f[2] === null ? 'sin precio' : '$ ' + nro(f[2], 2)]; }),
+        vacio: 'No falta nada.' });
+      return;
+    }
+    const det = vista === 'detallado';
     const cols = det ? (g.columnas || []).filter(function (c) { return hay.indexOf(c) !== -1 || STOCK_FIJAS.indexOf(c) !== -1; }) : [];
-    const ofs = det ? g.oficinas || [] : [];
-    const cab = ['Producto'].concat(cols.map(function (c) { return 'Egreso ' + nombreGranjaStock(c); })).concat(['Egresos totales'])
-      .concat(ofs.length > 1 ? ofs.map(nombreOficina) : []).concat([ofs.length === 1 ? 'Existencia ' + nombreOficina(ofs[0]) : 'Existencias totales', 'Diferencia']);
+    const cab = ['Producto'].concat(cols.map(function (c) { return 'Egreso ' + c; })).concat(['Egresos totales', 'Existencia ' + g.oficina, 'Diferencia']);
     const datos = function (p) {
-      return [p.insumo].concat(cols.map(function (c) { return p.granjas && p.granjas[c] ? Number(p.granjas[c]) : null; })).concat([Number(p.esperado)])
-        .concat(ofs.length > 1 ? ofs.map(function (o) { return Number((p.oficinas || {})[o] || 0); }) : []).concat([Number(p.existencia), Number(p.diferencia)]);
+      return [p.insumo].concat(cols.map(function (c) { return p.granjas && p.granjas[c] ? Number(p.granjas[c]) : null; }))
+        .concat([Number(p.esperado), Number(p.existencia), Number(p.diferencia)]);
     };
     [['negativo', 'En negativo', function (p) { return p.diferencia < 0; }],
      ['justo', 'Justos', function (p) { return p.diferencia === 0; }],
      ['sobra', 'Sobran', function (p) { return p.diferencia > 0; }]].forEach(function (parte, k) {
       const lista = ps.filter(parte[2]), filas = lista.map(datos);
       tablas.push({
-        grupo: g.grupo, empresa: g.nombre, parte: parte[1] + ' (' + nro(lista.length) + ')',
-        titulo: g.nombre + ' · ' + parte[1].toLowerCase() + ' (' + nro(lista.length) + ')',
-        nota: k ? '' : (g.grupo === 'QUIMERA' ? 'Oficina JM + Oficina LC 50 contra los egresos de Candelaria, Candelaria Engorde, El Cebil y la mitad de La Colorada.'
-                                              : 'Oficina Casa contra la otra mitad de los egresos de La Colorada.') +
-              ' La Oficina LC 50 va con La Colorada (G4) y la Oficina Casa con Granja La Colorada; mientras los egresos de La Colorada se carguen' +
-              ' todos juntos, se reparten mitad y mitad (G4 + Granja La Colorada, ÷ 2). Diferencia = existencias − egresos.',
+        grupo: g.grupo, parte: g.nombre, subparte: parte[1] + ' (' + nro(lista.length) + ')', signo: true,
+        titulo: g.nombre + ' · ' + pres + ' · ' + parte[1].toLowerCase() + ' (' + nro(lista.length) + ')',
+        nota: k ? '' : nota + ' Diferencia = existencia − egresos.',
         cab: cab, datos: filas,
         filas: filas.map(function (f) {
           return f.map(function (x, i) { return i === 0 ? x : i === f.length - 1 ? conSigno(x) : x === null ? '' : nro(x); });
@@ -366,14 +375,14 @@ function pintarCuerpoRp() {
   if (cual === 'historial') return pintarHistorialRp();
   const d = RP.datos[cual];
   if (!d) {
-    cuerpo.innerHTML = '<p class="nota rp-vacio">' + (cual === 'stock' ? 'Compara lo que se egresó de las granjas en el último mes con la existencia de Albor de las oficinas de cada empresa: La Quimera (Oficina JM y Oficina LC 50) contra Candelaria, Candelaria Engorde, El Cebil y la mitad de La Colorada; Consultores Asociados (Oficina Casa) contra la otra mitad de La Colorada. Tocá <b>Armar reporte</b>.'
+    cuerpo.innerHTML = '<p class="nota rp-vacio">' + (cual === 'stock' ? 'Compara lo que se egresó de las granjas en el último mes con la existencia de Albor de cada oficina, en tres partes: Oficina JM (Candelaria y El Cebil), Oficina LC 50 (La Colorada) y Oficina CASA (Granja La Colorada). Tocá <b>Armar reporte</b>.'
                                                                       : 'Elegí las fechas y los filtros y tocá <b>Armar reporte</b>.') + '</p>';
     return;
   }
   const r = d.r;
   if (cual === 'stock') {
     RP.tablas = tablasStock(r, RP.vista);
-    const sinLc50 = r.existencias && !r.productos.some(function (p) { return p.oficinas && p.oficinas['OFICINA LC 50'] !== undefined; });
+    const sinLc50 = r.existencias && !r.productos.some(function (p) { return p.grupo === 'LC50' && p.existencia; });
     cuerpo.innerHTML = (r.existencias ? '' : '<p class="estado warn">Todavía no hay ningún reporte de existencias de Albor guardado: bajalo en Transferencias (Conteo de stock) y armá este reporte de nuevo.</p>') +
       (sinLc50 ? '<p class="estado warn">El último reporte de existencias no trae la Oficina LC 50: en Albor, al bajarlo, tiene que estar tildada la empresa que la tiene.</p>' : '') +
       '<p class="nota rp-de">' + subtituloStock(r) + '</p>' + RP.tablas.map(htmlTabla).join('');
@@ -493,32 +502,35 @@ $('rp-excel').addEventListener('click', async function () {
   XLSX.writeFile(libro, 'Reporte ' + nombrePest + ' ' + r.desde + ' a ' + r.hasta + '.xlsx');
 });
 
-/* Consumo mensual en Excel (Feli, 13/10): cuatro hojas. 1) La Quimera, resumen; 2) Consultores Asociados, resumen;
-   3) y 4) lo mismo, detallado. En cada hoja, primero lo negativo, después lo justo y al final lo que sobra, separados.
-   Los números van como números (la diferencia, con su signo + o −). */
+/* Consumo mensual en Excel (Feli, 16/10): por cada parte (Oficina JM, Oficina LC 50, Oficina CASA), tres hojas: resumen,
+   detallado y faltante y precio. Cada hoja empieza con el título de la parte y su presentación. En las dos primeras,
+   primero lo negativo, después lo justo y al final lo que sobra, separados. Los números van como números. */
 function excelStock(libro, r) {
   const sub = subtituloStock(r);
-  ['resumen', 'detallado'].forEach(function (vista) {
-    const tablas = tablasStock(r, vista);
-    (r.grupos || []).forEach(function (g) {
-      const partes = tablas.filter(function (t) { return t.grupo === g.grupo; });
-      const filas = [[g.nombre + ' · consumo mensual (' + vista + ')'], [sub], [String(partes[0].nota || '')], []];
-      const signos = [];
+  (r.grupos || []).forEach(function (g) {
+    Object.keys(VISTAS_STOCK).forEach(function (vista) {
+      const partes = tablasStock(r, vista).filter(function (t) { return t.grupo === g.grupo; });
+      const filas = [[g.nombre + ' · ' + VISTAS_STOCK[vista]], [sub], [String(partes[0].nota || '').replace(/<[^>]*>/g, '')], []];
+      const conSignoF = [], conPesos = [];
       partes.forEach(function (t) {
-        filas.push([t.parte]);
+        if (t.subparte) filas.push([t.subparte]);
         filas.push(t.cab);
-        t.datos.forEach(function (f) { signos.push(filas.length); filas.push(f); });
+        t.datos.forEach(function (f) { (t.signo ? conSignoF : conPesos).push(filas.length); filas.push(f); });
         if (!t.datos.length) filas.push([t.vacio]);
         filas.push([]);
       });
       const hoja = XLSX.utils.aoa_to_sheet(filas);
-      const col = partes[0].cab.length - 1;      // la diferencia, con su signo
-      signos.forEach(function (fila) {
+      const col = partes[0].cab.length - 1;
+      conSignoF.forEach(function (fila) {               // la diferencia, con su signo
         const c = hoja[XLSX.utils.encode_cell({ r: fila, c: col })];
         if (c && typeof c.v === 'number') c.z = Number.isInteger(c.v) ? '+#,##0;-#,##0;0' : '+#,##0.0#;-#,##0.0#;0';
       });
+      conPesos.forEach(function (fila) {                // el precio, en pesos
+        const c = hoja[XLSX.utils.encode_cell({ r: fila, c: 2 })];
+        if (c && typeof c.v === 'number') c.z = '"$ "#,##0.00';
+      });
       hoja['!cols'] = [{ wch: 44 }].concat(partes[0].cab.slice(1).map(function (x) { return { wch: Math.max(12, x.length + 2) }; }));
-      XLSX.utils.book_append_sheet(libro, hoja, (g.grupo === 'QUIMERA' ? 'La Quimera' : 'Consultores') + ' ' + vista);
+      XLSX.utils.book_append_sheet(libro, hoja, (g.oficina.replace('Oficina ', '') + ' ' + VISTAS_STOCK[vista]).slice(0, 31));
     });
   });
   XLSX.writeFile(libro, 'Consumo mensual ' + hoyAr() + '.xlsx');
