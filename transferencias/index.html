@@ -594,7 +594,9 @@
   #hconteo input.ci{width:80px;text-align:right}
   #hconteo input.hce-nota{width:100%;min-width:160px}
   #hconteo textarea{width:100%;box-sizing:border-box;margin-top:4px}
-  .hconteo-b{flex-wrap:wrap;gap:6px}
+  .hconteo-b{flex-wrap:wrap;gap:6px;align-items:center}
+  .hconteo-b .hce-mod{margin-left:auto;background:none;border:0;padding:2px 4px;font:inherit;font-size:12px;color:var(--ink-soft);cursor:pointer}
+  .hconteo-b .hce-mod:hover{color:var(--accent);text-decoration:underline}
   .notaedit{display:block;width:100%;margin-top:4px;font-size:12px;line-height:1.35;font-family:inherit;color:var(--ink);
             background:var(--bg);border:1px solid var(--accent);border-radius:6px;padding:5px 7px;resize:vertical}
   .notaayuda{font-size:11px;color:var(--ink-faint);margin-top:2px}
@@ -3884,12 +3886,14 @@
            (r.conteo.hasta ? ' · existencias al ' + esc(r.conteo.hasta) : '') + ' · guardó ' + esc(r.conteo.quien) +
            (r.conteo.modifico ? ' · <b>modificó ' + esc(r.conteo.modifico) + (r.conteo.modificado ? ' el ' + fechaCorta(r.conteo.modificado.slice(0, 10)) : '') + '</b>' : ''));
     var conCom = r.filas.filter(function(f){ return f.comentario; }).length;
+    // Feli (16/10): "Todos" y "Con comentario"; a la derecha, chiquito y sin botón, "Modificar ✏️"
+    if(C.filtro === 'sin') C.filtro = '';
     h.push('<div class="acciones hconteo-b">' +
-      ['', 'con', 'sin'].map(function(k){
-        var n = k === 'con' ? conCom : k === 'sin' ? r.filas.length - conCom : r.filas.length;
-        return '<button class="' + (C.filtro === k ? 'btn' : 'btn2') + '" data-hcfiltro="' + k + '">' + (k === 'con' ? 'Con comentario' : k === 'sin' ? 'Sin comentario' : 'Todos') + ' (' + n + ')</button>';
+      ['', 'con'].map(function(k){
+        var n = k === 'con' ? conCom : r.filas.length;
+        return '<button class="' + (C.filtro === k ? 'btn' : 'btn2') + '" data-hcfiltro="' + k + '">' + (k === 'con' ? 'Con comentario' : 'Todos') + ' (' + n + ')</button>';
       }).join('') +
-      (ed ? '' : '<button class="btn2" data-hceditar>✏️ Modificar el conteo</button>') + '</div>');
+      (ed ? '' : '<button class="linkbtn hce-mod" data-hceditar>Modificar ✏️</button>') + '</div>');
     var ofs = [];
     r.filas.forEach(function(f){ Object.keys(f.oficinas || {}).forEach(function(p){ if(ofs.indexOf(p) === -1) ofs.push(p); }); });
     ofs.sort(function(a, b){ return a.localeCompare(b); });
@@ -3913,7 +3917,7 @@
            '</tr></thead><tbody>' + (filasH.length ? filasH.map(function(f){
              if(f.cat) return '<tr class="cat"><td colspan="' + cab.length + '">' + esc(f.cat) + '</td></tr>';
              return '<tr>' + f.map(function(v, n){ return '<td class="' + (n ? 'num' : '') + '">' + v + '</td>'; }).join('') + '</tr>';
-           }).join('') : '<tr><td colspan="' + cab.length + '">Ningún producto ' + (C.filtro === 'con' ? 'con' : 'sin') + ' comentario.</td></tr>') + '</tbody></table>');
+           }).join('') : '<tr><td colspan="' + cab.length + '">Ningún producto con comentario.</td></tr>') + '</tbody></table>');
     if(!ofs.length) h.push('<div class="obs">Este conteo es de antes de que se guardara lo de cada oficina: se ve solo el total.</div>');
     if(ed){
       h.push('<div class="obs"><b>Observaciones</b><textarea id="hce-obs" rows="2">' + esc(C.obs !== undefined ? C.obs : r.conteo.observaciones || '') + '</textarea></div>' +
