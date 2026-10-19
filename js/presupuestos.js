@@ -143,11 +143,7 @@ async function cargarEnTarjeta(ids) {
   let r = await api('cargarPresupuesto', datos);
   // Ese proveedor ya tiene un presupuesto en la tarjeta: ¿una parte más o lo reemplaza? (Feli, 2026-10-05)
   if (r.ok && r.pregunta) {
-    const donde = r.existentes.map(function (x) { return x.codigo + ' (del ' + fechaCorta(x.fecha) + ')'; }).join(' y ');
-    const modo = await dialogo({ titulo: 'Ya hay un presupuesto de ' + r.proveedor,
-      texto: r.proveedor + ' ya tiene un presupuesto en ' + donde + '. ¿Este es una parte más o reemplaza al anterior?\n\n' +
-             'Una parte más: se suma (si repite un producto, vale el precio nuevo).\nReemplaza al anterior: el anterior se quita (no se borra) y vale solo este.',
-      botones: [{ texto: 'Volver', valor: null }, { texto: 'Reemplaza al anterior', clase: 'btn2', valor: 'reemplazo' }, { texto: 'Una parte más', clase: 'btn', valor: 'parte' }] });
+    const modo = await preguntarParteOReemplazo(r);
     if (!modo) return;
     datos.modo = modo;
     r = await api('cargarPresupuesto', datos);
@@ -166,6 +162,107 @@ async function cargarEnTarjeta(ids) {
   if (l.ok && l.presupuesto && l.presupuesto.estado) {
     aviso(l.presupuesto.estado === 'Revisar' ? 'El presupuesto de ' + nombre + ' quedó en la tarjeta para revisar: hay cosas que no dan.'
                                               : 'El presupuesto de ' + nombre + ' está en la tarjeta: las cuentas dan.');
+  } else if (l.ok && l.leyendo) aviso('Se está leyendo: en un rato aparece en la tarjeta.');
+  else if (l.lento) aviso('El servidor está tardando: se termina de leer solo y aparece en la tarjeta.', '');
+  else aviso(l.sinConexion ? '📶 Poca señal: se termina de leer solo y aparece en la tarjeta.' : l.error, l.sinConexion ? '' : 'bad');
+}
+
+/** Ese proveedor ya tiene un presupuesto en la tarjeta: 'parte', 'reemplazo' o null (Volver). */
+function preguntarParteOReemplazo(r) {
+  const donde = r.existentes.map(function (x) { return x.codigo + ' (del ' + fechaCorta(x.fecha) + ')'; }).join(' y ');
+  return dialogo({ titulo: 'Ya hay un presupuesto de ' + r.proveedor,
+    texto: r.proveedor + ' ya tiene un presupuesto en ' + donde + '. ¿Este es una parte más o reemplaza al anterior?\n\n' +
+           'Una parte más: se suma (si repite un producto, vale el precio nuevo).\nReemplaza al anterior: el anterior se quita (no se borra) y vale solo este.',
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Reemplaza al anterior', clase: 'btn2', valor: 'reemplazo' }, { texto: 'Una parte más', clase: 'btn', valor: 'parte' }] });
+}
+
+/* ---------- "📎 Cargar presupuesto" desde la compu (Feli, 19/10) ----------
+   En el bloque Cotizaciones de la tarjeta abierta (Por cotizar, Decisión o Procesando; admins): se elige el proveedor
+   (cualquiera del padrón; primero los que tienen pedido de cotización en esta tarjeta) y el archivo (PDF o foto). Queda
+   como adjunto de la tarjeta y se carga como desde el chat: la IA lo lee y aparece en Presupuestos. El proveedor queda
+   entre los que se les pidió cotización. Necesita señal. */
+async function elegirProveedorPresupuesto(ref) {
+  const datos = await datosProductos();
+  const todos = ((datos && datos.proveedores) || []).filter(function (p) { return p.nombre; })
+    .slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
+  if (!todos.length) { aviso(APP.enLinea ? 'No hay proveedores cargados.' : '📶 Poca señal: no pude traer los proveedores.', 'bad'); return null; }
+  const pedidos = [];
+  ((TB.detalle && TB.detalle.solicitudes) || []).forEach(function (x) { if (pedidos.indexOf(x.proveedor) === -1) pedidos.push(x.proveedor); });
+  let prov = pedidos.length === 1 ? pedidos[0] : '', q = '';
+  const cuerpo = document.createElement('div');
+  const pintar = function () {
+    const nq = sinTildes(q);
+    const lista = todos.filter(function (p) { return !nq || sinTildes(p.nombre).indexOf(nq) !== -1; });
+    const arriba = lista.filter(function (p) { return pedidos.indexOf(p.id) !== -1; }), resto = lista.filter(function (p) { return pedidos.indexOf(p.id) === -1; });
+    const boton = function (p) {
+      return '<button type="button" class="choice" data-prov="' + esc(p.id) + '"' + (p.id === prov ? ' aria-current="true"' : '') + '>' + esc(p.nombre) +
+        (p.activo === false ? ' <small>(no activo)</small>' : '') + '</button>';
+    };
+    cuerpo.querySelector('#pa-lista').innerHTML =
+      (arriba.length ? '<p class="nota" style="margin:4px 0">Con pedido de cotización en esta tarjeta</p><div class="opciones">' + arriba.map(boton).join('') + '</div>' : '') +
+      (resto.length ? (arriba.length ? '<p class="nota" style="margin:8px 0 4px">Los demás</p>' : '') + '<div class="opciones">' + resto.slice(0, 60).map(boton).join('') + '</div>' +
+        (resto.length > 60 ? '<p class="nota">Y ' + (resto.length - 60) + ' más: escribí para buscar.</p>' : '') : '') +
+      (!lista.length ? '<p class="nota">Ningún proveedor con «' + esc(q) + '».</p>' : '');
+    cuerpo.querySelectorAll('[data-prov]').forEach(function (b) { b.addEventListener('click', function () { prov = b.dataset.prov; pintar(); }); });
+    const ok = $('pa-ok');
+    if (ok) ok.disabled = !prov;
+  };
+  cuerpo.innerHTML = '<label for="pa-buscar">¿De qué proveedor es?</label><input type="search" id="pa-buscar" placeholder="Buscar proveedor…" autocomplete="off">' +
+    '<div id="pa-lista" style="max-height:45vh;overflow:auto;margin-top:6px"></div>';
+  cuerpo.querySelector('#pa-buscar').addEventListener('input', function () { q = this.value; pintar(); });
+  pintar();
+  return dialogo({ titulo: '📎 Cargar presupuesto', texto: 'Elegí el proveedor y después el archivo (PDF o foto) de tu compu. La IA lo lee y lo une con los productos de la tarjeta.',
+                   cuerpo: cuerpo,
+                   botones: [{ texto: 'Volver', valor: null }, { texto: 'Elegir el archivo', clase: 'btn', id: 'pa-ok', valor: function () { return prov || null; } }],
+                   alAbrir: function () { $('pa-ok').disabled = !prov; } });
+}
+
+/** Elegir un archivo de la compu (PDF o foto). Devuelve el File o null. */
+function elegirArchivoPresupuesto() {
+  return new Promise(function (ok) {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/pdf,image/*';
+    inp.addEventListener('change', function () { ok(inp.files && inp.files[0] || null); });
+    inp.click();
+  });
+}
+
+async function cargarPresupuestoDesdeCompu() {
+  const ref = TB.abierta;
+  if (!ref) return;
+  if (!APP.enLinea) return aviso('📶 Poca señal: para cargar un presupuesto hace falta señal.', 'bad');
+  const prov = await elegirProveedorPresupuesto(ref);
+  if (!prov) return;
+  const f = await elegirArchivoPresupuesto();
+  if (!f) return;
+  const esPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+  if (!esPdf && !/^image\//.test(f.type)) return aviso('"' + f.name + '": el presupuesto tiene que ser un PDF o una foto.', 'bad');
+  let blob = f, nombre = f.name;
+  if (esPdf) { if (f.size > ADJUNTO_MAX_MB * 1024 * 1024) return aviso('"' + f.name + '" pesa más de ' + ADJUNTO_MAX_MB + ' MB.', 'bad'); }
+  else {
+    try { const c = await comprimirFoto(f); blob = c.blob; nombre = c.nombre; }
+    catch (e) { return aviso('No se pudo leer la foto "' + f.name + '".', 'bad'); }
+  }
+  const datos = { id: 'B' + nuevoId(), ref: ref, proveedor: prov,
+                  adjunto: { id: 'J' + nuevoId(), nombre: nombre, tipo: esPdf ? 'pdf' : 'foto', base64: await blobABase64(blob) } };
+  aviso('Subiendo el presupuesto…');
+  let r = await apiLenta('cargarPresupuestoArchivo', datos);
+  if (r.ok && r.pregunta) {
+    const modo = await preguntarParteOReemplazo(r);
+    if (!modo) { if (TB.abierta === ref) traerTarjeta(ref); return; }     // el archivo ya quedó como adjunto
+    datos.modo = modo;
+    r = await apiLenta('cargarPresupuestoArchivo', datos);
+  }
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: no se cargó. Probá de nuevo cuando vuelva.' : r.error, 'bad');
+  if (TB.abierta === ref) traerTarjeta(ref);
+  const nombreProv = (((await datosProductos()) || {}).proveedores || []).filter(function (p) { return p.id === prov; }).map(function (p) { return p.nombre; })[0] || 'el proveedor';
+  aviso('📥 Cargado. La IA lo está leyendo (hasta un minuto): podés seguir usando la app.');
+  const l = await apiLenta('leerPresupuesto', datos.id);
+  if (TB.abierta === ref) traerTarjeta(ref);
+  cargarTablero();
+  if (l.ok && l.presupuesto && l.presupuesto.estado) {
+    aviso(l.presupuesto.estado === 'Revisar' ? 'El presupuesto de ' + nombreProv + ' quedó en la tarjeta para revisar: hay cosas que no dan.'
+                                              : 'El presupuesto de ' + nombreProv + ' está en la tarjeta: las cuentas dan.');
   } else if (l.ok && l.leyendo) aviso('Se está leyendo: en un rato aparece en la tarjeta.');
   else if (l.lento) aviso('El servidor está tardando: se termina de leer solo y aparece en la tarjeta.', '');
   else aviso(l.sinConexion ? '📶 Poca señal: se termina de leer solo y aparece en la tarjeta.' : l.error, l.sinConexion ? '' : 'bad');

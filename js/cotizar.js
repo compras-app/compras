@@ -18,7 +18,8 @@
 const OPS_COTIZAR = { pedirCotizacion: 1, reintentarCotizacion: 1 };
 const OPS_APROBACION = { mandarAprobar: 1, decidirAprobacion: 1 };     // Paso 6
 const ESTADO_COT = {
-  'Enviando': '⏳ Mandando…', 'En camino': '⏳ En camino', 'Enviado': '✅ Enviado', 'No salió': '⚠️ No se pudo mandar'
+  'Enviando': '⏳ Mandando…', 'En camino': '⏳ En camino', 'Enviado': '✅ Enviado', 'No salió': '⚠️ No se pudo mandar',
+  'Presupuesto cargado': '📎 Presupuesto cargado desde la compu (no se le mandó nada)'     // Feli (19/10)
 };
 
 function colPorCotizar() {
@@ -299,9 +300,11 @@ function pintarCotizaciones() {
   const esperan = bandeja.lista().filter(function (m) { return OPS_COTIZAR[m.fn] && m.args[0] === ref; });
   const puede = APP.yo.admin && sePuedeCotizarAbierta(t);
   const deTanda = (t && t.tanda) || (d && d.trabajo && d.trabajo.tanda);
-  b.hidden = TB.tipo === 'tarea' || (esTrabajo(ref) && !deTanda) || (!lista.length && !esperan.length && !puede);
+  const cargar = APP.yo.admin && !!(d && d.cargarPresupuesto);       // "📎 Cargar presupuesto" desde la compu (Feli, 19/10)
+  b.hidden = TB.tipo === 'tarea' || (esTrabajo(ref) && !deTanda && !cargar) || (!lista.length && !esperan.length && !puede && !cargar);
   if (b.hidden) return;
   $('tj-cotizar').hidden = !puede;
+  $('tj-cargar-presup').hidden = !cargar;
   const reintento = {};
   esperan.forEach(function (m) { if (m.fn === 'reintentarCotizacion') reintento[m.args[1]] = true; });
   $('tj-cot').innerHTML =
@@ -329,6 +332,7 @@ function pintarCotizaciones() {
   });
 }
 $('tj-cotizar').addEventListener('click', function () { if (TB.abierta) abrirPedirCotizacion(TB.abierta); });
+$('tj-cargar-presup').addEventListener('click', function () { cargarPresupuestoDesdeCompu(); });
 
 // Cuando sale de la bandeja: el bloque Cotizaciones y la marca del tablero se actualizan (las dos llevan la ref adelante)
 (function () {

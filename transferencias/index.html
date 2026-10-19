@@ -135,6 +135,9 @@
     padding:9px 12px;font-size:13px;color:var(--ink-soft);margin-bottom:14px;
   }
   .filebar.on{display:flex}
+  .avisocat{margin:0 0 12px;padding:10px 12px;border:1px solid #d9a441;border-radius:8px;background:rgba(217,164,65,.10);font-size:13px;line-height:1.5}
+  .avisocat ul{margin:4px 0 6px 18px;padding:0}
+  .avisocat .fila{gap:10px;margin-top:6px}
   .filebar b{color:var(--ink);font-weight:600}
   .filebar .sep{flex:1}
   .linkbtn{
@@ -770,6 +773,8 @@
       <button class="linkbtn" id="rebajar">Volver a bajar de Albor</button>
       <button class="linkbtn" id="rechange">Cambiar archivo</button>
     </div>
+    <!-- Feli (19/10): si las existencias no coinciden con el catálogo publicado, avisa -->
+    <div class="avisocat" id="avisocat" hidden></div>
 
     <div class="toolbar" id="toolbar">
       <label class="field">Buscar
@@ -1360,6 +1365,7 @@
     EXCLUIDOS_TEXTO = texto;
     EXCLUIDOS = leerExcluidos(texto);
     escribirGuardado(CLAVE_EXCLUIDOS, texto);
+    revisarCatalogo();
   }
 
   /* ============ Conteo cargado a mano ============ */
@@ -1968,6 +1974,7 @@
     render();
     analizar();          // las existencias también alimentan "Transferir"
     analizarEgresos();   // y "Egresos"
+    revisarCatalogo();   // ¿coinciden con el catálogo publicado? (Feli, 19/10)
     return true;
   }
 
@@ -4546,11 +4553,7 @@
        puede pedir: el catálogo lo deja afuera siempre, sin importar cómo esté
        el tilde de "Ocultar excluidos", que es solo para mirar en pantalla. */
     var fuera = DATA.insumos.filter(esExcluido).length;
-    var lista = DATA.insumos.filter(function(it){ return !esExcluido(it); }).map(function(it){
-      return { cod: it.cod, nombre: it.nombre, unidad: it.unidad,
-               tipo: it.cat, cuenta: CUENTAS.cods[clave(it.cod)] ||
-                                     CUENTAS.tipos[(it.cat || '').toUpperCase()] || '' };
-    });
+    var lista = catalogoDeExistencias();
     avisar('Publicando…', false);
     var r = await apiLenta('publicarCatalogo', lista);   // Paso 8: puede tardar; con api() la app cortaba a los 25 s y se volvía a tocar
     if(r && r.ok){
@@ -4565,11 +4568,64 @@
       : ('No se pudo publicar: ' + ((r && r.error) || '')), !(r && r.ok));
   }
 
+  /* El catálogo que sale de las existencias cargadas: sin los excluidos, con la cuenta de cada insumo. */
+  function catalogoDeExistencias(){
+    return DATA.insumos.filter(function(it){ return !esExcluido(it); }).map(function(it){
+      return { cod: it.cod, nombre: it.nombre, unidad: it.unidad,
+               tipo: it.cat, cuenta: CUENTAS.cods[clave(it.cod)] ||
+                                     CUENTAS.tipos[(it.cat || '').toUpperCase()] || '' };
+    });
+  }
+
+  /* Feli (19/10): si las existencias que se bajan no coinciden con el último catálogo publicado (insumos nuevos,
+     que ya no están, o con otro nombre, unidad, tipo o cuenta), un aviso arriba con "Publicar catálogo". Solo admins. */
+  function revisarCatalogo(){
+    var caja = $('avisocat');
+    if(!caja) return;
+    if(!ES_ADMIN || !DATA || !TR.catalogo){ caja.hidden = true; return; }
+    var pub = {}, nuevo = {};
+    CATALOGO.forEach(function(i){ pub[clave(i.cod)] = i; });
+    var lista = catalogoDeExistencias(), nuevos = [], cambiados = [];
+    lista.forEach(function(i){
+      var k = clave(i.cod), v = pub[k];
+      nuevo[k] = true;
+      if(!v){ nuevos.push(i.nombre + ' (' + i.cod + ')'); return; }
+      var que = [];
+      if(String(v.nombre || '') !== String(i.nombre || '')) que.push('nombre: «' + v.nombre + '» → «' + i.nombre + '»');
+      if(String(v.unidad || '') !== String(i.unidad || '')) que.push('unidad: ' + (v.unidad || '—') + ' → ' + (i.unidad || '—'));
+      if(String(v.tipo || '') !== String(i.tipo || '')) que.push('tipo: ' + (v.tipo || '—') + ' → ' + (i.tipo || '—'));
+      if(String(v.cuenta || '') !== String(i.cuenta || '')) que.push('cuenta: ' + (v.cuenta || '—') + ' → ' + (i.cuenta || '—'));
+      if(que.length) cambiados.push(i.nombre + ' (' + i.cod + '): ' + que.join(', '));
+    });
+    var sacados = CATALOGO.filter(function(i){ return !nuevo[clave(i.cod)]; }).map(function(i){ return i.nombre + ' (' + i.cod + ')'; });
+    if(!nuevos.length && !sacados.length && !cambiados.length){ caja.hidden = true; return; }
+    function bloque(t, l){
+      if(!l.length) return '';
+      return '<div><b>' + t + ' (' + l.length + ')</b><ul>' + l.slice(0, 15).map(function(x){ return '<li>' + esc(x) + '</li>'; }).join('') +
+             (l.length > 15 ? '<li>y ' + (l.length - 15) + ' más</li>' : '') + '</ul></div>';
+    }
+    caja.innerHTML = '⚠️ <b>Estas existencias no coinciden con el catálogo publicado</b>' + (TR.catalogo.actualizado ? ' (del ' + esc(TR.catalogo.actualizado) + ')' : '') + '.' +
+      bloque('Insumos nuevos, que no están en el catálogo', nuevos) +
+      bloque('Están en el catálogo y ya no vienen en las existencias', sacados) +
+      bloque('Cambiaron', cambiados) +
+      '<div class="fila"><button class="btn" id="avisocatpub" type="button">Publicar catálogo</button><span class="aviso" id="avisocataviso"></span></div>';
+    caja.hidden = false;
+  }
+  document.addEventListener('click', function(e){
+    if(!e.target || e.target.id !== 'avisocatpub') return;
+    publicarCatalogo(function(msg, mal){
+      var a = $('avisocataviso');
+      if(a){ a.textContent = msg; a.style.color = mal ? '#b3261e' : ''; }
+      if(!mal && /publicado|ya estaba igual/.test(msg)) setTimeout(revisarCatalogo, 1500);
+    });
+  });
+
   function cargarCatalogo(){
     var e = $('acatalogo');
     e.classList.remove('ok','falta','aviso');
     var c = TR.catalogo || {};
     CATALOGO = c.insumos || [];
+    revisarCatalogo();
     if(!CATALOGO.length){
       e.classList.add('falta');
       $('acatalogotxt').textContent = 'Todavía no hay catálogo: lo publica compras.';

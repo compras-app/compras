@@ -148,9 +148,10 @@ function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref 
 /* ---------- Filtros ---------- */
 function armarFiltros() {
   const admin = APP.yo.admin;
-  TB.filtros = { mios: !admin, sitio: '', resp: '' };   // pedido de Feli: los no admins entran con "Mis pedidos"
+  TB.filtros = { mios: !admin, sitio: '', resp: '', aprobar: false };   // pedido de Feli: los no admins entran con "Mis pedidos"
   const sitio = $('tb-sitio'), resp = $('tb-resp');
   $('tb-sitio-l').hidden = $('tb-resp-l').hidden = !admin;
+  $('tb-aprobar').hidden = !APP.yo.aprueba;
   if (admin) {
     sitio.innerHTML = '<option value="">Ver todos</option>' +
       (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
@@ -173,8 +174,9 @@ function pintarFiltros() {
   $('tb-todos').setAttribute('aria-pressed', String(!TB.filtros.mios));
   $('tb-sitio').value = TB.filtros.sitio;
   $('tb-resp').value = TB.filtros.resp;
+  $('tb-aprobar').setAttribute('aria-pressed', String(!!TB.filtros.aprobar));
   // Paso 6: el botón del bloque de filtros (celular) dice lo que está elegido
-  const f = TB.filtros, lo = [f.mios ? 'Mis pedidos' : 'Todos'];
+  const f = TB.filtros, lo = [f.aprobar ? '⏳ Para aprobar' : f.mios ? 'Mis pedidos' : 'Todos'];
   if (f.sitio) lo.push(f.sitio);
   if (f.resp) lo.push(f.resp === '-' ? 'Sin responsable' : f.resp);
   $('tb-filtros-b').textContent = '⚙︎ Filtros · ' + lo.join(' · ');
@@ -186,7 +188,9 @@ $('tb-filtros-b').addEventListener('click', function () {
 });
 function seVe(t) {
   const f = TB.filtros;
-  if (f.mios && !esMio(t)) return false;
+  // Feli (19/10): "Para aprobar" (solo quien aprueba) muestra únicamente las que esperan su aprobación, de quien sea
+  if (f.aprobar) { if (t.aprobacion !== 'Esperando') return false; }
+  else if (f.mios && !esMio(t)) return false;
   // Una tarjeta de trabajo puede juntar pedidos de varias granjas (Tanda verde): "G1 - …, G3 - …"
   if (f.sitio && t.sitio !== f.sitio && String(t.sitio || '').split(', ').indexOf(f.sitio) === -1) return false;
   if (f.resp === '-' && t.responsable) return false;
@@ -198,6 +202,7 @@ function esMio(t) {
   const yo = APP.yo.nombre;
   return t.solicitante === yo || (t.solicitantes || []).indexOf(yo) !== -1 || (t.compartido || []).indexOf(yo) !== -1;
 }
+$('tb-aprobar').addEventListener('click', function () { TB.filtros.aprobar = !TB.filtros.aprobar; pintarFiltros(); pintarTablero(); });
 $('tb-mios').addEventListener('click', function () { TB.filtros.mios = true; pintarFiltros(); pintarTablero(); });
 $('tb-todos').addEventListener('click', function () { TB.filtros.mios = false; pintarFiltros(); pintarTablero(); });
 $('tb-sitio').addEventListener('change', function () { TB.filtros.sitio = this.value; pintarFiltros(); pintarTablero(); });
@@ -953,7 +958,8 @@ async function precargarMisTarjetas() {
       if (TB.abierta === t.ref) continue;           // la abrió mientras tanto: la guarda traerTarjeta
       guardarDetalle(t.ref, { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
                               trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {},
-                              solicitudes: r.solicitudes || [], presupuestos: r.presupuestos || [], compra: r.compra || null });
+                              solicitudes: r.solicitudes || [], presupuestos: r.presupuestos || [], compra: r.compra || null,
+                              cargarPresupuesto: !!r.cargarPresupuesto });
     }
   } finally { precargando = false; }
 }
@@ -1020,6 +1026,7 @@ async function traerTarjeta(ref) {
     TB.detalle = { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
                    trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {}, solicitudes: r.solicitudes || [],
                    presupuestos: r.presupuestos || [], compra: r.compra || null,          // Fase 4, Pasos 3 y 5
+                   cargarPresupuesto: !!r.cargarPresupuesto,                               // "📎 Cargar presupuesto" (Feli, 19/10)
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);

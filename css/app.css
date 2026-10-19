@@ -118,6 +118,9 @@ body[data-pantalla="tablero"] .contenido,body[data-pantalla="tareas"] .contenido
 .seg button{border:0;background:var(--bg);color:var(--muted);font:inherit;font-size:14px;font-weight:600;padding:5px 12px;min-height:36px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
 .filtro{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted)}
+/* "⏳ Para aprobar" (Feli, 19/10): solo quien aprueba las compras */
+.filtro-aprobar{flex:none;border:1.5px solid var(--line);background:var(--bg);color:var(--muted);border-radius:10px;font:inherit;font-size:14px;font-weight:600;padding:5px 12px;min-height:36px;cursor:pointer}
+.filtro-aprobar[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .filtros select{font:inherit;font-size:14px;color:var(--fg);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:5px 8px;min-height:36px;max-width:40vw}
 .refrescar{margin-left:auto;border:0;background:none;color:var(--muted);font:inherit;font-size:13px;min-height:44px;min-width:44px;cursor:pointer;padding:0 6px;white-space:nowrap;touch-action:manipulation}
 .refrescar .ic{display:inline-block}
@@ -227,6 +230,7 @@ html,body{touch-action:pan-x pan-y}
 /* Comentarios y actividad de la tarjeta (Paso 4) */
 .act-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:20px 0 10px}
 .act-h h3{margin:0;font-size:15px}
+.act-h .act-bs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .btn-chico{flex:none;border:0;background:var(--soft);color:var(--fg);font:inherit;font-size:14px;font-weight:600;border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer}
 .btn-chico:hover{background:var(--line)}
 .comentar textarea{display:block;width:100%;min-height:48px;resize:none;font:inherit;color:var(--fg);background:var(--tj);border:1.5px solid var(--line);border-radius:10px;padding:11px 12px}

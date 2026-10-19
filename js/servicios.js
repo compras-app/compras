@@ -58,6 +58,7 @@ function mostrarServicios() {
   const admin = APP.yo.admin;
   // Los demás ya ven solo los suyos. Granja y responsable, como en Compras (Feli, 2026-10-04)
   $('sv-filtro').hidden = $('sv-sitio-l').hidden = $('sv-resp-l').hidden = !admin;
+  $('sv-aprobar').hidden = !APP.yo.aprueba;                 // Feli (19/10)
   if (admin) {
     $('sv-sitio').innerHTML = '<option value="">Ver todos</option>' +
       (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
@@ -73,10 +74,12 @@ function pintarFiltrosServicios() {
   $('sv-todos').setAttribute('aria-pressed', String(!SV.filtros.mios));
   $('sv-sitio').value = SV.filtros.sitio;
   $('sv-resp').value = SV.filtros.resp;
+  $('sv-aprobar').setAttribute('aria-pressed', String(!!SV.filtros.aprobar));
 }
 function seVeServicio(t) {
   const f = SV.filtros;
-  if (f.mios && t.solicitante !== APP.yo.nombre && (t.compartido || []).indexOf(APP.yo.nombre) === -1) return false;
+  if (f.aprobar && t.aprobacion !== 'Esperando') return false;     // Feli (19/10): "Para aprobar"
+  if (!f.aprobar && f.mios && t.solicitante !== APP.yo.nombre && (t.compartido || []).indexOf(APP.yo.nombre) === -1) return false;
   if (f.sitio && t.sitio !== f.sitio) return false;
   if (f.resp === '-' && t.responsable) return false;
   if (f.resp && f.resp !== '-' && t.responsable !== f.resp) return false;
@@ -84,6 +87,7 @@ function seVeServicio(t) {
 }
 $('sv-sitio').addEventListener('change', function () { SV.filtros.sitio = this.value; pintarServicios(); });
 $('sv-resp').addEventListener('change', function () { SV.filtros.resp = this.value; pintarServicios(); });
+$('sv-aprobar').addEventListener('click', function () { SV.filtros.aprobar = !SV.filtros.aprobar; pintarFiltrosServicios(); pintarServicios(); });
 $('sv-mios').addEventListener('click', function () { SV.filtros.mios = true; pintarFiltrosServicios(); pintarServicios(); });
 $('sv-todos').addEventListener('click', function () { SV.filtros.mios = false; pintarFiltrosServicios(); pintarServicios(); });
 
