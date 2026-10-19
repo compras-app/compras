@@ -1111,6 +1111,7 @@ function pintarTarjeta() {
   const ref = TB.abierta;
   if (!ref) return;
   bloquesDeTarea(TB.tipo === 'tarea');
+  pintarNotas();                                             // Notas (Feli, 19/10): no en las tareas
   if (TB.tipo === 'tarea') return pintarTareaAbierta();      // tareas.js
   $('tj-prod-b').hidden = false;
   $('tj-desc-t').textContent = 'Descripción';
@@ -2228,6 +2229,58 @@ $('tj-editar').addEventListener('click', async function () {
    reintento no lo sube dos veces. Van a la carpeta del pedido en Drive.
    Quitar: quien lo subió o un admin (el archivo no se borra de Drive). */
 const K_ADJUNTOS = 'compras_adjuntos';     // los que esperan subir: [{id, ref, nombre, tipo, creado, token, intentos}]
+/* ---------- Notas de la tarjeta (Feli, 19/10) ----------
+   Un anotador debajo de los productos, en pedidos, servicios y tarjetas de seguimiento. Lo escriben todos los que ven
+   la tarjeta. Se guarda solo un momento después de dejar de escribir (y al salir del cuadro), por la bandeja: sin señal
+   queda en el teléfono y se manda después. Mientras se escribe, lo que llega del servidor no lo pisa. */
+let notasTimer = null;
+function notasEsperando(ref) {
+  const l = bandeja.lista().filter(function (m) { return m.fn === 'guardarNotas' && m.args[0] === ref; });
+  return l.length ? l[l.length - 1].args[1] : null;
+}
+function pintarNotas() {
+  const b = $('tj-notas-b'), ref = TB.abierta, d = TB.detalle;
+  b.hidden = TB.tipo === 'tarea' || !ref;
+  if (b.hidden) return;
+  const n = (d && d.pedido && d.pedido.notas) || { texto: '' };
+  const espera = notasEsperando(ref);
+  const ta = $('tj-notas');
+  if (document.activeElement !== ta || ta.dataset.ref !== ref) {
+    ta.value = espera !== null ? espera : (n.texto || '');
+    ta.dataset.ref = ref;
+  }
+  $('tj-notas-quien').textContent = espera !== null ? (APP.enLinea ? 'Guardando…' : '📶 Se guarda cuando vuelva la señal')
+    : n.quien ? 'Última vez: ' + n.quien + (n.fecha ? ', ' + fechaLinda(n.fecha) : '') : '';
+}
+function guardarNotasAhora() {
+  clearTimeout(notasTimer); notasTimer = null;
+  const ta = $('tj-notas'), ref = ta.dataset.ref;
+  if (!ref) return;
+  const texto = ta.value;
+  const g = detallesGuardados()[ref], actual = notasEsperando(ref);
+  const antes = actual !== null ? actual : ((TB.abierta === ref && TB.detalle && TB.detalle.pedido && TB.detalle.pedido.notas) || (g && g.d && g.d.pedido && g.d.pedido.notas) || { texto: '' }).texto || '';
+  if (texto === antes) return;
+  bandeja.agregar('guardarNotas', [ref, texto], 'guardar las notas de la tarjeta');
+  if (TB.abierta === ref) pintarNotas();
+}
+$('tj-notas').addEventListener('input', function () { clearTimeout(notasTimer); notasTimer = setTimeout(guardarNotasAhora, 1500); });
+$('tj-notas').addEventListener('blur', function () { if (notasTimer) guardarNotasAhora(); });
+// Cuando sale de la bandeja: queda quién y cuándo
+(function () {
+  const antes = bandeja.alTerminar;
+  bandeja.alTerminar = function (m, r) {
+    if (antes) antes(m, r);
+    if (m.fn !== 'guardarNotas') return;
+    const ref = m.args[0];
+    if (r.ok && r.notas && !notasEsperando(ref)) {
+      const todos = detallesGuardados();
+      if (todos[ref] && todos[ref].d && todos[ref].d.pedido) { todos[ref].d.pedido.notas = r.notas; guardado.guardarJSON(K_TARJETAS, todos); }
+      if (TB.abierta === ref && TB.detalle && TB.detalle.pedido) TB.detalle.pedido.notas = r.notas;
+    }
+    if (TB.abierta === ref) pintarNotas();
+  };
+})();
+
 const ADJUNTO_MAX_MB = 10;
 const ADJ = { subiendo: false, urls: {} };  // urls: vista previa de los que esperan (mientras la app está abierta)
 function adjPendientes() { return guardado.leerJSON(K_ADJUNTOS, []); }

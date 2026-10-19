@@ -482,6 +482,11 @@
             <div id="tj-productos"></div>
             <button type="button" class="btn2" id="tj-agregar" hidden style="width:auto">+ Agregar producto</button>
           </div>
+          <!-- Notas (Feli, 19/10): el anotador de la tarjeta (recordatorios, descripciones…); lo escriben todos los que la ven (tablero.js) -->
+          <div class="bloque" id="tj-notas-b" hidden>
+            <div class="act-h"><h3>📝 Notas</h3><small class="notas-quien" id="tj-notas-quien"></small></div>
+            <textarea id="tj-notas" rows="3" maxlength="5000" placeholder="Recordatorios, descripciones… Se guarda solo."></textarea>
+          </div>
           <!-- Paso 6: aprobación de la compra (cotizar.js) -->
           <div class="bloque" id="tj-aprob-b" hidden>
             <div class="act-h"><h3>Aprobación</h3><button type="button" class="btn-chico" id="tj-aprobar-mandar" hidden>📨 Mandar a aprobar</button></div>
