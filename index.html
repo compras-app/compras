@@ -385,6 +385,8 @@
           <option value="servicios">Servicios</option><option value="tareas">Tareas</option></select></label>
         <label class="filtro" id="rp-vista-l" hidden><span>Ver</span><select id="rp-vista">
           <option value="detallado">Egresos y existencia</option><option value="faltantes">Faltante y precio</option></select></label>
+        <!-- Feli (19/10): en Consumo mensual y Egresos, solo los productos que tienen esto en el nombre (o el código) -->
+        <label class="filtro" id="rp-buscar-l" hidden><span>Buscar</span><input type="search" id="rp-buscar" placeholder="producto o código…" autocomplete="off"></label>
       </div>
       <div class="ad-barra">
         <button type="button" class="btn" id="rp-armar">Armar reporte</button>

@@ -14,7 +14,7 @@
    - Lo ven todos los admins; el gerente es admin.
    ============================================================ */
 
-const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false, vista: 'detallado' };
+const RP = { pestana: 'resumen', datos: {}, filtros: null, armando: false, vista: 'detallado', buscar: '' };
 const RP_PESTANAS = [                                     // nombres de Feli (13/10)
   { id: 'resumen', nombre: 'Resumen' }, { id: 'stock', nombre: 'Consumo mensual' }, { id: 'flujo', nombre: 'Flujo de tarjetas' },
   { id: 'plata', nombre: 'Gastos' }, { id: 'proveedores', nombre: 'Proveedores' }, { id: 'padron', nombre: 'Padrón' },
@@ -68,6 +68,7 @@ function pintarPestanasRp() {
   ['rp-desde', 'rp-hasta', 'rp-sitio'].forEach(function (id) { $(id).closest('label').hidden = st || fijo; });
   if (RP.pestana === 'historial') $('rp-tablero-l').hidden = true;
   $('rp-vista-l').hidden = !st;
+  $('rp-buscar-l').hidden = !(st || RP.pestana === 'egresos');      // Feli (19/10): también en lo guardado
   $('rp-armar').hidden = fijo;
   $('rp-excel').hidden = !RP.datos[RP.pestana] || RP.pestana === 'resumen' || RP.pestana === 'historial';     // el Resumen no se baja (Feli, 13/10)
 }
@@ -105,6 +106,23 @@ async function armarReporte() {
 }
 $('rp-armar').addEventListener('click', armarReporte);
 $('rp-vista').addEventListener('change', function () { RP.vista = this.value; pintarReporte(); });
+$('rp-buscar').addEventListener('input', function () { RP.buscar = this.value; pintarReporte(); });
+
+/* Buscador de Consumo mensual y Egresos (Feli, 19/10): "myco" deja solo los productos con eso en el nombre o el código,
+   en las tres oficinas y donde estén (en negativo, justos o sobran). El Excel sale siempre entero. */
+function conBusqueda(r) {
+  const q = sinTildes(RP.buscar).trim();
+  if (!q || !r || !r.productos) return r;
+  return Object.assign({}, r, { productos: r.productos.filter(function (p) { return sinTildes((p.insumo || '') + ' ' + (p.codigo || '')).indexOf(q) !== -1; }) });
+}
+function notaBusqueda(r) {
+  const q = RP.buscar.trim();
+  if (!q) return '';
+  const vistos = {};
+  conBusqueda(r).productos.forEach(function (p) { vistos[p.codigo || p.insumo] = 1; });     // el mismo producto en varias oficinas, una vez
+  const n = Object.keys(vistos).length;
+  return '<p class="estado' + (n ? '' : ' warn') + '">🔎 «' + esc(q) + '»: ' + (n ? n + (n === 1 ? ' producto' : ' productos') : 'ningún producto') + '.</p>';
+}
 $('rp-tablero').addEventListener('change', function () {                   // lo guardado: Flujo de cada tablero
   if (!RP.guardado) return;
   const fl = (RP.guardado.reportes.flujo || {})[this.value];
@@ -381,18 +399,18 @@ function pintarCuerpoRp() {
   }
   const r = d.r;
   if (cual === 'stock') {
-    RP.tablas = tablasStock(r, RP.vista);
+    RP.tablas = tablasStock(conBusqueda(r), RP.vista);
     const sinLc50 = r.existencias && !r.productos.some(function (p) { return p.grupo === 'LC50' && p.existencia; });
     cuerpo.innerHTML = (r.existencias ? '' : '<p class="estado warn">Todavía no hay ningún reporte de existencias de Albor guardado: bajalo en Transferencias (Conteo de stock) y armá este reporte de nuevo.</p>') +
       (sinLc50 ? '<p class="estado warn">El último reporte de existencias no trae la Oficina LC 50: en Albor, al bajarlo, tiene que estar tildada la empresa que la tiene.</p>' : '') +
-      '<p class="nota rp-de">' + subtituloStock(r) + '</p>' + RP.tablas.map(htmlTabla).join('');
+      '<p class="nota rp-de">' + subtituloStock(r) + '</p>' + notaBusqueda(r) + RP.tablas.map(htmlTabla).join('');
     return;
   }
   const cab = '<p class="nota rp-de">Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta) +
               ' · armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</p>';
   if (cual === 'resumen') { cuerpo.innerHTML = cab + htmlResumen(r); return; }
-  RP.tablas = tablasDe(cual, r);
-  cuerpo.innerHTML = cab + RP.tablas.map(htmlTabla).join('');
+  RP.tablas = cual === 'egresos' && RP.buscar.trim() ? tablasDe(cual, conBusqueda(r)).slice(0, 1) : tablasDe(cual, r);   // buscando: solo "Por producto"
+  cuerpo.innerHTML = cab + (cual === 'egresos' ? notaBusqueda(r) : '') + RP.tablas.map(htmlTabla).join('');
 }
 
 /** Consumo mensual: de qué mes son los egresos y de cuándo la existencia. */
