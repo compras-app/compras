@@ -27,6 +27,17 @@ function usarDatos(d){
   nameWords = NAMES.map(n=>n[1].split(' '));
 }
 
+/* "Quién pide" sale de la sesión de la app en este teléfono (Feli, 19/10); un admin además elige con quién compartirlo.
+   Sin sesión (nunca entró a la app en este teléfono), se elige de la lista como antes. */
+function sesionApp(){
+  try{
+    const token=guardado.leer(K.token), ini=guardado.leerJSON(K.inicio,null);
+    if(token&&ini&&ini.yo&&ini.yo.nombre) return {token, nombre:ini.yo.nombre, admin:!!ini.yo.admin, admins:(ini.config&&ini.config.admins)||[]};
+  }catch(e){}
+  return null;
+}
+const SES = sesionApp();
+
 function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();}
 
 /* ---------- búsqueda en el padrón ---------- */
@@ -59,7 +70,7 @@ function buscar(q){
 }
 
 /* ---------- estado ---------- */
-let S = {tipo:'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[],servicio:'',obs:'',adj:[]};
+let S = {tipo:'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[],servicio:'',obs:'',adj:[],compartido:[]};
 const ADJ_MAX = 10*1024*1024;    // un PDF del servicio: hasta 10 MB
 let nid=1;
 function nuevoProd(){return {id:nid++,texto:'',fi:null,libre:false,espec:'',cantidad:'',desc:'',fotos:[]};}
@@ -278,7 +289,7 @@ async function enviar(){
       const ref=nuevoIdEnvio(), fotos={};
       S.adj.forEach(f=>{ fotos[f.id]={linea:0,nombre:f.nombre,tipo:f.tipo,envio:nuevoId(),subida:null}; });
       const datos={ tipo:'servicio', sitio:S.sitio, urgencia:S.urgencia, solicitante:S.pide, razon:S.razon.trim(),
-                    servicio:S.servicio.trim(), observaciones:S.obs.trim(), productos:[], adjuntos:S.adj.map(f=>f.id) };
+                    servicio:S.servicio.trim(), observaciones:S.obs.trim(), productos:[], adjuntos:S.adj.map(f=>f.id), ...deSesion() };
       const borrador=guardado.leer(DRAFT);
       await PedidosGuardados.agregar({ ref, datos, fotos, borrador, servicio:true, titulo:'🔧 '+S.servicio.trim(), nProductos:0, nFotos:S.adj.length });
       guardado.borrar(DRAFT);
@@ -294,7 +305,7 @@ async function enviar(){
                especificacion:p.espec.trim(), cantidad:String(p.cantidad).trim().replace(',','.'),
                descripcion:p.desc.trim(), fotos:p.fotos.map(f=>f.id) };
     });
-    const datos={ sitio:S.sitio, urgencia:S.urgencia, solicitante:S.pide, razon:S.razon.trim(), productos };
+    const datos={ sitio:S.sitio, urgencia:S.urgencia, solicitante:S.pide, razon:S.razon.trim(), productos, ...deSesion() };
     // Para mostrarlo en la lista y poder corregirlo si el servidor lo rechaza
     const borrador=guardado.leer(DRAFT);
     await PedidosGuardados.agregar({ ref, datos, fotos, borrador,
@@ -379,7 +390,7 @@ function estado(msg,tipo){ const e=$('#estado'); if(!msg){e.hidden=true;return;}
 function empezarDeCero(){
   S.prods.forEach(p=>p.fotos.forEach(f=>PedidosGuardados.borrarFoto(f.id)));
   (S.adj||[]).forEach(f=>PedidosGuardados.borrarFoto(f.id));
-  S={tipo:S.tipo||'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[nuevoProd()],servicio:'',obs:'',adj:[]};
+  S={tipo:S.tipo||'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[nuevoProd()],servicio:'',obs:'',adj:[],compartido:[]};
   guardado.borrar(DRAFT);
   $('#saved').textContent=''; estado('');
   mirando=null; $('#form').hidden=false; $('#listo').hidden=true; init();
@@ -417,12 +428,41 @@ PedidosGuardados.alCambiar(()=>{ pintarGuardados(); pintarListo(); });
 window.addEventListener('online',()=>{ pintarGuardados(); pintarListo(); });
 window.addEventListener('offline',()=>{ conexion(false); pintarGuardados(); pintarListo(); });
 
+/** Lo que va al servidor por la sesión: el token (quién pide sale de ahí) y, de un admin, con quién se comparte. */
+function deSesion(){
+  if(!SES) return {};
+  return SES.admin ? { token:SES.token, compartido:(S.compartido||[]).slice() } : { token:SES.token };
+}
+function pintarQuienPide(){
+  const sel=$('#pide');
+  if(SES){
+    S.pide=SES.nombre;
+    sel.innerHTML=`<option>${esc(SES.nombre)}</option>`; sel.value=SES.nombre; sel.disabled=true;
+  }else{
+    if(S.pide&&SOLICITANTES.indexOf(S.pide)<0) S.pide='';
+    sel.innerHTML='<option value="">Elegí tu nombre</option>'+SOLICITANTES.map(n=>`<option>${esc(n)}</option>`).join('');
+    sel.value=S.pide||''; sel.disabled=false;
+  }
+  const q=$('#q-compartir');
+  q.hidden=!(SES&&SES.admin);
+  if(q.hidden) return;
+  const opciones=SOLICITANTES.filter(n=>n!==SES.nombre&&SES.admins.indexOf(n)<0);
+  S.compartido=(S.compartido||[]).filter(n=>opciones.indexOf(n)>=0);
+  const box=$('#compartir');
+  box.innerHTML=opciones.length?opciones.map(n=>{ const si=S.compartido.indexOf(n)>=0;
+      return `<button type="button" class="choice" role="checkbox" aria-checked="${si}" data-v="${esc(n)}"><span class="k">${si?'✓':''}</span><span>${esc(n)}</span></button>`; }).join('')
+    :'<div class="hint">No hay encargados para elegir.</div>';
+  box.onclick=e=>{ const b=e.target.closest('.choice'); if(!b) return; const n=b.dataset.v, k=S.compartido.indexOf(n);
+    if(k>=0) S.compartido.splice(k,1); else S.compartido.push(n);
+    b.setAttribute('aria-checked',k<0); b.querySelector('.k').textContent=k<0?'✓':''; guardar(); };
+}
+
 function init(){
-  if(S.pide&&SOLICITANTES.indexOf(S.pide)<0) S.pide='';
+  if(S.pide&&SOLICITANTES.indexOf(S.pide)<0&&!SES) S.pide='';
   if(S.sitio&&SITIOS.indexOf(S.sitio)<0) S.sitio='';
   if(S.urgencia&&URG.indexOf(S.urgencia)<0) S.urgencia='';
-  $('#pide').innerHTML='<option value="">Elegí tu nombre</option>'+SOLICITANTES.map(n=>`<option>${esc(n)}</option>`).join('');
-  choices('sitio',SITIOS); choices('urgencia',URG); $('#razon').value=S.razon; $('#pide').value=S.pide||''; render();
+  pintarQuienPide();
+  choices('sitio',SITIOS); choices('urgencia',URG); $('#razon').value=S.razon; render();
   $('#servicio').value=S.servicio||''; $('#obs').value=S.obs||''; pintarTipo(); pintarAdj();
 }
 

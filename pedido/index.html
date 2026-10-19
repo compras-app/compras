@@ -66,6 +66,13 @@
       <select id="pide"><option value="">Elegí tu nombre</option></select>
     </div>
 
+    <!-- Feli (19/10): solo los admins; como "Compartir con" del pedido masivo: los encargados que lo ven entre "Mis pedidos" -->
+    <div class="q" id="q-compartir" hidden>
+      <span class="qt" id="l-compartir">Compartir con</span>
+      <div class="hint">Opcional: lo ven en "Mis pedidos" los que elijas.</div>
+      <div class="choices" id="compartir" aria-labelledby="l-compartir"></div>
+    </div>
+
     <div class="q" id="q-razon">
       <label for="razon">Razón del pedido<span class="req">*</span></label>
       <textarea id="razon" placeholder="Para qué se necesita, qué se rompió, en qué galpón…"></textarea>
