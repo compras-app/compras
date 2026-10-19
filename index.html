@@ -488,8 +488,9 @@
           <div class="bloque" id="tj-notas-b" hidden>
             <div class="act-h"><h3>📝 Notas</h3><small class="notas-quien" id="tj-notas-quien"></small></div>
             <!-- Para leer: "---" en un renglón es una línea separadora (Feli, 19/10); tocarlo abre el cuadro para escribir -->
-            <div class="notas-ver" id="tj-notas-ver" role="button" tabindex="0" aria-label="Escribir en las notas"></div>
-            <textarea id="tj-notas" rows="3" maxlength="5000" placeholder="Recordatorios, descripciones… Con --- en un renglón, una línea separadora. Se guarda solo." hidden></textarea>
+            <!-- De entrada, el cuadro a la vista y la vista para leer escondida: si el teléfono mezcla una versión vieja del código, igual se ve -->
+            <div class="notas-ver" id="tj-notas-ver" role="button" tabindex="0" aria-label="Escribir en las notas" hidden></div>
+            <textarea id="tj-notas" rows="3" maxlength="5000" placeholder="Recordatorios, descripciones… Con --- en un renglón, una línea separadora. Se guarda solo."></textarea>
           </div>
           <!-- Paso 6: aprobación de la compra (cotizar.js) -->
           <div class="bloque" id="tj-aprob-b" hidden>

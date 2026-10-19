@@ -5,7 +5,7 @@
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
 // El formulario (pedido/) y Transferencias (transferencias/) también son parte de la app.
-const VERSION = 'app-8f453c85ed';
+const VERSION = 'app-df30a626df';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
   './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js', './js/tablero.js', './js/cotizar.js', './js/recepcion.js', './js/chats.js', './js/presupuestos.js', './js/cuadro.js', './js/tareas.js', './js/servicios.js', './js/notificaciones.js', './js/buscar.js', './js/admin.js', './js/reportes.js',
@@ -21,11 +21,13 @@ const EN_PRUEBA = self.location.hostname === 'localhost';   // en la compu de Cl
 
 // Al publicar, GitHub puede tardar unos minutos en dar todos los archivos nuevos. Si la copia agarró un js/base.js
 // de antes (no lleva la huella de esta versión), no se instala: queda la versión anterior y se prueba en la próxima visita.
+// Cada archivo se pide con "?v=huella" (Feli, 19/10: un teléfono quedó con el index.html nuevo y el tablero.js de antes):
+// para GitHub es una dirección nueva, así no da una copia vieja guardada. Lo guardado se busca sin el "?v=…".
 self.addEventListener('install', e => {
   const huella = VERSION.split('-').pop();
   e.waitUntil(caches.open(VERSION)
-    .then(c => c.addAll(ARCHIVOS.map(u => new Request(u, { cache: 'reload' })))
-      .then(() => huella === 'dev' ? null : c.match('./js/base.js').then(r => r && r.text()).then(t => {
+    .then(c => c.addAll(ARCHIVOS.map(u => new Request(u + '?v=' + huella, { cache: 'reload' })))
+      .then(() => huella === 'dev' ? null : c.match('./js/base.js', { ignoreSearch: true }).then(r => r && r.text()).then(t => {
         if (!t || t.indexOf(huella) === -1) return caches.delete(VERSION).then(() => { throw new Error('Copia a medias: se prueba después'); });
       })))
     .then(() => self.skipWaiting()));
