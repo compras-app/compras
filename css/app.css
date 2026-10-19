@@ -235,6 +235,10 @@ html,body{touch-action:pan-x pan-y}
 #tj-notas{display:block;width:100%;box-sizing:border-box;min-height:70px;resize:none;overflow:hidden;font:inherit;font-size:14px;line-height:1.45;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg)}   /* crece con el texto: se ve entero (Feli, 19/10) */
 #tj-notas:focus{outline:none;border-color:var(--accent)}
 .notas-quien{color:var(--muted);font-size:12px;font-weight:400;text-align:right}
+.notas-ver{min-height:70px;box-sizing:border-box;font-size:14px;line-height:1.45;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere;cursor:text}
+.notas-ver:hover{border-color:var(--muted)}
+.notas-ver .vacio{color:var(--muted)}
+.notas-ver hr{border:0;border-top:1.5px solid var(--muted);opacity:.45;margin:8px 0}
 .btn-chico{flex:none;border:0;background:var(--soft);color:var(--fg);font:inherit;font-size:14px;font-weight:600;border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer}
 .btn-chico:hover{background:var(--line)}
 .comentar textarea{display:block;width:100%;min-height:48px;resize:none;font:inherit;color:var(--fg);background:var(--tj);border:1.5px solid var(--line);border-radius:10px;padding:11px 12px}

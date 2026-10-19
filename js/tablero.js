@@ -1059,6 +1059,8 @@ function deCuando(ms) {
 }
 
 function ocultarTarjeta() {
+  if (notasTimer) guardarNotasAhora();             // Notas: lo escrito se guarda y la próxima vez abre para leer
+  $('tj-notas').hidden = true;
   // Paso 6: si se llegó por un acceso directo, al cerrar el tablero queda sobre esa tarjeta
   const ir = TB.irAlCerrar && TB.irAlCerrar === TB.abierta ? TB.abierta : null;
   TB.irAlCerrar = null;
@@ -2244,13 +2246,15 @@ function pintarNotas() {
   if (b.hidden) return;
   const n = (d && d.pedido && d.pedido.notas) || { texto: '' };
   const espera = notasEsperando(ref);
-  const ta = $('tj-notas');
-  if (document.activeElement !== ta || ta.dataset.ref !== ref) {
+  const ta = $('tj-notas'), editando = !ta.hidden && ta.dataset.ref === ref;
+  if (!editando) {
     ta.value = espera !== null ? espera : (n.texto || '');
     ta.dataset.ref = ref;
+    ta.hidden = true;
   }
-  altoNotas();
-  requestAnimationFrame(altoNotas);              // por si la tarjeta todavía no estaba a la vista
+  $('tj-notas-ver').hidden = !ta.hidden;
+  if (ta.hidden) $('tj-notas-ver').innerHTML = htmlNotasTarjeta(ta.value);
+  else { altoNotas(); requestAnimationFrame(altoNotas); }   // por si la tarjeta todavía no estaba a la vista
   $('tj-notas-quien').textContent = espera !== null ? (APP.enLinea ? 'Guardando…' : '📶 Se guarda cuando vuelva la señal')
     : n.quien ? 'Última vez: ' + n.quien + (n.fecha ? ', ' + fechaLinda(n.fecha) : '') : '';
 }
@@ -2265,6 +2269,23 @@ function guardarNotasAhora() {
   bandeja.agregar('guardarNotas', [ref, texto], 'guardar las notas de la tarjeta');
   if (TB.abierta === ref) pintarNotas();
 }
+/** Las notas para leer: un renglón con "---" (o más guiones) es una línea separadora gris (Feli, 19/10). */
+function htmlNotasTarjeta(t) {
+  if (!String(t || '').trim()) return '<span class="vacio">Tocá para escribir: recordatorios, descripciones… (--- en un renglón hace una línea)</span>';
+  return String(t).split('\n').map(function (l) { return /^\s*-{3,}\s*$/.test(l) ? '<hr>' : esc(l); })
+    .join('\n').replace(/\n?<hr>\n?/g, '<hr>');
+}
+function editarNotas() {
+  const ta = $('tj-notas');
+  $('tj-notas-ver').hidden = true;
+  ta.hidden = false;
+  altoNotas();
+  ta.focus();
+  try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {}
+}
+$('tj-notas-ver').addEventListener('click', editarNotas);
+$('tj-notas-ver').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editarNotas(); } });
+
 /** La caja crece con el texto (Feli, 19/10: "que se vea como cualquier otro bloque", entero, sin cortarse). */
 function altoNotas() {
   const ta = $('tj-notas');
@@ -2273,7 +2294,11 @@ function altoNotas() {
 }
 $('tj-notas').addEventListener('input', function () { altoNotas(); clearTimeout(notasTimer); notasTimer = setTimeout(guardarNotasAhora, 1500); });
 window.addEventListener('resize', function () { if (TB.abierta && !$('tj-notas-b').hidden) altoNotas(); });
-$('tj-notas').addEventListener('blur', function () { if (notasTimer) guardarNotasAhora(); });
+$('tj-notas').addEventListener('blur', function () {
+  if (notasTimer) guardarNotasAhora();
+  this.hidden = true;                                     // vuelve a la vista para leer (con las líneas)
+  if (TB.abierta === this.dataset.ref) pintarNotas();
+});
 // Cuando sale de la bandeja: queda quién y cuándo
 (function () {
   const antes = bandeja.alTerminar;
