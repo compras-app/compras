@@ -232,7 +232,7 @@ html,body{touch-action:pan-x pan-y}
 .act-h h3{margin:0;font-size:15px}
 .act-h .act-bs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 /* Notas de la tarjeta (Feli, 19/10) */
-#tj-notas{width:100%;box-sizing:border-box;min-height:70px;resize:vertical;font:inherit;font-size:14px;line-height:1.45;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg)}
+#tj-notas{display:block;width:100%;box-sizing:border-box;min-height:70px;resize:none;overflow:hidden;font:inherit;font-size:14px;line-height:1.45;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg)}   /* crece con el texto: se ve entero (Feli, 19/10) */
 #tj-notas:focus{outline:none;border-color:var(--accent)}
 .notas-quien{color:var(--muted);font-size:12px;font-weight:400;text-align:right}
 .btn-chico{flex:none;border:0;background:var(--soft);color:var(--fg);font:inherit;font-size:14px;font-weight:600;border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer}

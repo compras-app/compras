@@ -2249,6 +2249,8 @@ function pintarNotas() {
     ta.value = espera !== null ? espera : (n.texto || '');
     ta.dataset.ref = ref;
   }
+  altoNotas();
+  requestAnimationFrame(altoNotas);              // por si la tarjeta todavía no estaba a la vista
   $('tj-notas-quien').textContent = espera !== null ? (APP.enLinea ? 'Guardando…' : '📶 Se guarda cuando vuelva la señal')
     : n.quien ? 'Última vez: ' + n.quien + (n.fecha ? ', ' + fechaLinda(n.fecha) : '') : '';
 }
@@ -2263,7 +2265,14 @@ function guardarNotasAhora() {
   bandeja.agregar('guardarNotas', [ref, texto], 'guardar las notas de la tarjeta');
   if (TB.abierta === ref) pintarNotas();
 }
-$('tj-notas').addEventListener('input', function () { clearTimeout(notasTimer); notasTimer = setTimeout(guardarNotasAhora, 1500); });
+/** La caja crece con el texto (Feli, 19/10: "que se vea como cualquier otro bloque", entero, sin cortarse). */
+function altoNotas() {
+  const ta = $('tj-notas');
+  ta.style.height = 'auto';
+  ta.style.height = (ta.scrollHeight + 4) + 'px';
+}
+$('tj-notas').addEventListener('input', function () { altoNotas(); clearTimeout(notasTimer); notasTimer = setTimeout(guardarNotasAhora, 1500); });
+window.addEventListener('resize', function () { if (TB.abierta && !$('tj-notas-b').hidden) altoNotas(); });
 $('tj-notas').addEventListener('blur', function () { if (notasTimer) guardarNotasAhora(); });
 // Cuando sale de la bandeja: queda quién y cuándo
 (function () {
