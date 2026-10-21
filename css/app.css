@@ -237,7 +237,7 @@ html,body{touch-action:pan-x pan-y}
 .notas-quien{color:var(--muted);font-size:12px;font-weight:400;text-align:right}
 .notas-ver{min-height:70px;box-sizing:border-box;font-size:14px;line-height:1.45;padding:8px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere;cursor:text}
 .notas-ver:hover{border-color:var(--muted)}
-.notas-ver .vacio{color:var(--muted)}
+.notas-ver .notas-vacio{color:var(--muted)}
 .notas-ver hr{border:0;border-top:1.5px solid var(--muted);opacity:.45;margin:8px 0}
 .btn-chico{flex:none;border:0;background:var(--soft);color:var(--fg);font:inherit;font-size:14px;font-weight:600;border-radius:8px;padding:6px 12px;min-height:36px;cursor:pointer}
 .btn-chico:hover{background:var(--line)}

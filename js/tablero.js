@@ -2271,7 +2271,7 @@ function guardarNotasAhora() {
 }
 /** Las notas para leer: un renglón con "---" (o más guiones) es una línea separadora gris (Feli, 19/10). */
 function htmlNotasTarjeta(t) {
-  if (!String(t || '').trim()) return '<span class="vacio">Tocá para escribir: recordatorios, descripciones… (--- en un renglón hace una línea)</span>';
+  if (!String(t || '').trim()) return '<span class="notas-vacio">Tocá para escribir: recordatorios, descripciones… (--- en un renglón hace una línea)</span>';
   return String(t).split('\n').map(function (l) { return /^\s*-{3,}\s*$/.test(l) ? '<hr>' : esc(l); })
     .join('\n').replace(/\n?<hr>\n?/g, '<hr>');
 }
