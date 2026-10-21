@@ -70,6 +70,12 @@ function htmlCasillero(col, p) {
   let h = '';
   if (!c.renglones.length) {
     h = '<div class="cq-aviso">' + c.avisos.map(esc).join(' · ') + '</div>';
+    // Feli (21/10): también los que no cotizó llevan nota (no en las filas "No pedido" de otro proveedor)
+    if (!/^NP\|/.test(p.linea)) {
+      if (c.notaCasillero) h += '<div class="cq-aviso cq-nota-mano">📝 ' + esc(c.notaCasillero.texto) + (c.notaCasillero.quien ? ' (' + esc(c.notaCasillero.quien) + ')' : '') + '</div>';
+      h += '<button type="button" class="cq-agregar-nota no-imprimir" data-cq-nota-cas="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' +
+        (c.notaCasillero ? 'Cambiar la nota' : 'Agregar nota') + '</button>';
+    }
     return '<td class="cq-cas' + (c.noSePidio ? ' cq-nopedido' : '') + '" data-cq-destino="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' + h + '</td>';
   }
   // Paso 5: lo comprado (en cualquier modo) y, al comprar, "Elegir"
@@ -222,6 +228,7 @@ function pintarCuadro() {
   if ($('cq-a-comprar')) $('cq-a-comprar').addEventListener('click', function () { CQ.editar = false; });
   if ($('cq-editar')) $('cq-editar').addEventListener('click', function () { CQ.editar = !CQ.editar; pintarCuadro(); });
   cuerpo.querySelectorAll('[data-cq-nota]').forEach(function (x) { x.addEventListener('click', function () { notaDeRenglon(x.dataset.cqNota); }); });
+  cuerpo.querySelectorAll('[data-cq-nota-cas]').forEach(function (x) { x.addEventListener('click', function () { notaDeCasillero(x.dataset.cqNotaCas, x.dataset.prov); }); });
   cuerpo.querySelectorAll('[data-cq-renombrar]').forEach(function (x) { x.addEventListener('click', function () { renombrarRenglon(x.dataset.cqRenombrar); }); });
   cuerpo.querySelectorAll('[data-cq-mover]').forEach(function (x) { x.addEventListener('click', function () { moverRenglonA(x.dataset.cqMover, x.dataset.prov); }); });
   armarArrastreCuadro(cuerpo);
@@ -578,4 +585,25 @@ async function notaDeRenglon(id) {
   pintarCuadro();
   aviso(r.nota ? '📝 Nota guardada.' : 'Nota quitada.');
   if (TB.abierta === ref) traerTarjeta(ref);
+}
+
+/** "Agregar nota" en un casillero que no cotizó (Feli, 21/10): queda en el cuadro, para ese proveedor y ese producto. */
+async function notaDeCasillero(linea, pid) {
+  const col = columnaDe(pid), c = col && col.casilleros[linea];
+  const p = CQ.datos.productos.filter(function (x) { return x.linea === linea; })[0];
+  if (!c || !p) return;
+  const actual = c.notaCasillero ? c.notaCasillero.texto : '';
+  const cuerpo = document.createElement('div');
+  cuerpo.innerHTML = '<label for="cq-nota-texto">Nota de ' + esc(col.nombre) + ' para «' + esc(p.nombre) + '»</label>' +
+    '<textarea id="cq-nota-texto" rows="3" maxlength="300" placeholder="Por ejemplo: no lo trabaja, lo consigue la semana que viene…"></textarea>' +
+    (actual ? '<p class="nota">Para sacarla, borrá el texto y guardá.</p>' : '');
+  const texto = await dialogo({ titulo: actual ? 'Cambiar la nota' : 'Agregar nota', cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', valor: function () { return { t: $('cq-nota-texto').value.trim() }; } }],
+    alAbrir: function () { const t = $('cq-nota-texto'); t.value = actual; t.focus(); } });
+  if (!texto || texto.t === actual) return;
+  const r = await api('notaCasillero', CQ.datos.ref, pid, linea, texto.t);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
+  c.notaCasillero = r.nota ? { texto: r.nota, quien: r.notaDe } : null;
+  pintarCuadro();
+  aviso(r.nota ? '📝 Nota guardada.' : 'Nota quitada.');
 }
