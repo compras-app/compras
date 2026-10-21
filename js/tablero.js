@@ -2134,7 +2134,9 @@ async function editarProducto(ref, id, pre) {
         $('ep-rubro-nota').hidden = !provs.length;
         $('dg-ok').disabled = !(cant > 0) || Object.keys(c).length === 0;
         // Al padrón solo va nombre, rubro y proveedores (y hace falta un nombre)
-        $('dg-padron').disabled = !(cant > 0) || !nombre || !(c.familia !== undefined || c.canal !== undefined || c.proveedores !== undefined);
+        // Feli (21/10): un nombre que no está en el padrón ("Fuera del padrón") se puede agregar sin cambiar nada
+        const fueraPadron = nombre === inicial.familia && l.familiaEnPadron === false;
+        $('dg-padron').disabled = !(cant > 0) || !nombre || !(c.familia !== undefined || c.canal !== undefined || c.proveedores !== undefined || fueraPadron);
       };
       ['ep-nombre', 'ep-espec', 'ep-cant'].forEach(function (i) { $(i).addEventListener('input', revisar); });
       sel.addEventListener('change', revisar);
@@ -2160,7 +2162,7 @@ async function editarProducto(ref, id, pre) {
     bandeja.agregar('deshacerProducto', [ref, id], 'deshacer el cambio de "' + nombreProducto(l) + '" (' + u.resumen + ')');
     return pintarTarjeta();
   }
-  if (!Object.keys(res.c).length) return;
+  if (!Object.keys(res.c).length && !res.padron) return;          // al padrón sin cambios: agregar un nombre que no estaba (Feli, 21/10)
   bandeja.agregar('editarProducto', [ref, id, res.c, { padron: res.padron }],
                   'cambiar "' + nombreProducto(l) + '"' + (res.padron ? ' (también en el padrón)' : ''));
   pintarTarjeta();
