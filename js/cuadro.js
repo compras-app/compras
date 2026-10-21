@@ -372,14 +372,13 @@ function pintarBarraCompra() {
 /** El mensaje de confirmación para un proveedor: el texto de Ajustes con sus productos (como los escribió él, con lo corregido). */
 function mensajeCompra(g) {
   const q = CQ.datos, c = g.col.contacto;
-  // Feli (2026-10-06): "112 · {el producto como lo pedimos} · $ 2.289,79 c/u" (si vino partido, entre paréntesis lo que escribió el proveedor)
-  const nombre = {};
-  q.productos.forEach(function (p) { nombre[p.linea] = p.nombre; });
+  // Feli (21/10): "112 · {el producto tal cual lo escribió el proveedor} · $ 2.289,79 c/u" (antes iba nuestro nombre); la cantidad,
+  // la unidad y el precio también son los de su presupuesto. Si un producto vino en varios renglones, va uno por renglón.
   const productos = g.lineas.map(function (l) {
     const rs = g.col.casilleros[l].renglones;
     return rs.map(function (r) {
       return '- ' + [cantTexto(r.cant), r.unidad && !/^(u|un|und|unid|unidad|unidades)\.?$/i.test(r.unidad) ? r.unidad : ''].filter(String).join(' ') + ' · ' +
-        nombre[l] + (rs.length > 1 ? ' (' + capital(r.texto) + ')' : '') + (r.precio !== null ? ' · ' + plata(Math.round(r.precio * 100) / 100, r.moneda) + ' c/u' : '');
+        capital(r.texto) + (r.precio !== null ? ' · ' + plata(Math.round(r.precio * 100) / 100, r.moneda) + ' c/u' : '');
     }).join('\n');
   }).join('\n');
   return q.msjCompra.replace(/[ \t]*\{contacto\}/g, c ? ' ' + c : '').split('{codigo}').join(q.codigo).split('{productos}').join(productos);
