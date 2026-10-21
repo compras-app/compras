@@ -492,6 +492,35 @@ function moverRenglon(id, destino) {
   cambiarRenglon(id, { linea: linea }, linea ? '↪️ Pasado a «' + (p ? p.nombre : 'ese producto') + '».' : '↪️ Pasado a No pedido.');
 }
 
+/* Mientras se arrastra, cerca del borde de arriba o de abajo del cuadro, el cuadro se desplaza solo (Feli, 21/10: para llegar a
+   un producto que no se ve). Cuanto más cerca del borde, más rápido. Arriba cuenta desde debajo de los nombres de los proveedores. */
+const CQ_DESPLAZAR = { y: null, activo: false, cuadro: null, reloj: null };
+function desplazarAlArrastrar() {
+  const c = CQ_DESPLAZAR.cuadro, y = CQ_DESPLAZAR.y;
+  if (c && y !== null) {
+    const r = c.getBoundingClientRect(), cab = c.querySelector('.cq-tabla thead');
+    const arriba = r.top + (cab ? cab.getBoundingClientRect().height : 0), zona = 90;
+    let paso = 0;
+    if (y < arriba + zona) paso = -Math.ceil(24 * Math.min(1, (arriba + zona - y) / zona));
+    else if (y > r.bottom - zona) paso = Math.ceil(24 * Math.min(1, (y - (r.bottom - zona)) / zona));
+    if (paso) c.scrollTop += paso;
+  }
+}
+function empezarADesplazar(cuerpo) {
+  CQ_DESPLAZAR.cuadro = cuerpo; CQ_DESPLAZAR.y = null;
+  CQ_DESPLAZAR.activo = true;
+  if (!CQ_DESPLAZAR.reloj) CQ_DESPLAZAR.reloj = setInterval(desplazarAlArrastrar, 16);
+  if (!cuerpo.dataset.cqDesplazar) {                        // una sola vez por cuadro (se repinta seguido)
+    cuerpo.dataset.cqDesplazar = '1';
+    cuerpo.addEventListener('dragover', function (e) { if (CQ_DESPLAZAR.activo) CQ_DESPLAZAR.y = e.clientY; });
+    document.addEventListener('dragover', function (e) { if (CQ_DESPLAZAR.activo) CQ_DESPLAZAR.y = e.clientY; });
+  }
+}
+function dejarDeDesplazar() {
+  CQ_DESPLAZAR.activo = false; CQ_DESPLAZAR.y = null;
+  if (CQ_DESPLAZAR.reloj) { clearInterval(CQ_DESPLAZAR.reloj); CQ_DESPLAZAR.reloj = null; }
+}
+
 /** Arrastrar (en la compu): de un casillero a otro de la misma columna (el mismo proveedor). */
 function armarArrastreCuadro(cuerpo) {
   let arrastrando = null;
@@ -501,8 +530,10 @@ function armarArrastreCuadro(cuerpo) {
       e.dataTransfer.effectAllowed = 'move';
       try { e.dataTransfer.setData('text/plain', arrastrando.id); } catch (x) {}
       el.classList.add('cq-arrastrando');
+      empezarADesplazar(cuerpo);
     });
     el.addEventListener('dragend', function () {
+      dejarDeDesplazar();
       el.classList.remove('cq-arrastrando');
       cuerpo.querySelectorAll('.cq-soltar').forEach(function (t) { t.classList.remove('cq-soltar'); });
       arrastrando = null;
@@ -516,6 +547,7 @@ function armarArrastreCuadro(cuerpo) {
     });
     td.addEventListener('dragleave', function () { td.classList.remove('cq-soltar'); });
     td.addEventListener('drop', function (e) {
+      dejarDeDesplazar();
       if (!arrastrando || td.dataset.prov !== arrastrando.prov) return;
       e.preventDefault();
       td.classList.remove('cq-soltar');
