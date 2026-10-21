@@ -3778,7 +3778,7 @@
   var COLS_HIST = {
     conteos: ['Fecha', 'Responsable', 'Insumos', 'Con diferencia', 'Comentarios'],
     pedidos: ['Fecha', 'Granja', 'Quién lo armó', 'Estado', 'Insumos'],
-    transferencias: ['Fecha', 'Comprobante', 'Sale de', 'Va a', 'Insumos', 'Unidades'],
+    transferencias: ['Fecha', 'Comprobante', 'Sale de', 'Va a', 'Cargó', 'Insumos', 'Unidades'],    // Cargó: quién la hizo (Feli, 21/10)
     egresos: ['Fecha', 'Comprobante', 'Granja', 'Cuenta', 'Centro', 'Insumos', 'Unidades']
   };
 
@@ -3794,8 +3794,11 @@
               (x.quedan && x.estado === 'Transferido' ? ' · ' + x.quedan + ' pendiente' + (x.quedan === 1 ? '' : 's') : '') + '</td>',
               '<td class="num">' + x.renglones + '</td>'];
     if(c === 'transferencias')
-      return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + notaFila(x) + '</td>', '<td>' + esc(x.comprobante || 'sin número') + '</td>',
+      return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + notaFila(x) +
+                (x.obsPedido ? '<div class="notah" title="' + esc(x.obsPedido) + '">📋 Obs. del pedido: ' + esc(x.obsPedido.length > 60 ? x.obsPedido.slice(0, 60) + '…' : x.obsPedido) + '</div>' : '') + '</td>',
+              '<td>' + esc(x.comprobante || 'sin número') + '</td>',
               '<td>' + esc(x.origen) + '</td>', '<td>' + (x.doble ? '<b>' + esc(x.destino) + '</b>' : esc(x.destino)) + '</td>',
+              '<td>' + esc(x.quien || '') + '</td>',
               '<td class="num">' + x.insumos + '</td>', '<td class="num">' + fmt(x.unidades) + '</td>'];
     return ['<td>' + esc(x.fechaComprobante || fechaCorta(x.dia)) + coinciden(x) + notaFila(x) + '</td>', '<td>' + esc(x.comprobante) + '</td>',
             '<td>' + esc(x.granja) + '</td>', '<td>' + esc(x.cuenta) + '</td>', '<td>' + esc(x.centro) + '</td>',
@@ -3870,7 +3873,11 @@
       HIST.datosPlanillas = datosArmadoDeHistorial(x, r);
       var d = HIST.datosPlanillas;
       h.push('<b>' + esc(x.doble ? x.destino : 'Transferencia') + '</b> · fecha contable ' + esc(d.fechaContable) + ' · transferida el ' + esc(d.fechaTransferencia) +
-             ' · ' + esc(d.origen) + ' → ' + esc(d.destino) + ' · cargó ' + esc(x.quien));
+             ' · ' + esc(d.origen) + ' → ' + esc(d.destino) + ' · <b>la hizo ' + esc(r.quien || x.quien) + '</b>');
+      // Feli (21/10): el pedido del que salió y las observaciones que se escribieron al armarlo
+      if(r.pedido) h.push('<div class="obs">Pedido de ' + esc(r.pedido.granja) + (r.pedido.quien ? ', armado por ' + esc(r.pedido.quien) : '') +
+                          (r.pedido.fecha ? ' (' + esc(fechaCorta(String(r.pedido.fecha).slice(0, 10))) + ')' : '') + '</div>' +
+                          (r.pedido.observaciones ? '<div class="obs"><b>Observaciones del pedido:</b> ' + esc(r.pedido.observaciones) + '</div>' : ''));
       h.push(tablaSimple(['Insumo'].concat(d.columnas).concat(d.columnas.length ? ['Total'] : ['Cantidad']), d.items.map(function(it){
         return [esc(it.nombre) + ' <small style="color:var(--ink-faint)">' + esc(it.cod) + '</small>'].concat(it.porBloque.map(fmt)).concat([fmt(it.total)]);
       })));
