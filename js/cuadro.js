@@ -532,6 +532,8 @@ function armarArrastreCuadro(cuerpo) {
       el.classList.add('cq-arrastrando');
       empezarADesplazar(cuerpo);
     });
+    // Dónde está el mouse, también desde lo que se arrastra (algunos navegadores no avisan "dragover" en todos lados)
+    el.addEventListener('drag', function (e) { if (CQ_DESPLAZAR.activo && e.clientY > 0) CQ_DESPLAZAR.y = e.clientY; });
     el.addEventListener('dragend', function () {
       dejarDeDesplazar();
       el.classList.remove('cq-arrastrando');
