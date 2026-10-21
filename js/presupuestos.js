@@ -344,6 +344,7 @@ function htmlRenglonPresup(r, moneda, idPresup, editable) {
       (editable ? ' <button type="button" class="btn-chico" data-pr-unir="si" data-ren="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">Sí</button>' +
                   ' <button type="button" class="btn-chico" data-pr-unir="no" data-ren="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">No</button>' : '') + '</div>' : '') +
     (editable && r.linea ? '<div class="pr-nota"><button type="button" class="linkbtn pr-desunir" data-pr-unir="fuera" data-ren="' + esc(r.id) + '" data-id="' + esc(idPresup) + '">No es este producto</button></div>' : '') +
+    (r.nota ? '<div class="pr-nota pr-nota-mano">📝 ' + esc(r.nota) + (r.notaDe ? ' <small>(' + esc(r.notaDe) + ')</small>' : '') + '</div>' : '') +   // del cuadro (Feli, 21/10)
     htmlAntes(r, moneda) +
     (r.corrigio && !corregido ? '<div class="pr-nota">Revisado por ' + esc(r.corrigio) + '</div>' : '') + '</div>';
 }

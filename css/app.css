@@ -813,6 +813,17 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .cq-precios{margin-top:2px}
 .cq-nuestra{margin-top:3px;font-weight:600}
 .cq-aviso,.cq-gris{font-size:12px;color:var(--muted);margin-top:3px;font-weight:400}
+/* Cuadro comparativo: "✏️ Editar" (arrastrar, cambiar el nombre) y "Agregar nota" (Feli, 21/10) */
+.cq-agregar-nota{border:0;background:none;padding:0;margin-top:3px;font:inherit;font-size:11.5px;color:var(--muted);cursor:pointer}
+.cq-agregar-nota:hover{color:var(--accent);text-decoration:underline}
+.cq-nota-mano{color:var(--fg);opacity:.8}
+.cq-movible{cursor:grab}
+.cq-asa{color:var(--muted);margin-right:4px;cursor:grab;user-select:none}
+.cq-nombre{border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer;text-decoration:underline dotted var(--muted)}
+.cq-arrastrando{opacity:.4}
+td.cq-soltar{outline:2px dashed var(--accent);outline-offset:-3px;background:var(--accent-soft)}
+.solo-imprimir{display:none}
+.pr-nota-mano{color:var(--fg);opacity:.85}
 .cq-nopedido{opacity:.6}
 .cq-mas-barato{background:rgba(95,191,122,.12)}
 .cq-barato{display:inline-block;font-size:11px;font-weight:700;color:#5fbf7a;border:1px solid #5fbf7a;border-radius:9px;padding:1px 7px;margin-bottom:4px}
@@ -842,6 +853,7 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
   .cuadro-barra{background:#fff!important;border:0;padding:0 0 6px}
   .cuadro-cuerpo{overflow:visible;padding:0}
   .no-imprimir{display:none!important}
+  .solo-imprimir{display:inline!important}
   .cq-tabla{font-size:8.5px;width:100%;min-width:0;table-layout:fixed}
   .cq-tabla th,.cq-tabla td{position:static!important;min-width:0;max-width:none;padding:3px 4px;background:#fff!important;border-color:#999;word-wrap:break-word}
   .cq-tabla thead{display:table-header-group}

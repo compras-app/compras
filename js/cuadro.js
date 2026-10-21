@@ -7,7 +7,7 @@
    rehecho después de cualquier cambio; quedan guardados los tildes de "controlado" y las anotaciones.
    "🖨️ Imprimir" lo imprime o lo guarda como PDF, apaisado y con todas las columnas. Todo necesita señal. */
 
-const CQ = { datos: null, buscar: '', modo: 'ver', sel: {} };     // Paso 5: modo 'comprar' con lo elegido: {línea: proveedor}
+const CQ = { datos: null, buscar: '', modo: 'ver', sel: {}, editar: false };     // Paso 5: modo 'comprar' con lo elegido: {línea: proveedor}. editar: "✏️ Editar" (Feli, 21/10)
 
 /** "= $ 655,83 el metro": nuestra unidad, sacada de la cantidad pedida ("3200 mts"). */
 function porNuestraUnidad(cantidad) {
@@ -22,7 +22,7 @@ function porNuestraUnidad(cantidad) {
 
 async function abrirCuadro(ref, modo) {
   if (!ref) return;
-  if (CQ.ref !== ref) CQ.sel = {};
+  if (CQ.ref !== ref) { CQ.sel = {}; CQ.editar = false; }
   CQ.modo = modo === 'comprar' ? 'comprar' : 'ver';     // Feli (2026-10-06): primero se mira; "Realizar la compra" muestra lo de comprar
   const c = $('cuadro');
   if (c.parentNode !== document.body) document.body.appendChild(c);     // así, al imprimir, se imprime solo el cuadro
@@ -70,7 +70,7 @@ function htmlCasillero(col, p) {
   let h = '';
   if (!c.renglones.length) {
     h = '<div class="cq-aviso">' + c.avisos.map(esc).join(' · ') + '</div>';
-    return '<td class="cq-cas' + (c.noSePidio ? ' cq-nopedido' : '') + '">' + h + '</td>';
+    return '<td class="cq-cas' + (c.noSePidio ? ' cq-nopedido' : '') + '" data-cq-destino="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' + h + '</td>';
   }
   // Paso 5: lo comprado (en cualquier modo) y, al comprar, "Elegir"
   const elegido = CQ.modo === 'comprar' && CQ.sel[p.linea] === col.proveedor;
@@ -82,18 +82,28 @@ function htmlCasillero(col, p) {
   }
   if (c.masBarato) h += '<div class="cq-barato">Más barato</div>';
   if (c.parte > 1) h += '<div class="cq-parte-b">' + esc(nombreParte(c.parte)) + (c.fechaParte ? ' · ' + esc(fechaCorta(c.fechaParte)) : '') + '</div>';
+  const editar = CQ.editar && CQ.modo !== 'comprar';
   h += c.renglones.map(function (r) {
-    return '<div class="cq-ren"><span class="cq-cant">' + esc([cantTexto(r.cant), r.unidad].filter(String).join(' ')) + '</span> ' + esc(capital(r.texto)) +
+    const mover = editar && r.id && !(c.comprado);
+    return '<div class="cq-ren' + (mover ? ' cq-movible' : '') + '"' + (mover ? ' draggable="true" data-cq-ren="' + esc(r.id) + '" data-prov="' + esc(col.proveedor) + '"' : '') + '>' +
+      (mover ? '<span class="cq-asa no-imprimir" title="Arrastralo a otro producto">⠿</span>' : '') +
+      '<span class="cq-cant">' + esc([cantTexto(r.cant), r.unidad].filter(String).join(' ')) + '</span> ' +
+      (mover ? '<button type="button" class="cq-nombre no-imprimir" data-cq-renombrar="' + esc(r.id) + '" title="Cambiar el nombre">' + esc(capital(r.texto)) + ' ✏️</button><span class="solo-imprimir">' + esc(capital(r.texto)) + '</span>'
+             : esc(capital(r.texto))) +
       (r.cantDoc !== null && r.cantDoc !== undefined && !c.avisos.some(function (x) { return /^Cambiaste/.test(x); })
         ? '<div class="cq-gris">El presupuesto dice ' + esc(cantTexto(r.cantDoc)) + ' (repartido con otro pedido)</div>' : '') +
       (r.precio !== null ? '<div class="cq-precios">' + esc(plata(r.precio, r.moneda)) + (r.importe !== null ? ' · <b>' + esc(plata(r.importe, r.moneda)) + '</b>' : '') + '</div>'
-        : r.importe !== null ? '<div class="cq-precios"><b>' + esc(plata(r.importe, r.moneda)) + '</b></div>' : '') + '</div>';
+        : r.importe !== null ? '<div class="cq-precios"><b>' + esc(plata(r.importe, r.moneda)) + '</b></div>' : '') +
+      (r.nota ? '<div class="cq-aviso cq-nota-mano">📝 ' + esc(r.nota) + (r.notaDe ? ' (' + esc(r.notaDe) + ')' : '') + '</div>' : '') +
+      (r.id ? '<button type="button" class="cq-agregar-nota no-imprimir" data-cq-nota="' + esc(r.id) + '">' + (r.nota ? 'Cambiar la nota' : 'Agregar nota') + '</button>' : '') +
+      (mover ? ' <button type="button" class="cq-agregar-nota no-imprimir" data-cq-mover="' + esc(r.id) + '" data-prov="' + esc(col.proveedor) + '">Mover a…</button>' : '') + '</div>';
   }).join('');
   if (c.renglones.length > 1 && c.total !== null) h += '<div class="cq-precios">Total: <b>' + esc(plata(c.total, c.moneda)) + '</b></div>';
   if (c.otraUnidad && c.precioNuestro !== null) h += '<div class="cq-nuestra">= ' + esc(plata(c.precioNuestro, c.moneda)) + ' ' + esc(porNuestraUnidad(p.cantidad)) + '</div>';
   if (c.avisos.length) h += '<div class="cq-aviso">' + c.avisos.map(esc).join(' · ') + '</div>';
   h += htmlControl(col.proveedor + '|' + p.linea, c.huella, c.control);
-  return '<td class="cq-cas' + (c.masBarato ? ' cq-mas-barato' : '') + (elegido ? ' cq-elegido' : '') + (c.comprado && c.comprado.aEste ? ' cq-comprado-aca' : '') + '">' + h + '</td>';
+  return '<td class="cq-cas' + (c.masBarato ? ' cq-mas-barato' : '') + (elegido ? ' cq-elegido' : '') + (c.comprado && c.comprado.aEste ? ' cq-comprado-aca' : '') + '"' +
+    ' data-cq-destino="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' + h + '</td>';
 }
 
 function htmlTotalesColumna(col) {
@@ -192,7 +202,9 @@ function pintarCuadro() {
   const herramientas = q.sinProductos ? '' : CQ.modo === 'comprar'
     ? '<button type="button" class="btn-chico" id="cq-baratos">Elegir el más barato en cada fila</button><button type="button" class="btn-chico" id="cq-limpiar">Sacar lo elegido</button>' +
       '<button type="button" class="btn-chico" id="cq-a-mirar">Dejar de comprar</button>'
-    : q.puedeComprar ? '<button type="button" class="btn-chico si" id="cq-a-comprar">🛒 Realizar la compra</button>' : '';
+    : (q.puedeComprar ? '<button type="button" class="btn-chico si" id="cq-a-comprar">🛒 Realizar la compra</button>' : '') +
+      '<button type="button" class="btn-chico" id="cq-editar" aria-pressed="' + CQ.editar + '">' + (CQ.editar ? '✓ Listo' : '✏️ Editar') + '</button>' +
+      (CQ.editar ? '<span class="cq-gris">Arrastrá un producto cotizado (⠿) a la fila que corresponde, o tocá su nombre para cambiarlo.</span>' : '');
   $('cuadro-cuerpo').innerHTML = (q.sinProductos ? '' : '<div class="cq-buscar no-imprimir"><input type="search" id="cq-buscar" placeholder="🔍 Buscar un producto (por ejemplo, jabalina)" value="' +
     esc(CQ.buscar) + '"><span class="cq-gris" id="cq-buscar-n"></span>' + herramientas + '</div>') + h;
   const cuerpo = $('cuadro-cuerpo');
@@ -207,6 +219,12 @@ function pintarCuadro() {
   if ($('cq-limpiar')) $('cq-limpiar').addEventListener('click', function () { CQ.sel = {}; pintarCuadro(); });
   if ($('cq-a-comprar')) $('cq-a-comprar').addEventListener('click', function () { CQ.modo = 'comprar'; pintarCuadro(); });
   if ($('cq-a-mirar')) $('cq-a-mirar').addEventListener('click', function () { CQ.modo = 'ver'; pintarCuadro(); });
+  if ($('cq-a-comprar')) $('cq-a-comprar').addEventListener('click', function () { CQ.editar = false; });
+  if ($('cq-editar')) $('cq-editar').addEventListener('click', function () { CQ.editar = !CQ.editar; pintarCuadro(); });
+  cuerpo.querySelectorAll('[data-cq-nota]').forEach(function (x) { x.addEventListener('click', function () { notaDeRenglon(x.dataset.cqNota); }); });
+  cuerpo.querySelectorAll('[data-cq-renombrar]').forEach(function (x) { x.addEventListener('click', function () { renombrarRenglon(x.dataset.cqRenombrar); }); });
+  cuerpo.querySelectorAll('[data-cq-mover]').forEach(function (x) { x.addEventListener('click', function () { moverRenglonA(x.dataset.cqMover, x.dataset.prov); }); });
+  armarArrastreCuadro(cuerpo);
   pintarBarraCompra();
   cuerpo.querySelectorAll('[data-cq-anotar]').forEach(function (x) { x.addEventListener('click', function () { anotar(x.dataset.cqAnotar); }); });
   cuerpo.querySelectorAll('[data-cq-quitar]').forEach(function (x) { x.addEventListener('click', function () { quitarNota(x.dataset.cqQuitar); }); });
@@ -405,4 +423,125 @@ async function confirmarCompra() {
   if (TB.abierta === ref) traerTarjeta(ref);
   cargarTablero();
   abrirCuadro(ref, 'comprar');
+}
+
+
+/* ---------- "✏️ Editar" y "Agregar nota" (Feli, 21/10) ----------
+   Editar: cada producto cotizado se arrastra (⠿) a la fila del producto pedido que corresponde (en la columna de su proveedor;
+   a una fila "No pedido", vuelve a no pedido), o se le cambia el nombre. "Mover a…" hace lo mismo sin arrastrar (celular).
+   Es una corrección del presupuesto: se ve también en el bloque Presupuestos; si estaba revisado, vuelve a "Sin revisar".
+   "Agregar nota": como las de la IA, abajo del producto cotizado; no cambia si está revisado. Todo necesita señal. */
+function renglonDelCuadro(id) {
+  let out = null;
+  (CQ.datos.columnas || []).forEach(function (col) {
+    Object.keys(col.casilleros).forEach(function (k) {
+      (col.casilleros[k].renglones || []).forEach(function (r) { if (r.id === id) out = { r: r, col: col, linea: k }; });
+    });
+  });
+  return out;
+}
+
+async function cambiarRenglon(id, cambios, que) {
+  const ref = CQ.datos.ref;
+  aviso('Guardando…');
+  const r = await api('editarRenglonCuadro', ref, id, cambios);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
+  aviso(que + (r.reabierto ? ' El presupuesto estaba revisado: volvió a "Sin revisar" para que lo revises de nuevo.' : ''));
+  if (TB.abierta === ref) traerTarjeta(ref);
+  abrirCuadro(ref, CQ.modo);
+}
+
+async function renombrarRenglon(id) {
+  const x = renglonDelCuadro(id);
+  if (!x) return;
+  const cuerpo = document.createElement('div');
+  cuerpo.innerHTML = '<label for="cq-nuevo-nombre">Cómo lo cotizó ' + esc(x.col.nombre) + '</label><input type="text" id="cq-nuevo-nombre" maxlength="500" autocomplete="off">';
+  const nombre = await dialogo({ titulo: 'Cambiar el nombre', cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', valor: function () { return $('cq-nuevo-nombre').value.trim(); } }],
+    alAbrir: function () { const i = $('cq-nuevo-nombre'); i.value = x.r.texto || ''; i.focus(); i.select(); } });
+  if (!nombre || nombre === x.r.texto) return;
+  cambiarRenglon(id, { texto: nombre }, '✏️ Nombre cambiado.');
+}
+
+/** A qué producto va: los pedidos de la tarjeta, o "No pedido". */
+async function moverRenglonA(id, pid) {
+  const x = renglonDelCuadro(id);
+  if (!x) return;
+  const pedidos = CQ.datos.productos.filter(function (p) { return !/^NP\|/.test(p.linea); });
+  const cuerpo = document.createElement('div');
+  cuerpo.innerHTML = '<div class="opciones">' + pedidos.map(function (p) {
+    return '<button type="button" class="choice" data-a="' + esc(p.linea) + '"' + (p.linea === x.linea ? ' aria-current="true"' : '') + '>' +
+      esc([p.cantidad, p.nombre].filter(String).join(' × ')) + '</button>';
+  }).join('') + '<button type="button" class="choice" data-a="">No pedido (no es ninguno de estos)</button></div>';
+  let destino = null;
+  const ok = await dialogo({ titulo: 'Mover «' + capital(x.r.texto) + '»', texto: '¿A qué producto pedido corresponde?', cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      cuerpo.querySelectorAll('[data-a]').forEach(function (b) { b.addEventListener('click', function () { destino = b.dataset.a; cerrarDialogoActual(true); }); });
+    } });
+  if (!ok || destino === null) return;
+  moverRenglon(id, destino);
+}
+
+function moverRenglon(id, destino) {
+  const x = renglonDelCuadro(id);
+  if (!x) return;
+  const linea = /^NP\|/.test(destino || '') ? '' : (destino || '');
+  if (linea === (/^NP\|/.test(x.linea) ? '' : x.linea)) return;
+  const p = CQ.datos.productos.filter(function (q) { return q.linea === linea; })[0];
+  cambiarRenglon(id, { linea: linea }, linea ? '↪️ Pasado a «' + (p ? p.nombre : 'ese producto') + '».' : '↪️ Pasado a No pedido.');
+}
+
+/** Arrastrar (en la compu): de un casillero a otro de la misma columna (el mismo proveedor). */
+function armarArrastreCuadro(cuerpo) {
+  let arrastrando = null;
+  cuerpo.querySelectorAll('[data-cq-ren]').forEach(function (el) {
+    el.addEventListener('dragstart', function (e) {
+      arrastrando = { id: el.dataset.cqRen, prov: el.dataset.prov };
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', arrastrando.id); } catch (x) {}
+      el.classList.add('cq-arrastrando');
+    });
+    el.addEventListener('dragend', function () {
+      el.classList.remove('cq-arrastrando');
+      cuerpo.querySelectorAll('.cq-soltar').forEach(function (t) { t.classList.remove('cq-soltar'); });
+      arrastrando = null;
+    });
+  });
+  cuerpo.querySelectorAll('td[data-cq-destino]').forEach(function (td) {
+    td.addEventListener('dragover', function (e) {
+      if (!arrastrando || td.dataset.prov !== arrastrando.prov) return;
+      e.preventDefault();
+      td.classList.add('cq-soltar');
+    });
+    td.addEventListener('dragleave', function () { td.classList.remove('cq-soltar'); });
+    td.addEventListener('drop', function (e) {
+      if (!arrastrando || td.dataset.prov !== arrastrando.prov) return;
+      e.preventDefault();
+      td.classList.remove('cq-soltar');
+      const id = arrastrando.id;
+      arrastrando = null;
+      moverRenglon(id, td.dataset.cqDestino);
+    });
+  });
+}
+
+async function notaDeRenglon(id) {
+  const x = renglonDelCuadro(id);
+  if (!x) return;
+  const cuerpo = document.createElement('div');
+  cuerpo.innerHTML = '<label for="cq-nota-texto">Nota para «' + esc(capital(x.r.texto)) + '» (' + esc(x.col.nombre) + ')</label>' +
+    '<textarea id="cq-nota-texto" rows="3" maxlength="300" placeholder="Por ejemplo: es de otra marca, viene en caja de 10…"></textarea>' +
+    (x.r.nota ? '<p class="nota">Para sacarla, borrá el texto y guardá.</p>' : '');
+  const texto = await dialogo({ titulo: x.r.nota ? 'Cambiar la nota' : 'Agregar nota', cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', valor: function () { return { t: $('cq-nota-texto').value.trim() }; } }],
+    alAbrir: function () { const t = $('cq-nota-texto'); t.value = x.r.nota || ''; t.focus(); } });
+  if (!texto || texto.t === (x.r.nota || '')) return;
+  const ref = CQ.datos.ref;
+  const r = await api('notaRenglon', ref, id, texto.t);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
+  x.r.nota = r.nota; x.r.notaDe = r.notaDe;
+  pintarCuadro();
+  aviso(r.nota ? '📝 Nota guardada.' : 'Nota quitada.');
+  if (TB.abierta === ref) traerTarjeta(ref);
 }
