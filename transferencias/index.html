@@ -4507,6 +4507,9 @@
     $('motorestado').className = 'estado ' + (vivo ? 'ok' : 'falta');
     $('pcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
     $('gcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
+    // Feli (21/10): con la extensión, las planillas de armado y de pendientes salen solas al terminar la carga en Albor
+    // (se bajan y se abre la ventana de imprimir): sin botones. Sin la extensión no hay carga, así que quedan.
+    $('ppend').style.display = $('pprint').style.display = vivo ? 'none' : '';
   }
 
   function errorA(msg){ var e = $('aerror'); e.textContent = msg; e.classList.add('on'); }
