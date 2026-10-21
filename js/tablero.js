@@ -379,8 +379,9 @@ function pintarTanda() {
   const lista = ordenarPorFecha(vista().filter(function (t) { return t.columna === tanda && seVe(t); }), ordenDe(tanda));
   const abierto = guardado.leer(K_TANDA) === '1';
   // Paso 4: sin el 📤, para no confundirlo con "📤 Pedir cotización" (Feli)
-  const boton = admin && lista.some(function (t) { return !t.trabajo; });
-  const recordar = boton ? avisoTanda(lista) : '';
+  const puede = admin && lista.some(function (t) { return !t.trabajo; });
+  const recordar = puede ? avisoTanda(lista) : '';
+  const boton = puede && abierto;                      // Feli (21/10): "Mandar a Por cotizar", solo con la tanda desplegada
   cont.innerHTML = '<div class="tanda-h"><button type="button" class="proc-h" id="tb-tanda-h" aria-expanded="' + abierto + '">' + (abierto ? '▾' : '▸') +
     ' 🟢 ' + esc(tanda) + ' <span class="n">(' + lista.length + ')</span>' + (recordar ? ' <span class="tanda-aviso">' + esc(recordar) + '</span>' : '') + '</button>' +
     (boton ? '<button type="button" class="btn-chico si tanda-cot" id="tb-tanda-cot"' + (juntandoTanda() ? ' disabled' : '') + '>' +
