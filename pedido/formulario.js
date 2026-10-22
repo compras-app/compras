@@ -73,7 +73,7 @@ function buscar(q){
 let S = {tipo:'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[],servicio:'',obs:'',adj:[],compartido:[]};
 const ADJ_MAX = 10*1024*1024;    // un PDF del servicio: hasta 10 MB
 let nid=1;
-function nuevoProd(){return {id:nid++,texto:'',fi:null,libre:false,espec:'',cantidad:'',desc:'',fotos:[]};}
+function nuevoProd(){return {id:nid++,texto:'',fi:null,libre:false,espec:'',cantidad:'',unidad:'',desc:'',fotos:[]};}
 
 function guardar(){
   try{
@@ -170,7 +170,10 @@ function card(p,i){
     </div>
     <div class="f" data-f="cant">
       <label for="p${p.id}-c">Cantidad<span class="req">*</span></label>
-      <input type="text" id="p${p.id}-c" inputmode="decimal" autocomplete="off" placeholder="Ej: 20 o 1,5" value="${esc(p.cantidad)}" style="max-width:220px">
+      <div class="cant-u">
+        <input type="text" id="p${p.id}-c" inputmode="decimal" autocomplete="off" placeholder="Ej: 20 o 1,5" value="${esc(p.cantidad)}">
+        <select id="p${p.id}-u" aria-label="Unidad">${opcionesUnidad(p.unidad)}</select>
+      </div>
     </div>
     <div class="f">
       <label for="p${p.id}-d">Descripción <span style="font-weight:400;color:var(--muted)">(opcional)</span></label>
@@ -218,6 +221,7 @@ function card(p,i){
 
   const bind=(sel,key)=>el.querySelector(sel).addEventListener('input',e=>{p[key]=e.target.value; if(key==='cantidad')limpiarErrEl(el.querySelector('[data-f="cant"]')); if(key==='espec')limpiarErrEl(el.querySelector('[data-f="espec"]')); guardar();});
   bind(`#p${p.id}-e`,'espec'); bind(`#p${p.id}-c`,'cantidad'); bind(`#p${p.id}-d`,'desc');
+  el.querySelector(`#p${p.id}-u`).addEventListener('change',e=>{p.unidad=e.target.value; guardar();});
   const del=el.querySelector('[data-act="del"]'); if(del) del.onclick=()=>{p.fotos.forEach(f=>PedidosGuardados.borrarFoto(f.id)); S.prods=S.prods.filter(x=>x!==p); render(); guardar();};
 
   // Las fotos se guardan en el teléfono apenas se eligen: si se cierra el formulario, siguen en el borrador
@@ -302,7 +306,7 @@ async function enviar(){
     const productos=S.prods.map((p,i)=>{
       p.fotos.forEach(f=>{ fotos[f.id]={linea:i+1,nombre:f.nombre,envio:nuevoId(),subida:null}; });
       return { linea:i+1, familia:p.fi!==null?FAM[p.fi][0]:'', textoEscrito:p.texto.trim(), enPadron:p.fi!==null,
-               especificacion:p.espec.trim(), cantidad:String(p.cantidad).trim().replace(',','.'),
+               especificacion:p.espec.trim(), cantidad:String(p.cantidad).trim().replace(',','.'), unidad:p.unidad||'',
                descripcion:p.desc.trim(), fotos:p.fotos.map(f=>f.id) };
     });
     const datos={ sitio:S.sitio, urgencia:S.urgencia, solicitante:S.pide, razon:S.razon.trim(), productos, ...deSesion() };

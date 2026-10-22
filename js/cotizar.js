@@ -170,7 +170,7 @@ async function abrirPedirCotizacion(refs) {
           const todo = !pend.length && ya.length;
           const marcado = !fuera[x.id] && pend.length > 0;
           return '<button type="button" class="choice sub-choice" data-linea="' + esc(x.id) + '"' + (pend.length ? '' : ' disabled') +
-            ' aria-checked="' + marcado + '"><span class="marca">' + (marcado ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + 'x ' + x.nombre) +
+            ' aria-checked="' + marcado + '"><span class="marca">' + (marcado ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + ' × ' + x.nombre) +
             (x.nota ? ' — ' + esc(x.nota) : '') + (x.fotos.length ? ' 📷' : '') +
             (x.de ? '<small class="sub">' + esc(x.de) + '</small>' : '') +          // Paso 4: de qué pedido de la tanda
             (todo ? '<small class="sub">Ya se le pidió a todos (' + esc(fechaCorta(x.ya[ya[0]])) + ')</small>'
@@ -185,7 +185,7 @@ async function abrirPedirCotizacion(refs) {
       html += '<div class="cot-varios"><b>🎯 Proveedores para varios</b><p class="nota" style="margin:4px 0 8px">Solo esta vez: no cambia el rubro ni el padrón.</p>' +
         '<small class="sub">Productos</small>' + r.productos.map(function (x) {
           return '<button type="button" class="choice sub-choice" data-vl="' + esc(x.id) + '" aria-checked="' + !!varios.lineas[x.id] + '"><span class="marca">' +
-            (varios.lineas[x.id] ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + 'x ' + x.nombre) + '</span></button>';
+            (varios.lineas[x.id] ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + ' × ' + x.nombre) + '</span></button>';
         }).join('') +
         '<small class="sub">Proveedores</small><input type="search" id="cz-q" placeholder="Buscar proveedor…" value="' + esc(varios.q || '') + '">' +
         Object.keys(varios.provs).filter(function (p) { return !lista.some(function (x) { return x.id === p; }); }).map(function (p) {
@@ -402,7 +402,7 @@ $('tj-aprobar-mandar').addEventListener('click', async function () {
   const ref = TB.abierta, d = TB.detalle;
   if (!ref || !d || !d.pedido || !APP.yo.admin) return;
   const prods = lineasConCambios(ref, d.lineas || []).filter(function (l) { return vigente(l) && l.estado !== 'Para agregar' && !l.tarjeta; })
-    .map(function (l) { return '- ' + l.cantidad + 'x ' + nombreProducto(l); });
+    .map(function (l) { return '- ' + (l.unidad ? cantidadConUnidad(l.cantidad, l.unidad) + ' ' : l.cantidad + 'x ') + nombreProducto(l); });
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = '<label for="ap-msj">Mensaje</label><textarea id="ap-msj" rows="9"></textarea>' +

@@ -123,3 +123,7 @@ html,body{touch-action:pan-x pan-y}
 
 /* Lo que significa cada urgencia (Fase 3, Pasos 3 y 4) */
 .choice .ayuda{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;font-weight:400}
+/* Cantidad y su unidad, una al lado de la otra (Feli, 22/10) */
+.cant-u{display:flex;gap:8px;max-width:360px}
+.cant-u input{flex:1 1 0;min-width:0}
+.cant-u select{flex:0 0 auto;width:auto;min-width:130px}

@@ -14,6 +14,10 @@ function porNuestraUnidad(cantidad) {
   const u = String(cantidad || '').replace(/^\s*[\d.,]+\s*/, '').trim().toLowerCase();
   if (/^(m|mt|mts|metro|metros)\.?$/.test(u)) return 'el metro';
   if (/^(kg|kgs|kilo|kilos)\.?$/.test(u)) return 'el kilo';
+  if (/^(g|gr|grs|gramo|gramos)\.?$/.test(u)) return 'el gramo';
+  if (/^(cm|cms|centimetro|centimetros|centímetro|centímetros)\.?$/.test(u)) return 'el centímetro';
+  if (/^(par|pares)$/.test(u)) return 'el par';
+  if (/^(docena|docenas)$/.test(u)) return 'la docena';
   if (/^(l|lt|lts|litro|litros)\.?$/.test(u)) return 'el litro';
   if (/^(m2|mts2|m²)$/.test(u)) return 'el m²';
   if (!u || /^(u|un|und|unid|unidad|unidades)\.?$/.test(u)) return 'la unidad';

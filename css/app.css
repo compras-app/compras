@@ -1008,3 +1008,9 @@ tr.rp-falta td{color:var(--danger)}
 .rp-meses{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin:8px 0 18px}
 .rp-guardado{margin:4px 0 12px}
 tr.rp-falta td:last-child{font-weight:700}
+
+/* Cantidad y su unidad, una al lado de la otra (Feli, 22/10): agregar y editar producto */
+.cant-u{display:flex;gap:6px}
+.panel.chico .cuerpo .cant-u input{flex:1 1 0;min-width:0;width:auto}
+.panel.chico .cuerpo .cant-u select{flex:0 0 auto;width:auto;padding-right:8px}
+.panel.chico .cuerpo .fila2:has(.cant-u){grid-template-columns:1fr 235px}

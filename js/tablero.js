@@ -1269,7 +1269,7 @@ function pintarEnlaces(d, trabajo) {
     html = '<small>Pedidos de esta tanda (' + d.trabajo.pedidos.length + ')</small>' +
       d.trabajo.pedidos.map(function (x) {
         const prods = (d.lineas || []).filter(function (l) { return l.ref === x.ref && vigente(l); })
-          .map(function (l) { return l.cantidad + 'x ' + nombreProducto(l); }).join(', ');
+          .map(function (l) { return cantidadConUnidad(l.cantidad, l.unidad) + ' × ' + nombreProducto(l); }).join(', ');
         return ir(x.ref, x.solicitante + ' · ' + x.sitio, prods);
       }).join('');
   } else if (trabajo && d && d.trabajo && d.trabajo.pedidos.length) {
@@ -1562,6 +1562,7 @@ function fraseEvento(e, d) {
       case 'Canal': return n ? 'cambió el rubro de ' + prod + ' a ' + n : 'le sacó el rubro a ' + prod;
       case 'Especificación': return 'cambió la especificación de ' + prod + ' a "' + n + '"';
       case 'Cantidad': return 'cambió la cantidad de ' + prod + ' de ' + a + ' a ' + n;
+      case 'Unidad': return 'cambió la unidad de ' + prod + ' de ' + nombreUnidad(a) + ' a ' + nombreUnidad(n);
       case 'Proveedores particulares': return n ? 'mandó ' + prod + ' solo a ' + n : 'le sacó los proveedores particulares (' + a + ') a ' + prod;
       case 'Tarjeta': {
         const w = ((d && d.tarjetas) || []).filter(function (x) { return x.id === n; })[0];
@@ -1726,7 +1727,7 @@ function lineasConCambios(ref, lineas) {
     if (m.fn === 'agregarProducto') {
       const a = m.args[1] || {}, f = datos && datos.familias.filter(function (x) { return x[0] === a.familia; })[0];
       ls.push({ id: 'espera-' + m.clave, texto: a.texto || a.familia, familia: f ? f[0] : '', canal: f ? f[1] : '', enPadron: !!f, familiaEnPadron: !!f,
-                especificacion: a.especificacion || '', cantidad: String(a.cantidad), descripcion: a.descripcion || '', fotos: [], proveedores: [],
+                especificacion: a.especificacion || '', cantidad: String(a.cantidad), unidad: a.unidad || '', descripcion: a.descripcion || '', fotos: [], proveedores: [],
                 estado: APP.yo.admin ? '' : 'Para agregar', propuso: APP.yo.nombre, espera: true, nuevo: true });
       return;
     }
@@ -1746,6 +1747,7 @@ function lineasConCambios(ref, lineas) {
     else l.deshacer = null;           // el último cambio pasa a ser este (se ve bien cuando se guarda)
     if (c.especificacion !== undefined) l.especificacion = c.especificacion;
     if (c.cantidad !== undefined) l.cantidad = String(c.cantidad);
+    if (c.unidad !== undefined) l.unidad = c.unidad;
     if (c.familia !== undefined) {
       l.familia = c.familia;
       const f = datos && datos.familias.filter(function (x) { return x[0] === c.familia; })[0];
@@ -1832,7 +1834,7 @@ function htmlProducto(l, admin, mio, extra) {
   return '<div class="producto' + (l.tildado ? ' tildado' : '') + (e === 'Para agregar' ? ' propuesto' : '') + (e === 'Quitado' ? ' quitado' : '') + '">' +
     '<button type="button" class="tilde" data-id="' + esc(l.id) + '" aria-pressed="' + !!l.tildado + '" aria-label="Recibido" title="' +
       (l.tildado ? 'Recibido (tocá para desmarcar)' : 'Marcar como recibido') + '"' + (activo && !l.nuevo ? '' : ' disabled') + '>✓</button>' +
-    '<div class="prod-c"><b>' + esc(l.cantidad) + ' × ' + esc(nombreProducto(l)) + '</b>' +
+    '<div class="prod-c"><b>' + esc(cantidadConUnidad(l.cantidad, l.unidad)) + ' × ' + esc(nombreProducto(l)) + '</b>' +
     (l.tildado && activo ? '<span class="comprado">Recibido</span>' : '') +     // Feli (2026-10-06): el tilde es "Recibido"
     (fuera && e !== 'Quitado' ? '<span class="fuera">Fuera del padrón</span>' : '') +
     (l.espera ? '<span class="espera">' + (APP.enLinea ? 'Guardando…' : '⏳') + '</span>' : '') +
@@ -1884,14 +1886,15 @@ async function agregarProductoAlPedido(ref) {
     '<div class="campo"><label for="ap-nombre">Producto</label><input type="text" id="ap-nombre" autocomplete="off" placeholder="Buscalo o escribilo">' +
       '<div class="sugerencias" id="ap-nombres" hidden></div></div>' +
     '<div class="fila2"><div class="campo"><label for="ap-espec">Especificación</label><input type="text" id="ap-espec" autocomplete="off" placeholder="Medida, modelo…"></div>' +
-      '<div class="campo"><label for="ap-cant">Cantidad</label><input type="text" id="ap-cant" inputmode="decimal" autocomplete="off"></div></div>' +
+      '<div class="campo"><label for="ap-cant">Cantidad</label><div class="cant-u"><input type="text" id="ap-cant" inputmode="decimal" autocomplete="off">' +
+        '<select id="ap-unidad" aria-label="Unidad">' + opcionesUnidad('') + '</select></div></div></div>' +
     '<div class="campo"><label for="ap-desc">Detalle (opcional)</label><input type="text" id="ap-desc" autocomplete="off" placeholder="Para qué es, marca…"></div>';
   const d = await dialogo({
     titulo: APP.yo.admin ? 'Agregar un producto' : 'Pedir agregar un producto', cuerpo: cuerpo,
     botones: [{ texto: APP.yo.admin ? 'Agregar' : 'Pedir que lo agreguen', clase: 'btn', id: 'dg-ok', valor: function () {
       const texto = $('ap-nombre').value.trim();
       return { familia: elegida && elegida === texto ? elegida : '', texto: texto, especificacion: $('ap-espec').value.trim(),
-               cantidad: $('ap-cant').value.trim().replace(',', '.'), descripcion: $('ap-desc').value.trim() };
+               cantidad: $('ap-cant').value.trim().replace(',', '.'), unidad: $('ap-unidad').value, descripcion: $('ap-desc').value.trim() };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       const revisar = function () { $('dg-ok').disabled = !$('ap-nombre').value.trim() || !(Number($('ap-cant').value.trim().replace(',', '.')) > 0); };
@@ -2088,13 +2091,14 @@ async function editarProducto(ref, id, pre) {
       '<input type="text" id="ep-nombre" autocomplete="off" placeholder="Buscá en el padrón o escribilo">' +
       '<div class="sugerencias" id="ep-nombres" hidden></div></div>' +
     '<div class="fila2"><div class="campo"><label for="ep-espec">Especificación</label><input type="text" id="ep-espec" autocomplete="off" placeholder="Medida, modelo…"></div>' +
-      '<div class="campo"><label for="ep-cant">Cantidad</label><input type="text" id="ep-cant" inputmode="decimal" autocomplete="off"></div></div>' +
+      '<div class="campo"><label for="ep-cant">Cantidad</label><div class="cant-u"><input type="text" id="ep-cant" inputmode="decimal" autocomplete="off">' +
+        '<select id="ep-unidad" aria-label="Unidad">' + opcionesUnidad(l.unidad) + '</select></div></div></div>' +
     '<div class="campo"><label for="ep-rubro">Rubro</label><select id="ep-rubro"></select><p class="nota" id="ep-rubro-nota" hidden>Con proveedores particulares va sin rubro: el pedido les llega solo a ellos.</p></div>' +
     '<div class="campo"><label for="sp-q">Proveedores particulares (opcional)</label>' + htmlSelectorProv() + '</div>' +
     '<button type="button" class="peligro" id="ep-quitar" style="margin-top:0;align-self:flex-start">Quitar este producto del pedido</button>' +
     '<p class="nota"><b>Solo en este pedido:</b> cambia este pedido. <b>También en el padrón:</b> además queda para los pedidos que vengan (nombre, rubro y proveedores; la especificación y la cantidad son de este pedido).</p>';
 
-  const inicial = { familia: l.familia || '', especificacion: l.especificacion || '', cantidad: String(l.cantidad || ''), canal: l.canal || '',
+  const inicial = { familia: l.familia || '', especificacion: l.especificacion || '', cantidad: String(l.cantidad || ''), unidad: l.unidad || '', canal: l.canal || '',
                     proveedores: provs.map(function (x) { return x.id; }).join(',') };
   const cambios = function () {
     const c = {};
@@ -2102,6 +2106,7 @@ async function editarProducto(ref, id, pre) {
     if (fam && fam !== inicial.familia) c.familia = fam;
     if (esp !== inicial.especificacion) c.especificacion = esp;
     if (cant !== inicial.cantidad.replace(',', '.')) c.cantidad = cant;
+    if ($('ep-unidad').value !== inicial.unidad) c.unidad = $('ep-unidad').value;
     const ids = provs.map(function (x) { return x.id; });
     if (ids.join(',') !== inicial.proveedores) c.proveedores = ids;
     if (!ids.length) {
@@ -2141,6 +2146,7 @@ async function editarProducto(ref, id, pre) {
       };
       ['ep-nombre', 'ep-espec', 'ep-cant'].forEach(function (i) { $(i).addEventListener('input', revisar); });
       sel.addEventListener('change', revisar);
+      $('ep-unidad').addEventListener('change', revisar);
       conSugerencias($('ep-nombre'), $('ep-nombres'), function (q) {
         if (!q) return [];
         return familias.filter(function (f) { return coincide(f[0], q); }).slice(0, 8)
