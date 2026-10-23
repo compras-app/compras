@@ -194,7 +194,19 @@ function ordenColumnas(lista) {
 function tablasFlujo(r) {
   const maxMed = Math.max.apply(null, r.columnas.map(function (c) { return Number(c.mediana) || 0; }).concat([0.1]));
   const nombreTablero = { compras: 'Compras', servicios: 'Servicios', seguimiento: 'Tarjetas de seguimiento', tareas: 'Tareas' }[r.tablero] || r.tablero;
-  return [
+  // Feli (23/10): cada cuánto entra una tarjeta y cuántas pidió cada uno (los meses guardados antes no lo tienen)
+  const rt = r.ritmo, quien = r.tablero === 'tareas' ? 'creó' : 'pidió';
+  const ritmo = !rt ? null : {
+    titulo: 'Quién ' + quien + ' · ' + nombreTablero,
+    nota: rt.tarjetas ? 'Entraron <b>' + nro(rt.tarjetas) + '</b> en ' + nro(rt.diasHabiles) + ' días hábiles: ' + nro(rt.porDiaHabil, 1) + ' por día hábil, ' +
+          '<b>una cada ' + nro(rt.cadaHoras, 1) + ' horas</b> de una jornada de 8 h (' + nro(rt.porSemana, 1) + ' por semana).' +
+          (r.tablero === 'seguimiento' ? ' Cada tarjeta de seguimiento cuenta para quien pidió su pedido.' : '') : '',
+    cab: ['Quién', 'Tarjetas', 'Parte', 'Una cada', 'La última'],
+    filas: (r.porUsuario || []).map(function (u) {
+      return [u.quien, nro(u.n), nro(u.parte) + '%', u.cadaDias === null || u.cadaDias === undefined ? '—' : nro(u.cadaDias) + (u.cadaDias === 1 ? ' día hábil' : ' días hábiles'),
+              u.ultima ? fechaCorta(u.ultima) : '—'];
+    }), vacio: 'No entró ninguna tarjeta en estas fechas.' };
+  return [ritmo].filter(Boolean).concat([
     { titulo: 'Tiempo en cada columna · ' + nombreTablero,
       nota: 'Lo normal: la mitad de las tarjetas tarda menos que eso (cuentan las que ya salieron de la columna). Días corridos; si una tarjeta volvió a una columna, se suman las veces. ' +
             (r.traba ? 'Donde más tiempo pasan: <b>' + esc(r.traba) + '</b>.' : ''),
@@ -228,7 +240,7 @@ function tablasFlujo(r) {
       vacio: 'Todavía no hay datos (se anotan desde el 10/10).' },
     { titulo: 'Semana a semana', cab: ['Semana del', 'Pedidos', 'Entregados', 'Punta a punta', 'Cancelados', 'A Stand by'],
       filas: r.semanas.map(function (s) { return [fechaCorta(s.semana), nro(s.pedidos), nro(s.entregados), dias(s.mediana), nro(s.canceladas), nro(s.standby)]; }), vacio: '' }
-  ];
+  ]);
 }
 
 function tablasPlata(r) {
