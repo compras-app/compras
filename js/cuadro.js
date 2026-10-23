@@ -39,6 +39,7 @@ async function abrirCuadro(ref, modo) {
   CQ.ref = ref;
   $('cuadro-titulo').textContent = '📊 Cuadro comparativo de compra';
   $('cuadro-sub').textContent = '';
+  if ($('cuadro-herr')) $('cuadro-herr').innerHTML = '';
   $('cuadro-cuerpo').innerHTML = '<p class="nota cq-cargando">Armando el cuadro…</p>';
   c.hidden = false;
   document.body.classList.add('con-cuadro');
@@ -169,6 +170,7 @@ function pintarCuadro() {
   $('cuadro-titulo').textContent = '📊 Cuadro comparativo de compra · ' + q.codigo + (q.titulo ? ' · ' + q.titulo : '');
   $('cuadro-sub').textContent = 'Armado por ' + q.armo + ' el ' + fechaHoraCorta(q.fecha);
   if (!q.columnas.length) {
+    if ($('cuadro-herr')) $('cuadro-herr').innerHTML = '';
     $('cuadro-cuerpo').innerHTML = '<p class="nota cq-cargando">Todavía no hay presupuestos leídos en esta tarjeta.</p>';
     return;
   }
@@ -219,8 +221,11 @@ function pintarCuadro() {
     : (q.puedeComprar ? '<button type="button" class="btn-chico si" id="cq-a-comprar">🛒 Realizar la compra</button>' : '') +
       '<button type="button" class="btn-chico" id="cq-editar" aria-pressed="' + CQ.editar + '">' + (CQ.editar ? '✓ Listo' : '✏️ Editar') + '</button>' +
       (CQ.editar ? '<span class="cq-gris">Arrastrá un producto cotizado (⠿) a la fila que corresponde, o tocá su nombre para cambiarlo.</span>' : '');
-  $('cuadro-cuerpo').innerHTML = (q.sinProductos ? '' : '<div class="cq-buscar no-imprimir"><input type="search" id="cq-buscar" placeholder="🔍 Buscar un producto (por ejemplo, jabalina)" value="' +
-    esc(CQ.buscar) + '"><span class="cq-gris" id="cq-buscar-n"></span>' + herramientas + '</div>') + h;
+  const barra = q.sinProductos ? '' : '<div class="cq-buscar no-imprimir"><input type="search" id="cq-buscar" placeholder="🔍 Buscar un producto (por ejemplo, jabalina)" value="' +
+    esc(CQ.buscar) + '"><span class="cq-gris" id="cq-buscar-n"></span>' + herramientas + '</div>';
+  // Feli (23/10): la barra va fija arriba, fuera de lo que se desplaza (si la página es de antes y no tiene el lugar, va como antes)
+  if ($('cuadro-herr')) { $('cuadro-herr').innerHTML = barra; $('cuadro-cuerpo').innerHTML = h; }
+  else $('cuadro-cuerpo').innerHTML = barra + h;
   const cuerpo = $('cuadro-cuerpo');
   if ($('cq-buscar')) {
     $('cq-buscar').addEventListener('input', function () { CQ.buscar = this.value; filtrarCuadro(); });
