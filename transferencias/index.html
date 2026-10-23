@@ -3925,17 +3925,18 @@
     h.push('<b>Planilla de conteo de stock</b> · ' + fechaCorta((r.conteo.fecha || '').slice(0, 10)) + ' · responsable ' + esc(r.conteo.responsable || '—') +
            (r.conteo.hasta ? ' · existencias al ' + esc(r.conteo.hasta) : '') + ' · guardó ' + esc(r.conteo.quien) +
            (r.conteo.modifico ? ' · <b>modificó ' + esc(r.conteo.modifico) + (r.conteo.modificado ? ' el ' + fechaCorta(r.conteo.modificado.slice(0, 10)) : '') + '</b>' : ''));
-    // Feli (16/10): "Todos", "Con comentario", "Con diferencia" (sin "Sin diferencia") y "No contado" (sin conteo real ni
-    // comentario: se guardan desde el 16/10);
+    // Feli (16/10): "Todos", "Con comentario", "Con diferencia" (sin "Sin diferencia") y "No contado" (se guardan desde el 16/10);
     // a la derecha, chiquito y sin botón, "Modificar ✏️"
     if(C.filtro === 'sin') C.filtro = '';
     var FILTROS = { '': ['Todos', function(){ return true; }], con: ['Con comentario', function(f){ return !!f.comentario; }],
                     dif: ['Con diferencia', function(f){ return f.diferencia !== null && f.diferencia !== undefined && f.diferencia !== 0; }],
-                    no: ['No contado', function(f){ return f.conteo === null && !f.comentario; }] };
+                    // Feli (23/10): "No contado" = sin conteo real (tenga o no comentario) y "Solo contados" = con conteo real
+                    si: ['Solo contados', function(f){ return f.conteo !== null && f.conteo !== undefined; }],
+                    no: ['No contado', function(f){ return f.conteo === null || f.conteo === undefined; }] };
     var nNo = r.filas.filter(FILTROS.no[1]).length;
     if(C.filtro === 'no' && !nNo && !ed) C.filtro = '';
     h.push('<div class="acciones hconteo-b">' +
-      ['', 'con', 'dif', 'no'].filter(function(k){ return k !== 'no' || nNo || C.filtro === 'no'; }).map(function(k){
+      ['', 'con', 'dif', 'si', 'no'].filter(function(k){ return k !== 'no' || nNo || C.filtro === 'no'; }).map(function(k){
         return '<button class="' + (C.filtro === k ? 'btn' : 'btn2') + '" data-hcfiltro="' + k + '">' + FILTROS[k][0] + ' (' + r.filas.filter(FILTROS[k][1]).length + ')</button>';
       }).join('') +
       (ed ? '' : '<button class="linkbtn hce-mod" data-hceditar>Modificar ✏️</button>') + '</div>');
@@ -3962,12 +3963,12 @@
            '</tr></thead><tbody>' + (filasH.length ? filasH.map(function(f){
              if(f.cat) return '<tr class="cat"><td colspan="' + cab.length + '">' + esc(f.cat) + '</td></tr>';
              return '<tr>' + f.map(function(v, n){ return '<td class="' + (n ? 'num' : '') + '">' + v + '</td>'; }).join('') + '</tr>';
-           }).join('') : '<tr><td colspan="' + cab.length + '">' + (C.filtro === 'no' ? 'No queda ningún producto sin contar.' : C.filtro === 'dif' ? 'Ningún producto con diferencia.' : 'Ningún producto con comentario.') + '</td></tr>') + '</tbody></table>');
+           }).join('') : '<tr><td colspan="' + cab.length + '">' + (C.filtro === 'no' ? 'No queda ningún producto sin contar.' : C.filtro === 'si' ? 'Ningún producto contado.' : C.filtro === 'dif' ? 'Ningún producto con diferencia.' : 'Ningún producto con comentario.') + '</td></tr>') + '</tbody></table>');
     if(!ofs.length) h.push('<div class="obs">Este conteo es de antes de que se guardara lo de cada oficina: se ve solo el total.</div>');
     if(ed){
       h.push('<div class="obs"><b>Observaciones</b><textarea id="hce-obs" rows="2">' + esc(C.obs !== undefined ? C.obs : r.conteo.observaciones || '') + '</textarea></div>' +
              '<div class="acciones"><button class="btn" data-hceguardar>Guardar cambios</button><button class="btn2" data-hcecancelar>Cancelar</button>' +
-             '<span class="aviso" id="hceaviso">Lo que quede sin conteo real ni comentario queda como "No contado".</span></div>');
+             '<span class="aviso" id="hceaviso">Lo que quede sin conteo real queda como "No contado".</span></div>');
     }else if(r.conteo.observaciones) h.push('<div class="obs"><b>Observaciones:</b> ' + esc(r.conteo.observaciones) + '</div>');
     return h.join('');
   }
