@@ -17,6 +17,7 @@ function porNuestraUnidad(cantidad) {
   if (/^(g|gr|grs|gramo|gramos)\.?$/.test(u)) return 'el gramo';
   if (/^(cm|cms|centimetro|centimetros|centímetro|centímetros)\.?$/.test(u)) return 'el centímetro';
   if (/^(par|pares)$/.test(u)) return 'el par';
+  if (/^(juego|juegos)$/.test(u)) return 'el juego';
   if (/^(docena|docenas)$/.test(u)) return 'la docena';
   if (/^(pack|packs)$/.test(u)) return 'el pack';
   if (/^(caja|cajas)$/.test(u)) return 'la caja';

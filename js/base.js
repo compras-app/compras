@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'b7a2a88d32';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '8e57f86f23';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -40,9 +40,9 @@ function urlMiniatura(id, ancho) { return 'https://howlgipawqkwkctxpoon.supabase
 // La clave "publishable" es pública a propósito: no deja leer ninguna tabla (todas tienen las reglas de acceso cerradas)
 /* Unidad de la cantidad pedida (Feli, 22/10): las mismas que UNIDADES_PEDIDO de Datos.js. '' = Unidad (la de siempre). */
 const UNIDADES_PEDIDO = [['', 'Unidad'], ['kg', 'Kilos'], ['g', 'Gramos'], ['l', 'Litros'], ['ml', 'Mililitros'], ['m', 'Metros'], ['m2', 'Metros cuadrados'],
-                         ['cm', 'Centímetros'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['caja', 'Caja'], ['bolsa', 'Bolsa']];
-                         // Pack, Caja y Bolsa: Feli, 22/10; Litros, Mililitros y Metros cuadrados: 23/10
-const UNIDADES_EN_PALABRAS = { m2: ['m²', 'm²'], par: ['par', 'pares'], docena: ['docena', 'docenas'], pack: ['pack', 'packs'], caja: ['caja', 'cajas'],
+                         ['cm', 'Centímetros'], ['par', 'Par'], ['juego', 'Juego'], ['docena', 'Docena'], ['pack', 'Pack'], ['caja', 'Caja'], ['bolsa', 'Bolsa']];
+                         // Pack, Caja y Bolsa: Feli, 22/10; Litros, Mililitros, Metros cuadrados y Juego: 23/10
+const UNIDADES_EN_PALABRAS = { m2: ['m²', 'm²'], par: ['par', 'pares'], juego: ['juego', 'juegos'], docena: ['docena', 'docenas'], pack: ['pack', 'packs'], caja: ['caja', 'cajas'],
                                bolsa: ['bolsa', 'bolsas'] };
 function opcionesUnidad(elegida) {
   return UNIDADES_PEDIDO.map(function (u) { return '<option value="' + u[0] + '"' + (u[0] === (elegida || '') ? ' selected' : '') + '>' + u[1] + '</option>'; }).join('');
