@@ -22,6 +22,7 @@ function porNuestraUnidad(cantidad) {
   if (/^(caja|cajas)$/.test(u)) return 'la caja';
   if (/^(bolsa|bolsas)$/.test(u)) return 'la bolsa';
   if (/^(l|lt|lts|litro|litros)\.?$/.test(u)) return 'el litro';
+  if (/^(ml|mililitro|mililitros)\.?$/.test(u)) return 'el mililitro';
   if (/^(m2|mts2|m²)$/.test(u)) return 'el m²';
   if (!u || /^(u|un|und|unid|unidad|unidades)\.?$/.test(u)) return 'la unidad';
   return 'por ' + u;
