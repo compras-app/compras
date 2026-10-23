@@ -18,6 +18,9 @@ function porNuestraUnidad(cantidad) {
   if (/^(cm|cms|centimetro|centimetros|centímetro|centímetros)\.?$/.test(u)) return 'el centímetro';
   if (/^(par|pares)$/.test(u)) return 'el par';
   if (/^(docena|docenas)$/.test(u)) return 'la docena';
+  if (/^(pack|packs)$/.test(u)) return 'el pack';
+  if (/^(caja|cajas)$/.test(u)) return 'la caja';
+  if (/^(bolsa|bolsas)$/.test(u)) return 'la bolsa';
   if (/^(l|lt|lts|litro|litros)\.?$/.test(u)) return 'el litro';
   if (/^(m2|mts2|m²)$/.test(u)) return 'el m²';
   if (!u || /^(u|un|und|unid|unidad|unidades)\.?$/.test(u)) return 'la unidad';

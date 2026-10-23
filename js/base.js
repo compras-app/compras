@@ -19,7 +19,7 @@ const APARTADOS = {
   transferencias: { nombre: 'Transferencias', url: new URL('../transferencias/', document.currentScript.src).href }
 };
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = '65576b59ef';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '0a61ea593b';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -39,7 +39,9 @@ function urlMiniatura(id, ancho) { return 'https://howlgipawqkwkctxpoon.supabase
    corta, vuelven a preguntar y el canal se reconecta solo. Vacío (null): sin canal, como antes. */
 // La clave "publishable" es pública a propósito: no deja leer ninguna tabla (todas tienen las reglas de acceso cerradas)
 /* Unidad de la cantidad pedida (Feli, 22/10): las mismas que UNIDADES_PEDIDO de Datos.js. '' = Unidad (la de siempre). */
-const UNIDADES_PEDIDO = [['', 'Unidad'], ['kg', 'Kilos'], ['g', 'Gramos'], ['m', 'Metros'], ['cm', 'Centímetros'], ['par', 'Par'], ['docena', 'Docena']];
+const UNIDADES_PEDIDO = [['', 'Unidad'], ['kg', 'Kilos'], ['g', 'Gramos'], ['m', 'Metros'], ['cm', 'Centímetros'], ['par', 'Par'], ['docena', 'Docena'],
+                         ['pack', 'Pack'], ['caja', 'Caja'], ['bolsa', 'Bolsa']];       // Pack, Caja y Bolsa: Feli, 22/10
+const UNIDADES_EN_PALABRAS = { par: ['par', 'pares'], docena: ['docena', 'docenas'], pack: ['pack', 'packs'], caja: ['caja', 'cajas'], bolsa: ['bolsa', 'bolsas'] };
 function opcionesUnidad(elegida) {
   return UNIDADES_PEDIDO.map(function (u) { return '<option value="' + u[0] + '"' + (u[0] === (elegida || '') ? ' selected' : '') + '>' + u[1] + '</option>'; }).join('');
 }
@@ -48,9 +50,8 @@ function nombreUnidad(u) { const x = UNIDADES_PEDIDO.filter(function (v) { retur
 function cantidadConUnidad(cantidad, unidad) {
   const c = String(cantidad === undefined || cantidad === null ? '' : cantidad).trim(), u = unidad || '';
   if (!c || !u) return c;
-  const uno = Number(c.replace(',', '.')) === 1;
-  if (u === 'par') return c + (uno ? ' par' : ' pares');
-  if (u === 'docena') return c + (uno ? ' docena' : ' docenas');
+  const pal = UNIDADES_EN_PALABRAS[u];
+  if (pal) return c + ' ' + pal[Number(c.replace(',', '.')) === 1 ? 0 : 1];
   return c + ' ' + u;
 }
 const TIEMPO_REAL = { url: 'wss://howlgipawqkwkctxpoon.supabase.co/realtime/v1/websocket', clave: 'sb_publishable_TkZ5kj7eRjCNwZpE0bwQQw_jppnoXFq' };
