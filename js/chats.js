@@ -514,7 +514,7 @@ function pintarPanelChat() {
   const cot = columnasTb().filter(function (c) { return c.seccion === 'Cotización'; }).map(function (c) { return c.columna; });
   p.innerHTML = (l.length ? l.map(function (t) {
     return '<div class="ch-tj" role="button" tabindex="0" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
-      esc([t.codigo, t.manual ? '✋ Gestión manual' : '', t.columna, t.proveedor ? 'pedido a ' + t.proveedor : ''].filter(String).join(' · ')) + '</small>' +
+      esc([t.codigo, t.columna, t.proveedor ? 'pedido a ' + t.proveedor : ''].filter(String).join(' · ')) + '</small>' +
       (t.asignadaPor ? '<small class="ch-asignada">Asignada por ' + esc(t.asignadaPor) + '</small>' : '') +          // Paso 7: la asignó el otro comprador
       htmlComprasEnChat(t.compras) +
       // Paso 5 (Feli, 2026-10-06): si se le confirmó por el chat, sin el cuadro (chiquito, adentro de la tarjeta)
@@ -524,8 +524,7 @@ function pintarPanelChat() {
     (d.seguimiento || []).map(function (t) {
       return '<div class="ch-tj seg" role="button" tabindex="0" data-ref="' + esc(t.ref) + '"><b>' + esc(t.titulo || t.ref) + '</b><small>' +
         esc(['📦 En seguimiento de entrega', t.columna, t.proveedor ? 'comprado en ' + t.proveedor : ''].filter(String).join(' · ')) + '</small></div>';
-    }).join('') +
-    '<button type="button" class="btn-chico" id="ch-sumar-manual">✋ Ver tarjetas de gestión manual</button>';
+    }).join('');
   p.querySelectorAll('.ch-tj').forEach(function (b) {
     b.addEventListener('click', function () { abrirTarjeta(b.dataset.ref); });
     b.addEventListener('keydown', function (e) { if (e.key === 'Enter') abrirTarjeta(b.dataset.ref); });
@@ -533,7 +532,6 @@ function pintarPanelChat() {
   p.querySelectorAll('[data-compra-manual]').forEach(function (b) {
     b.addEventListener('click', function (e) { e.stopPropagation(); compraManualUI(b.dataset.compraManual); });
   });
-  $('ch-sumar-manual').addEventListener('click', sumarAManual);
 }
 
 /** Fase 4, Paso 5 (Feli, 2026-10-06): en la tarjeta, qué se le compró a este proveedor y qué a otro. Es un aviso, no un mensaje. */
@@ -542,24 +540,6 @@ function htmlComprasEnChat(c) {
   return (c.aOtros || []).map(function (x) {
     return '<small class="ch-compra otro">Estos productos se compraron en ' + esc(x.proveedor) + ': ' + esc(x.productos.join(', ')) + '</small>';
   }).join('') + (c.aEste && c.aEste.length ? '<small class="ch-compra">🛒 Le compramos: ' + esc(c.aEste.map(function (x) { return x.producto; }).join(', ')) + '</small>' : '');
-}
-
-/** Desde el chat: sumarlo a una tarjeta ✋ manual ("Proveedores con los que se está hablando"). */
-async function sumarAManual() {
-  const d = CH.datos, chat = CH.abierto;
-  if (!d || !chat) return;
-  const ya = {};
-  (d.tarjetas || []).forEach(function (t) { if (t.manual) ya[t.ref] = true; });
-  const l = (d.manuales || []).filter(function (t) { return !ya[t.ref]; });
-  if (!l.length) return aviso('No hay otras tarjetas de gestión manual abiertas.');
-  const ref = await elegir('Tarjetas de gestión manual', 'Elegí a cuál sumar este chat: va a aparecer en "Proveedores con los que se está hablando".',
-                           [{ opciones: l.map(function (t) { return { texto: (t.servicio ? '🔧 ' : '') + (t.titulo || t.ref) + ' · ' + t.sitio + ' · ' + t.columna, valor: t.ref }; }) }]);
-  if (!ref) return;
-  bandeja.agregar('vincularChat', [ref, chat, true], 'sumar el chat a la tarjeta');
-  const t = l.filter(function (x) { return x.ref === ref; })[0];
-  d.tarjetas = (d.tarjetas || []).concat([{ ref: ref, titulo: t.titulo, columna: t.columna, codigo: '', proveedor: '', manual: true }]);
-  pintarChat();
-  $('ch-panel').hidden = false;
 }
 
 $('ch-volver').addEventListener('click', function () { CH.abierto = null; CH.datos = null; mostrarPanelChat(false); pintarListaChats(); });
@@ -571,58 +551,6 @@ function irAlChat(chat) {
   ir('chats', { chat: chat });
 }
 
-/* ---------- En la tarjeta abierta: "Proveedores con los que se está hablando" (✋ manuales) ---------- */
-function pintarHablando() {
-  const b = $('tj-hablando-b');
-  if (!b) return;
-  const d = TB.detalle, p = d && d.pedido;
-  b.hidden = !veChats() || TB.tipo === 'tarea' || !p || !p.manual || esTrabajo(TB.abierta);
-  if (b.hidden) return;
-  const l = p.chats || [];
-  $('tj-hablando').innerHTML = l.length ? l.map(function (c) {
-    return '<div class="cot-fila"><div><b>' + esc(c.nombre) + '</b></div><div class="cambio-b">' +
-      '<button type="button" class="btn-chico" data-ir-chat="' + esc(c.chat) + '">💬 Abrir chat</button>' +
-      '<button type="button" class="btn-chico" data-sacar-chat="' + esc(c.chat) + '">Sacar</button></div></div>';
-  }).join('') : '<p class="nota" style="margin:0">Todavía no se sumó ningún proveedor.</p>';
-  $('tj-hablando').querySelectorAll('[data-ir-chat]').forEach(function (x) { x.addEventListener('click', function () { irAlChat(x.dataset.irChat); }); });
-  $('tj-hablando').querySelectorAll('[data-sacar-chat]').forEach(function (x) {
-    x.addEventListener('click', function () {
-      const ref = TB.abierta;
-      bandeja.agregar('vincularChat', [ref, x.dataset.sacarChat, false], 'sacar el proveedor de la tarjeta');
-      p.chats = (p.chats || []).filter(function (c) { return c.chat !== x.dataset.sacarChat; });
-      pintarHablando();
-    });
-  });
-}
-
-$('tj-hablando-sumar').addEventListener('click', async function () {
-  const ref = TB.abierta, p = TB.detalle && TB.detalle.pedido;
-  if (!ref || !p) return;
-  if (!CH.lista) { await cargarListaChats(); }
-  if (!CH.lista) return aviso('📶 Poca señal: la lista de chats se ve cuando vuelva.');
-  const cuerpo = document.createElement('div');
-  cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<label for="hb-q">Buscá el proveedor (o el chat)</label><input type="search" id="hb-q" autocomplete="off" placeholder="Nombre o número">' +
-    '<div class="opciones" id="hb-l" style="margin-top:8px"></div>';
-  let elegido = null;
-  const pintar = function () {
-    const q = sinAcentos($('hb-q').value), ya = (p.chats || []).map(function (c) { return c.chat; });
-    const l = CH.lista.filter(function (c) { return !c.grupo && ya.indexOf(c.chat) === -1 && (!q || sinAcentos(c.nombre + ' ' + c.proveedor + ' ' + c.chat).indexOf(q) !== -1); })
-      .sort(function (a, b) { return (b.proveedor ? 1 : 0) - (a.proveedor ? 1 : 0); }).slice(0, 30);
-    $('hb-l').innerHTML = l.map(function (c) { return '<button type="button" class="choice" data-c="' + esc(c.chat) + '">' + esc(c.nombre) + (c.proveedor ? ' <small>· 🏪 ' + esc(c.proveedor) + '</small>' : '') + '</button>'; }).join('') ||
-      '<p class="nota">No hay chats con ese nombre.</p>';
-    $('hb-l').querySelectorAll('[data-c]').forEach(function (x) {
-      x.addEventListener('click', function () { elegido = { chat: x.dataset.c, nombre: x.textContent.replace(/ · 🏪.*/, '') }; if (cerrarDialogoActual) cerrarDialogoActual(elegido); });
-    });
-  };
-  const r = await dialogo({ titulo: '＋ Sumar proveedor', cuerpo: cuerpo, botones: [{ texto: 'Volver', valor: null }],
-                            alAbrir: function () { $('hb-q').addEventListener('input', pintar); pintar(); $('hb-q').focus(); } });
-  if (!r) return;
-  bandeja.agregar('vincularChat', [ref, r.chat, true], 'sumar el proveedor a la tarjeta');
-  p.chats = (p.chats || []).concat([r]);
-  pintarHablando();
-});
-
 /* ---------- Cuando sale de la bandeja ---------- */
 (function () {
   const antes = bandeja.alTerminar;
@@ -631,8 +559,6 @@ $('tj-hablando-sumar').addEventListener('click', async function () {
     if (m.fn === 'mandarMensaje') {
       if (r.ok) sumarMandado(m.args[0].chat, r.mensaje);
       else if (CH.abierto === m.args[0].chat) pintarChat();
-    } else if (m.fn === 'vincularChat' && r.ok) {
-      if (TB.abierta === m.args[0] && TB.detalle && TB.detalle.pedido) { TB.detalle.pedido.chats = r.chats; pintarHablando(); }
     }
   };
 })();

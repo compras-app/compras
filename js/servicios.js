@@ -219,7 +219,7 @@ function pintarServicioAbierto() {
   $('tj-datos').innerHTML = datos.join('');
   $('tj-etiquetas').innerHTML = '<span class="etiqueta">🔧 Servicio</span>';
   // tj-presup-b / tj-compra-b: si no, quedaban los presupuestos de la tarjeta abierta antes (19/10)
-  ['tj-prod-b', 'tj-cot-b', 'tj-presup-b', 'tj-compra-b', 'tj-enlaces', 'tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
+  ['tj-prod-b', 'tj-cot-b', 'tj-presup-b', 'tj-compra-b', 'tj-enlaces', 'tj-cancelar', 'tj-reabrir', 'tj-agregar'].forEach(function (id) { $(id).hidden = true; });
   $('tj-editar').hidden = !(APP.yo.admin && p);
   $('tj-editar').textContent = '✏️ Editar servicio';
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');

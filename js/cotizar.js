@@ -5,7 +5,7 @@
    - En Por cotizar, cada pedido tiene "📤 Pedir cotización" (uno por
      tarjeta; Feli sacó el de la columna entera): la ventana muestra un
      bloque por rubro con sus productos y "ver cuáles" (solo para mirar).
-     "🎯 Proveedores para varios" cambia a quién va un producto, solo
+     "🎯 Elegir proveedores particulares" cambia a quién va un producto, solo
      para esta vez.
    - Enviar va por la bandeja: si justo no hay señal, sale cuando vuelve.
      El número del envío ("Q…") lo arma la app: un reintento no manda dos
@@ -31,17 +31,17 @@ function fechaCorta(iso) {
   return isNaN(d) ? '' : d.getDate() + '/' + (d.getMonth() + 1);
 }
 /**
- * ¿Se le puede pedir cotización desde la app? Un pedido no manual, o una tarjeta de seguimiento
- * de la Tanda verde (Paso 4), en Por cotizar.
+ * ¿Se le puede pedir cotización desde la app? Un pedido, o una tarjeta de seguimiento
+ * de la Tanda verde (Paso 4), en Por cotizar. (La ✋ gestión manual se sacó el 22/10.)
  */
-function sePuedeCotizar(t) { return !!t && (!t.trabajo || !!t.tanda) && !t.manual && t.columna === colPorCotizar(); }
+function sePuedeCotizar(t) { return !!t && (!t.trabajo || !!t.tanda) && t.columna === colPorCotizar(); }
 
 /** Decisión (Paso 6): en la tarjeta abierta de un pedido también está "📤 Pedir cotización" (en el tablero, no). */
 function colDecision() {
   const c = columnasTb().filter(function (x) { return x.seccion === 'Cotización'; });
   return (c[2] || {}).columna || 'Decisión';
 }
-function sePuedeCotizarAbierta(t) { return sePuedeCotizar(t) || (!!t && !t.trabajo && !t.manual && t.columna === colDecision()); }
+function sePuedeCotizarAbierta(t) { return sePuedeCotizar(t) || (!!t && !t.trabajo && t.columna === colDecision()); }
 
 /** En el tablero, nada de pedir cotización (Feli, 2026-10-07): ni el botón ni "Pedido a N proveedores". Solo "Pidiendo…" mientras sale. */
 function htmlMarcaCotizar(t) {
@@ -54,7 +54,7 @@ function htmlMarcaCotizar(t) {
    Un bloque por rubro (Feli): "Proveedores de Ferretería (4)", con sus productos
    para tildar o destildar y "ver cuáles" (solo para mirar: de ahí no se cambian).
    Los productos con proveedores particulares van en su propio bloque ("🎯 …").
-   "🎯 Proveedores para varios": a los productos que se elijan se los manda a los
+   "🎯 Elegir proveedores particulares": a los productos que se elijan se los manda a los
    proveedores que se elijan, solo esta vez (no cambia el rubro ni el padrón).
    Paso 4: refs puede ser una lista (las tarjetas de la tanda, después de
    "Mandar a Por cotizar"): una sola ventana, un bloque por tarjeta, y al
@@ -68,9 +68,8 @@ async function abrirPedirCotizacion(refs) {
   const r0 = await api('datosCotizar', refs);
   pidiendoCotizar = false;
   if (!r0.ok) return aviso(r0.sinConexion ? '📶 Para abrir "Pedir cotización" hace falta señal (tiene que ver a quién ya se le pidió). Probá en un rato.' : r0.error, 'bad');
-  const partes = (r0.varios || [r0]).filter(function (x) { return !x.manual && x.productos.length; });
+  const partes = (r0.varios || [r0]).filter(function (x) { return x.productos.length; });
   if (!partes.length) {
-    if (r0.manual) return aviso('Es un pedido ✋ manual: se cotiza a mano, por fuera de la app.');
     return aviso(varias ? 'Esas tarjetas no tienen productos para pedir.' : 'Este pedido no tiene productos para pedir.');
   }
   // Todo junto, y cada producto sabe de qué tarjeta es (x.cref)
@@ -84,10 +83,10 @@ async function abrirPedirCotizacion(refs) {
   // Paso 7 (Feli, 2026-10-07): a quiénes ya se les pidió (quién y cuándo); se puede pedir de nuevo, avisado
   const yaPedidas = [].concat.apply([], partes.map(function (pt) { return (pt.solicitudes || []).filter(function (s) { return s.estado !== 'No salió'; }); }));
   let deNuevo = false;
-  const puntual = {};             // ID Línea → [proveedores], solo esta vez ("🎯 Proveedores para varios")
+  const puntual = {};             // ID Línea → [proveedores], solo esta vez ("🎯 Elegir proveedores particulares")
   const fuera = {};               // ID Línea → true: destildado (no va en este envío)
   const abiertos = {};            // bloques con "ver cuáles" abierto
-  let varios = null;              // el panel de "Proveedores para varios": {lineas: {}, provs: {}, q}
+  let varios = null;              // el panel de "Elegir proveedores particulares": {lineas: {}, provs: {}, q}
   const provsDe = function (x) { return puntual[x.id] || x.sugeridos; };
   // Feli (13/10): a quién proponer lo decide el servidor (rubro + activo); un particular no activo también recibe
   const pendientes = function (x) { return provsDe(x).filter(function (p) { return (deNuevo || !x.ya[p]) && provs[p]; }); };
@@ -163,8 +162,9 @@ async function abrirPedirCotizacion(refs) {
               '<div class="cot-varios-b"><button type="button" class="btn" id="cz-t-ok">Guardar</button><button type="button" class="btn2" id="cz-t-no">Cancelar</button></div></div>'
             : '<p class="estado warn">⚠️ ' + esc(nombreProv(p)) + ' no tiene teléfono: no le llega. <button type="button" class="linkbtn" data-tel="' + esc(p) + '">Cargar teléfono</button></p>';
         }).join('') + '</div>' : '') +
-        (sinNadie ? '<p class="estado warn">' + (b.rubro === 'Sin rubro' || b.rubro === 'OTROS' ? '✋ ' + esc(b.rubro) + ': ' + (b.productos.length === 1 ? 'este producto debe' : 'estos productos deben') + ' ser gestionado' + (b.productos.length === 1 ? '' : 's') + ' manualmente. Si igual querés pedirlo desde acá, usá "🎯 Proveedores para varios".'
-          : 'No hay proveedores para ' + esc(b.rubro) + '. Usá "🎯 Proveedores para varios".') + '</p>' : '') +
+        // Feli (22/10): OTROS y Sin rubro ya no son "gestión manual": sin sugeridos, se eligen con "🎯 Elegir proveedores particulares"
+        (sinNadie ? '<p class="nota">Sin proveedores sugeridos' + (b.rubro === 'Sin rubro' || b.rubro === 'OTROS' ? '' : ' para ' + esc(b.rubro)) +
+          ': elegilos con "🎯 Elegir proveedores particulares".</p>' : '') +
         b.productos.map(function (x) {
           const pend = pendientes(x), ya = Object.keys(x.ya);
           const todo = !pend.length && ya.length;
@@ -177,12 +177,12 @@ async function abrirPedirCotizacion(refs) {
                   : ya.length ? '<small class="sub">Ya se le pidió a ' + ya.length + ': va a los otros ' + pend.length + '</small>' : '') + '</span></button>';
         }).join('') + '</div>';
     }
-    // "🎯 Proveedores para varios": elegir productos y proveedores, solo esta vez
-    if (!varios) html += '<button type="button" class="btn2" id="cz-varios">🎯 Proveedores para varios</button>';
+    // "🎯 Elegir proveedores particulares": elegir productos y proveedores, solo esta vez
+    if (!varios) html += '<button type="button" class="btn2" id="cz-varios">🎯 Elegir proveedores particulares</button>';
     else {
       const q = sinTildes(varios.q || '');
       const lista = r.proveedores.filter(function (p) { return !q || sinTildes(p.nombre).indexOf(q) !== -1; }).slice(0, 40);
-      html += '<div class="cot-varios"><b>🎯 Proveedores para varios</b><p class="nota" style="margin:4px 0 8px">Solo esta vez: no cambia el rubro ni el padrón.</p>' +
+      html += '<div class="cot-varios"><b>🎯 Elegir proveedores particulares</b><p class="nota" style="margin:4px 0 8px">Solo esta vez: no cambia el rubro ni el padrón.</p>' +
         '<small class="sub">Productos</small>' + r.productos.map(function (x) {
           return '<button type="button" class="choice sub-choice" data-vl="' + esc(x.id) + '" aria-checked="' + !!varios.lineas[x.id] + '"><span class="marca">' +
             (varios.lineas[x.id] ? '☑' : '☐') + '</span><span>' + esc(x.cantidad + ' × ' + x.nombre) + '</span></button>';

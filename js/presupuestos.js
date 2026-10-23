@@ -53,24 +53,18 @@ function pintarSeleccion() {
 $('ch-sel-x').addEventListener('click', terminarSeleccion);
 $('ch-sel-cargar').addEventListener('click', function () { if (PR.sel && PR.sel.length) cargarEnTarjeta(PR.sel.slice()); });
 
-/** Los proveedores posibles para las tarjetas elegidas: los que tienen en común las que tienen pedido de cotización;
-    en las ✋ manuales, el del chat, o cualquiera de los cargados si el chat no es de un proveedor (el número de prueba). */
-function opcionesDeProveedor(elegidas, todos) {
-  const auto = elegidas.filter(function (t) { return !t.manual; });
-  if (auto.length) {
-    return auto.slice(1).reduce(function (acc, t) {
-      return acc.filter(function (p) { return (t.proveedores || []).some(function (x) { return x.id === p.id; }); });
-    }, (auto[0].proveedores || []).slice());
-  }
-  const delChat = [];
-  elegidas.forEach(function (t) { (t.proveedores || []).forEach(function (p) { if (!delChat.some(function (x) { return x.id === p.id; })) delChat.push(p); }); });
-  return delChat.length ? delChat : (todos || []);       // el chat es de un proveedor: es él (Feli, 2026-10-06)
+/** Los proveedores posibles para las tarjetas elegidas: los que tienen en común. */
+function opcionesDeProveedor(elegidas) {
+  if (!elegidas.length) return [];
+  return elegidas.slice(1).reduce(function (acc, t) {
+    return acc.filter(function (p) { return (t.proveedores || []).some(function (x) { return x.id === p.id; }); });
+  }, (elegidas[0].proveedores || []).slice());
 }
 
 /**
  * Las tarjetas (de las del chat; varias si el presupuesto es de dos pedidos) y el proveedor. Devuelve {refs, proveedor} o null.
  * Paso 7 (Feli, 2026-10-07): las que el otro comprador asignó a ese proveedor dicen "Asignada por …", y "Otras" trae
- * cualquier tarjeta en Por cotizar, Decisión o Procesando (un presupuesto que llegó sin pedir cotización, o de un contacto
+ * cualquier tarjeta en Cotización (desde el 22/10 también Entrantes) o Procesando (un presupuesto que llegó sin pedir cotización, o de un contacto
  * que no es proveedor): ahí el proveedor se elige de la lista (si el chat es de un proveedor, viene elegido).
  */
 function elegirTarjetaYProveedor(tarjetas, todos, otras, provChat) {
@@ -81,14 +75,14 @@ function elegirTarjetaYProveedor(tarjetas, todos, otras, provChat) {
   const todas = tarjetas.concat(otras.map(function (t) { return Object.assign({ otra: true, proveedores: [] }, t); }));
   const opcion = function (t) {
     return '<button type="button" class="choice" data-ref="' + esc(t.ref) + '"' + (refs.indexOf(t.ref) !== -1 ? ' aria-current="true"' : '') + '>' +
-      (refs.indexOf(t.ref) !== -1 && todas.length > 1 ? '✓ ' : '') + (t.manual ? '✋ ' : '') + '<b>' + esc(t.titulo || t.ref) + '</b> <small>· ' +
+      (refs.indexOf(t.ref) !== -1 && todas.length > 1 ? '✓ ' : '') + '<b>' + esc(t.titulo || t.ref) + '</b> <small>· ' +
       esc([t.codigo, t.sitio, t.columna].filter(Boolean).join(' · ')) + '</small>' +
       (t.asignadaPor ? '<small class="pr-asignada">Asignada por ' + esc(t.asignadaPor) + '</small>' : '') + '</button>';
   };
   const pintar = function () {
     const elegidas = todas.filter(function (t) { return refs.indexOf(t.ref) !== -1; });
-    const libre = elegidas.some(function (t) { return t.otra || t.manual; });
-    let provs = elegidas.length && !libre ? opcionesDeProveedor(elegidas, todos) : [];
+    const libre = elegidas.some(function (t) { return t.otra; });
+    let provs = elegidas.length && !libre ? opcionesDeProveedor(elegidas) : [];
     const deLista = elegidas.length && (libre || !provs.length);          // se elige de todo el padrón
     if (deLista) provs = todos || [];
     if (!deLista && provs.length === 1) prov = provs[0].id;
@@ -135,7 +129,7 @@ async function cargarEnTarjeta(ids) {
   const chat = CH.abierto, d = CH.datos;
   if (!chat || !d) return;
   const tarjetas = d.tarjetas || [];
-  if (!tarjetas.length && !(d.otras || []).length) return aviso('No hay tarjetas en Por cotizar, Decisión o Procesando para cargarle un presupuesto.', 'bad');
+  if (!tarjetas.length && !(d.otras || []).length) return aviso('No hay tarjetas abiertas en Cotización o Procesando para cargarle un presupuesto.', 'bad');
   const eleccion = await elegirTarjetaYProveedor(tarjetas, d.proveedores, d.otras || [], d.chat && d.chat.proveedorId);
   if (!eleccion) return;
   const datos = { id: 'B' + nuevoId(), chat: chat, mensajes: ids, refs: eleccion.refs, proveedor: eleccion.proveedor };

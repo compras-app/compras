@@ -21,7 +21,7 @@
 
 const K_TABLERO = 'compras_tablero';      // lo último que mandó getTablero (para abrir sin señal)
 const K_TARJETAS = 'compras_tarjetas';    // tarjetas abiertas hace poco (para verlas sin señal)
-const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1, cambiarManual: 1 };
+const OPS_TABLERO = { moverTarjeta: 1, asignarResponsable: 1, marcarEntrega: 1, cancelarPedido: 1, editarPedido: 1 };
 const OPS_PRODUCTO = { tildarProducto: 1, editarProducto: 1, deshacerProducto: 1, agregarProducto: 1, quitarProducto: 1, resolverCambio: 1, reponerProducto: 1 };      // cambios de un producto (Paso 4)
 const ENTREGA_TEXTO = { Retirar: '🏃 Hay que ir a buscarlo', Envío: '🚚 Nos lo traen' };
 const ENTREGA_CORTO = { Retirar: '🏃 A buscar', Envío: '🚚 Nos lo traen' };
@@ -104,7 +104,6 @@ function aplicarOp(lista, fn, args) {
   } else if (i >= 0) {
     if (fn === 'asignarResponsable') lista[i] = Object.assign({}, lista[i], { responsable: args[1] || '' });
     else if (fn === 'marcarEntrega') lista[i] = Object.assign({}, lista[i], { entrega: args[1] || '' });
-    else if (fn === 'cambiarManual') lista[i] = Object.assign({}, lista[i], { manual: !!args[1] });     // Paso 5
     else if (fn === 'cancelarPedido') { TB.cancelados[ref] = lista[i]; lista.splice(i, 1); }
     else if (fn === 'editarPedido') {
       const c = args[1] || {}, t = Object.assign({}, lista[i]);
@@ -468,7 +467,6 @@ function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     (t.nuevo ? '<div class="nuevo-t">Nuevo</div>' : '') +                       // Feli (2026-10-06): nunca lo abriste
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
-    (t.manual ? '<div class="sobre">✋ Gestión manual</div>' : '') +                                          // Paso 5
     (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6
     (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
     htmlMarcaRecepcion(t) +                                                        // Fase 4, Paso 1-bis (recepcion.js)
@@ -575,6 +573,17 @@ async function moverA(ref, destino, despuesDe) {
     return pintarTablero();
   }
   const op = { columna: destino, despuesDe: despuesDe, desde: t.columna };
+  // Feli (22/10): cualquier tarjeta pasa a Entregas, pero antes pregunta si no tiene presupuestos o no se compró en la app
+  const seccionCol = function (c) { const x = columnasTb().filter(function (k) { return k.columna === c; })[0]; return x ? x.seccion : ''; };
+  if (destino !== t.columna && seccionCol(destino) === 'Entregas' && seccionCol(t.columna) !== 'Entregas' && !t.comprado && !TB.reabiertos[ref]) {
+    const si = await dialogo({
+      titulo: '¿Pasar a seguimiento?',
+      texto: t.presupuestos ? 'Esta tarjeta tiene presupuestos cargados, pero no se realizó la compra en la app. ¿Seguro que la querés pasar a seguimiento?'
+                            : 'Esta tarjeta no tiene presupuestos cargados. ¿Seguro que la querés pasar a seguimiento?',
+      botones: [{ texto: 'Sí, pasarla', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }]
+    });
+    if (!si) return pintarTablero();
+  }
   if (destino !== t.columna && destino === colPorRecibir()) {
     const e = await preguntarEntrega(t.entrega);
     if (!e) return pintarTablero();
@@ -1164,7 +1173,6 @@ function pintarTarjeta() {
   const etiquetas = [];
   if (trabajo) etiquetas.push('📋 Tarjeta de seguimiento');
   if ((t && t.masivo) || (p && p.origen === 'masivo')) etiquetas.push('Pedido masivo');
-  if (t ? t.manual : (p && p.manual)) etiquetas.push('✋ Gestión manual');
   if (!enTb && p && p.columna) etiquetas.push((p.columna === 'Procesando' ? '📦 ' : 'Finalizado: ') + p.columna);
   $('tj-etiquetas').innerHTML = etiquetas.map(function (e) { return '<span class="etiqueta">' + esc(e) + '</span>'; }).join('');
   pintarEnlaces(d, trabajo);
@@ -1199,10 +1207,6 @@ function pintarTarjeta() {
     $('tj-prod-t').textContent = 'Productos';
     prods.innerHTML = '<p class="nota">' + esc(TB.sinDetalle || 'Cargando…') + '</p>';
   }
-  // Paso 5: pasar a gestión manual o volver a automática (no los masivos, que son siempre manuales)
-  const manual = t ? !!t.manual : !!(p && p.manual);
-  $('tj-manual').hidden = !(admin && enTb && p && !trabajo && p.origen !== 'masivo' && !p.servicio);
-  $('tj-manual').textContent = manual ? '🤖 Volver a automática' : '✋ Pasar a gestión manual';
   $('tj-cancelar').hidden = !(admin && enTb);
   $('tj-cancelar').textContent = trabajo ? 'Cancelar esta tarjeta' : 'Cancelar pedido';
   $('tj-reabrir').hidden = !(admin && !enTb && p && p.volverA);     // Paso 5
@@ -1211,7 +1215,6 @@ function pintarTarjeta() {
   pintarCotizaciones();                                                    // cotizar.js
   pintarAprobacion();                                                      // Paso 6 (cotizar.js)
   pintarRecepcion();                                                       // Fase 4, Paso 1-bis (recepcion.js)
-  pintarHablando();                                                        // Fase 4, Paso 2 (chats.js)
   pintarPresupuestos();                                                    // Fase 4, Paso 3 (presupuestos.js)
   pintarCompra();                                                         // Fase 4, Paso 5 (presupuestos.js)
   pintarActividad();
@@ -1389,27 +1392,10 @@ $('tj-reabrir').addEventListener('click', async function () {
   const pv = pedidoConCambios(ref, p);
   TB.reabiertos[ref] = { ref: ref, titulo: pv.titulo || p.titulo, sitio: p.sitio, urgencia: pv.urgencia || p.urgencia, columna: p.columna,
                          responsable: p.responsable, solicitante: p.solicitante, entrega: p.entrega, masivo: p.origen === 'masivo',
-                         paraAprobar: 0, manual: p.manual };
+                         paraAprobar: 0 };
   await moverA(ref, destino, '');
   if (buscarEnVista(ref)) avisoConBoton((trabajo ? 'Tarjeta reabierta' : 'Pedido reabierto') + ': volvió a "' + destino + '".', 'Ver en el tablero', function () { cerrarTarjeta(); ir('tablero'); });
   if (typeof pintarResultados === 'function' && !$('s-buscar').hidden) pintarResultados();
-});
-
-/* Gestión manual (Paso 5): la tarjeta funciona como una de Trello */
-$('tj-manual').addEventListener('click', async function () {
-  const ref = TB.abierta, t = buscarEnVista(ref);
-  if (!t || !APP.yo.admin) return;
-  const aManual = !t.manual;
-  const si = await dialogo({
-    titulo: aManual ? '¿Pasar a gestión manual?' : '¿Volver a automática?',
-    texto: aManual ? '"' + t.titulo + '" va a funcionar como una tarjeta de Trello: sin "📤 Pedir cotización", no se junta en la Tanda verde, no pasa sola a Stand by y la IA no lo mira. Se mueve, se comenta y se tilda como siempre.'
-                   : '"' + t.titulo + '" vuelve a tener "📤 Pedir cotización", la Tanda verde, Stand by y la IA.',
-    botones: [{ texto: aManual ? 'Sí, pasar a manual' : 'Sí, volver a automática', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }]
-  });
-  if (!si) return;
-  bandeja.agregar('cambiarManual', [ref, aManual], (aManual ? 'pasar a gestión manual "' : 'volver a automática "') + t.titulo + '"');
-  pintarTablero();
-  pintarTarjeta();
 });
 
 $('tj-cancelar').addEventListener('click', async function () {
@@ -1804,7 +1790,6 @@ function htmlProducto(l, admin, mio, extra) {
   else if (l.canal) sub.push(esc('Rubro: ' + l.canal));
   else sub.push(esc('Sin rubro'));
   // Pasos 3 y 4: OTROS y Sin rubro no tienen proveedores sugeridos
-  if (!provs.length && (!l.canal || l.canal === 'OTROS') && l.estado !== 'Quitado') sub.push('<span class="manual-av">✋ Este producto debe ser gestionado manualmente</span>');
   if (l.descripcion) sub.push(esc(l.descripcion));
   const fotos = (l.fotos || []).map(function (u) {
     const id = idDrive(u);
@@ -2003,7 +1988,7 @@ function coincide(texto, q) { const s = sinTildes(texto); return !q || s.indexOf
 /**
  * Elegir proveedores particulares (uno o varios): buscador, los elegidos
  * con su ×, y crear uno nuevo (necesita señal: se comprueba el WhatsApp).
- * Lo usan "Editar producto" y "Proveedores para varios".
+ * Lo usan "Editar producto" y "Elegir proveedores particulares".
  *   htmlSelectorProv(): el HTML. armarSelectorProv(o): lo pone a andar.
  *   o = {provs (se cambia en el lugar), proveedores, datos, rubro(), alCambiar()}
  */
@@ -2175,7 +2160,7 @@ async function editarProducto(ref, id, pre) {
   pintarTarjeta();
 }
 
-// "🎯 Proveedores para varios" se mudó a la ventana de Pedir cotización (Feli, Fase 3): ver cotizar.js
+// "🎯 Elegir proveedores particulares" se mudó a la ventana de Pedir cotización (Feli, Fase 3): ver cotizar.js
 
 $('tj-editar').addEventListener('click', async function () {
   if (TB.tipo === 'tarea') return editarTareaUI(TB.abierta);
@@ -2517,7 +2502,7 @@ function bloquesDeTarea(tarea) {
   ['tj-check-b', 'tj-rec-b'].forEach(function (id) { $(id).hidden = !tarea; });
   $('tj-borrar-tarea').hidden = !tarea;
   if (!tarea) $('tj-editar').textContent = '✏️ Editar pedido';
-  if (tarea) ['tj-cancelar', 'tj-manual', 'tj-reabrir', 'tj-enlaces', 'tj-cot-b', 'tj-aprob-b'].forEach(function (id) { $(id).hidden = true; });
+  if (tarea) ['tj-cancelar', 'tj-reabrir', 'tj-enlaces', 'tj-cot-b', 'tj-aprob-b'].forEach(function (id) { $(id).hidden = true; });
 }
 
 /** Aviso abajo con un botón (ej. "Deshacer"), unos segundos. */
