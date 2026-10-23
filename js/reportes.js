@@ -206,7 +206,35 @@ function tablasFlujo(r) {
       return [u.quien, nro(u.n), nro(u.parte) + '%', u.cadaDias === null || u.cadaDias === undefined ? '—' : nro(u.cadaDias) + (u.cadaDias === 1 ? ' día hábil' : ' días hábiles'),
               u.ultima ? fechaCorta(u.ultima) : '—'];
     }), vacio: 'No entró ninguna tarjeta en estas fechas.' };
-  return [ritmo].filter(Boolean).concat([
+  const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+  const maxDia = Math.max.apply(null, (r.diaSemana || []).map(function (d) { return d.n; }).concat([1]));
+  // Desde el primer mes con algo (los de antes de la app no cuentan para el promedio)
+  const desdeMes = (r.meses || []).findIndex(function (m) { return m.n > 0; });
+  const meses = desdeMes === -1 ? [] : r.meses.slice(desdeMes);
+  const promMes = meses.length ? meses.reduce(function (n, m) { return n + m.n; }, 0) / meses.length : 0;
+  const maxMes = Math.max.apply(null, meses.map(function (m) { return m.n; }).concat([1]));
+  const NOMBRES_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const extras = [];
+  if (r.diaSemana) extras.push({ titulo: 'Día de la semana', nota: 'Qué día entran más ' + (r.tablero === 'tareas' ? 'tareas' : 'tarjetas') + '.',
+    cab: ['Día', 'Tarjetas', ''], barra: 2,
+    filas: r.diaSemana.map(function (d) { return [DIAS_SEM[d.dia - 1], nro(d.n), { barra: d.n / maxDia }]; }), vacio: '' });
+  if (r.meses) extras.push({ titulo: 'Mes a mes', nota: 'Hasta los últimos 12 meses (desde el primero con datos), con los demás filtros y sin importar las fechas elegidas. Contra el promedio: cuánto más o menos que un mes promedio; sirve para ver la estacionalidad cuando haya varios meses de uso. El mes en curso todavía no está completo.',
+    cab: ['Mes', 'Tarjetas', '', 'Contra el promedio'], barra: 2,
+    filas: meses.map(function (m) {
+      const x = String(m.mes).slice(0, 7).split('-');
+      return [NOMBRES_MES[Number(x[1]) - 1] + ' ' + x[0], nro(m.n), { barra: m.n / maxMes }, promMes && meses.length > 1 ? (m.n >= promMes ? '+' : '') + nro(100 * (m.n - promMes) / promMes, 0) + '%' : '—'];
+    }), vacio: 'Todavía no hay meses con datos.' });
+  if (r.gente) extras.push({ titulo: 'Quién cotiza y compra', nota: 'En estas fechas, en todos los tableros: pedidos de cotización mandados (y a cuántas tarjetas), presupuestos cargados, compras hechas en la app y comentarios escritos.',
+    cab: ['Quién', 'Pedidos de cotización', 'Tarjetas', 'Presupuestos cargados', 'Compras', 'Comentarios'],
+    filas: r.gente.map(function (g) { return [g.quien, nro(g.cotizaciones), nro(g.tarjetas), nro(g.presupuestos), nro(g.compras), nro(g.comentarios)]; }),
+    vacio: 'Nadie cotizó, compró ni comentó en estas fechas.' });
+  const dt = r.datos;
+  if (dt && (r.tablero === 'compras' || r.tablero === 'servicios')) extras.push({ titulo: 'Datos sueltos', nota: 'De los ' + nro(dt.pedidos) + ' ' + (r.tablero === 'servicios' ? 'servicios' : 'pedidos') + ' que entraron en estas fechas.',
+    cab: ['', 'Cuántos', 'Parte'],
+    filas: dt.pedidos ? [['Con foto o PDF adjunto', nro(dt.conAdjunto), nro(100 * dt.conAdjunto / dt.pedidos) + '%'],
+                         ['Mandados a aprobar', nro(dt.aAprobar), nro(100 * dt.aAprobar / dt.pedidos) + '%'],
+                         ['Urgentes', nro(dt.urgentes), nro(100 * dt.urgentes / dt.pedidos) + '%']] : [], vacio: 'No entró ninguno en estas fechas.' });
+  return [ritmo].filter(Boolean).concat(extras).concat([
     { titulo: 'Tiempo en cada columna · ' + nombreTablero,
       nota: 'Lo normal: la mitad de las tarjetas tarda menos que eso (cuentan las que ya salieron de la columna). Días corridos; si una tarjeta volvió a una columna, se suman las veces. ' +
             (r.traba ? 'Donde más tiempo pasan: <b>' + esc(r.traba) + '</b>.' : ''),
@@ -285,7 +313,28 @@ function tablasProveedores(r) {
 }
 
 function tablasPadron(r) {
-  return [
+  // Feli (23/10): lo del reporte de Trello (los meses guardados antes no lo tienen)
+  const nuevas = [];
+  const pp = r.productosPorPedido, cc = r.concentracion, parte = function (n, de) { return de ? nro(100 * n / de) + '%' : '—'; };
+  if (r.porGranja) nuevas.push({ titulo: 'Pedidos por granja', nota: 'Cuántos pedidos hizo cada granja y lo que más pide (las 5 familias que salen en más pedidos).',
+    cab: ['Granja', 'Pedidos', 'Parte', 'Lo que más pide'],
+    filas: r.porGranja.map(function (g) { return [g.granja, nro(g.pedidos), nro(g.parte) + '%', g.top.map(function (t) { return t.familia + ' (' + t.n + ')'; }).join(', ')]; }),
+    vacio: 'Ningún pedido en estas fechas.' });
+  if (r.rubrosPedidos) nuevas.push({ titulo: 'Rubros más pedidos', nota: 'Se cuenta cada producto pedido, no cada pedido: un pedido con productos de dos rubros suma en los dos. Acumulado: hasta ese rubro, qué parte de todo lo pedido.',
+    cab: ['Rubro', 'Productos', 'Parte', 'Acumulado'],
+    filas: r.rubrosPedidos.map(function (x) { return [x.rubro, nro(x.productos), nro(x.parte) + '%', nro(x.acumulado) + '%']; }), vacio: 'Ningún producto pedido en estas fechas.' });
+  if (cc && r.tramos) nuevas.push({ titulo: 'Cuánto se concentra lo pedido',
+    nota: cc.familias ? 'De ' + nro(cc.familias) + ' familias pedidas (' + nro(cc.productos) + ' productos), <b>' + nro(cc.mitad) + '</b> ' + (cc.mitad === 1 ? 'hace' : 'hacen') + ' la mitad de lo pedido y <b>' + nro(cc.ochenta) +
+          '</b> ' + (cc.ochenta === 1 ? 'llega' : 'llegan') + ' al 80%. Abajo, cada cuánto se pide cada familia: el tiempo típico entre dos pedidos, en todo lo que hay en la app (sin importar las fechas elegidas).' : 'Ninguna familia pedida en estas fechas.',
+    cab: ['Cada cuánto se pide', 'Familias'],
+    filas: r.tramos.map(function (t) {
+      return [['Una vez por mes o más seguido', 'Cada unos 3 meses', 'Cada unos 6 meses', 'Una vez por año', 'Menos de una vez por año', 'Se pidió una sola vez'][t.tramo - 1], nro(t.familias)];
+    }), vacio: '' });
+  if (pp) nuevas.push({ titulo: 'Productos por pedido', nota: 'Cuántos productos trae cada pedido (los masivos sin productos no cuentan).',
+    cab: ['Productos', 'Pedidos', 'Parte'],
+    filas: pp.pedidos ? [['1 solo', nro(pp.uno), parte(pp.uno, pp.pedidos)], ['De 2 a 7', nro(pp.deDosASiete), parte(pp.deDosASiete, pp.pedidos)],
+                         ['8 o más', nro(pp.ochoOMas), parte(pp.ochoOMas, pp.pedidos)]] : [], vacio: 'Ningún pedido en estas fechas.' });
+  return nuevas.concat([
     { titulo: 'Familias más pedidas', nota: 'Cuántos pedidos y desde qué granjas. Tocá una para ver sus variantes.',
       cab: ['Familia', 'Rubro', 'Pedidos', 'Granjas'], variantes: true,
       filas: r.familias.map(function (f) {
@@ -301,7 +350,7 @@ function tablasPadron(r) {
     { titulo: 'Familias que nunca se pidieron (' + nro(r.nuncaPedidas.cantidad) + ')',
       nota: 'Las del padrón (activas) que no salieron en ningún pedido desde que se usa la app, sin importar las fechas elegidas. Se muestran hasta 500.',
       cab: ['Familia', 'Rubro'], filas: r.nuncaPedidas.lista.map(function (x) { return [x.familia, x.rubro || 'Sin rubro']; }), vacio: 'Todas se pidieron alguna vez.' }
-  ];
+  ]);
 }
 
 /* Egresos (Feli, 13/10): por la fecha contable del comprobante; lo anulado en el Historial no cuenta. Unidades de Albor. */
