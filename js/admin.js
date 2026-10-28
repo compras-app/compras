@@ -63,7 +63,7 @@ async function mostrarPersonas() {
   if (!AD.personas) notaAd('pe-estado', 'Cargando…');
   pintarPersonas();
   const r = await api('getPersonas');
-  if (r.ok) { AD.personas = r.personas; AD.yo = r.yo; AD.sesion = r.sesion; AD.granjasTransf = r.granjas || []; notaAd('pe-estado', ''); }
+  if (r.ok) { AD.personas = r.personas; AD.yo = r.yo; AD.sesion = r.sesion; AD.granjasTransf = r.granjas || []; AD.fase6 = r.fase6 || null; notaAd('pe-estado', ''); }
   else notaAd('pe-estado', textoDeError(r));
   pintarPersonas();
 }
@@ -84,7 +84,9 @@ function pintarPersonas() {
       '<div class="ad-cuerpo">' +
         '<dl class="ad-datos"><dt>Teléfono</dt><dd>' + esc(p.telefono || '—') + '</dd>' +
         (p.rol === 'encargado' ? '<dt>Granjas</dt><dd>' + esc((p.granjas || []).join(', ') || 'Ninguna todavía') + '</dd>' : '') +
-        '<dt>Avisos por WhatsApp</dt><dd>' + (p.avisos ? 'Sí (menciones, recordatorios)' : 'No') + '</dd></dl>' +
+        '<dt>Avisos por WhatsApp</dt><dd>' + (p.avisos ? 'Sí (menciones, recordatorios)' : 'No') + '</dd>' +
+        (AD.fase6 ? '<dt>Código en Albor</dt><dd>' + esc(p.codigoAlbor || '—') + '</dd><dt>Cuenta que le viene elegida</dt><dd>' + esc(nombreCuentaF6(p.cuenta)) + '</dd>' : '') +
+        '</dl>' +
         (p.activo ? '<h3>Dispositivos</h3>' + (n ? '<ul class="ad-disp">' + p.dispositivos.map(function (d) {
             const este = d.id === AD.sesion;
             return '<li><span><b>' + esc(d.dispositivo || 'Dispositivo') + (este ? ' · este' : '') + '</b>' +
@@ -109,11 +111,17 @@ function pintarPersonas() {
 
 $('pe-nuevo').addEventListener('click', function () { editarPersona(null); });
 
+/* Fase 6, Paso 1: la cuenta que le viene elegida (vacía = la de siempre) */
+function nombreCuentaF6(cod) {
+  const c = (AD.fase6.cuentas || []).filter(function (x) { return x.codigo === (cod || AD.fase6.predeterminada); })[0];
+  return (c ? c.nombre : cod || '—') + (cod ? '' : ' (la de siempre)');
+}
+
 /** Alta (p = null) o cambio. previo: lo que se había escrito, si el servidor no lo aceptó (se vuelve a abrir con eso). */
 async function editarPersona(p, previo) {
   const yo = !!p && p.id === AD.yo;
   const v = previo || { nombre: p ? p.nombre : '', telefono: p ? p.telefono : '', rol: p ? p.rol : 'empleado', avisos: p ? p.avisos : true,
-                        granjas: p ? (p.granjas || []) : [] };
+                        granjas: p ? (p.granjas || []) : [], codigoAlbor: p ? (p.codigoAlbor || '') : '', cuenta: p ? (p.cuenta || '') : '' };
   let rol = v.rol;
   // Las granjas para elegir (de la lista de envíos de Transferencias), más las que ya tenga y ya no estén
   const granjas = (AD.granjasTransf || []).concat((v.granjas || []).filter(function (g) { return (AD.granjasTransf || []).indexOf(g) === -1; }));
@@ -130,18 +138,36 @@ async function editarPersona(p, previo) {
       granjas.map(function (g) {
         return '<label class="check"><input type="checkbox" value="' + esc(g) + '"' + ((v.granjas || []).indexOf(g) !== -1 ? ' checked' : '') + '> ' + esc(g) + '</label>';
       }).join('') + '</div><p class="nota">Las granjas para las que arma pedidos en Transferencias.</p></div>' +
-    '<label class="check"><input type="checkbox" id="pp-avisos"> Recibe avisos por WhatsApp (menciones y recordatorios)</label>';
+    '<label class="check"><input type="checkbox" id="pp-avisos"> Recibe avisos por WhatsApp (menciones y recordatorios)</label>' +
+    // Fase 6, Paso 1 (solo los de "Ven lo de la Fase 6"): su código en el Personal de Albor y la cuenta que le viene elegida
+    (AD.fase6 ? campoDlg('pp-albor', 'Código en Albor (opcional)', v.codigoAlbor, { max: 6, inputmode: 'numeric', placeholder: 'Ej: 7',
+                          nota: 'El de Personal en Albor: va como Solicitante en la orden de compra.' }) +
+                '<div class="campo"><label for="pp-cuenta">Cuenta que le viene elegida</label><select id="pp-cuenta"></select>' +
+                '<p class="nota">Arriba del formulario. Solo las cuentas que ve (los admins, todas).</p></div>' : '');
   const datos = await dialogo({
     titulo: p ? 'Editar a ' + p.nombre : 'Agregar persona', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
-      return { id: p ? p.id : '', nombre: $('pp-nombre').value.trim(), telefono: $('pp-tel').value.trim(), rol: rol, avisos: $('pp-avisos').checked,
-               granjas: [].map.call($('pp-granjas').querySelectorAll('input:checked'), function (x) { return x.value; }) };
+      const d = { id: p ? p.id : '', nombre: $('pp-nombre').value.trim(), telefono: $('pp-tel').value.trim(), rol: rol, avisos: $('pp-avisos').checked,
+                  granjas: [].map.call($('pp-granjas').querySelectorAll('input:checked'), function (x) { return x.value; }) };
+      if (AD.fase6) { d.codigoAlbor = $('pp-albor').value.trim(); d.cuenta = $('pp-cuenta').value; }
+      return d;
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       $('pp-avisos').checked = v.avisos !== false;
       const pintarRol = function () {
         $('pp-rol').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.rol === rol)); b.disabled = yo; });
         $('pp-granjas-c').hidden = rol !== 'encargado';
+        if (AD.fase6) pintarCuentaPersona();
+      };
+      // Fase 6: las cuentas que ve esa persona (con el rol elegido y el nombre que tiene guardado)
+      const pintarCuentaPersona = function () {
+        const sel = $('pp-cuenta'), actual = sel.value || v.cuenta || '';
+        const pred = AD.fase6.cuentas.filter(function (c) { return c.codigo === AD.fase6.predeterminada; })[0];
+        const ve = AD.fase6.cuentas.filter(function (c) { return rol === 'admin' || (p && c.ven.indexOf(p.nombre) !== -1); });
+        sel.innerHTML = '<option value="">' + esc((pred ? pred.nombre : 'La de siempre') + ' (la de siempre)') + '</option>' +
+          ve.filter(function (c) { return c.codigo !== AD.fase6.predeterminada; })
+            .map(function (c) { return '<option value="' + esc(c.codigo) + '">' + esc(c.nombre) + '</option>'; }).join('');
+        sel.value = ve.some(function (c) { return c.codigo === actual; }) ? actual : '';
       };
       $('pp-rol').querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { rol = b.dataset.rol; pintarRol(); }); });
       pintarRol();
@@ -334,6 +360,7 @@ function pintarAjustes() {
   // Si el servidor publicado todavía no tiene la Fase 3, Paso 2, se avisa (en vez de mostrar los textos vacíos)
   if (a && !a.cotizar) notaAd('aj-estado', 'Para los ajustes de "Pedir cotización" falta publicar la versión nueva (Deploy → Manage deployments → ✏️ → New version).');
   $('aj-cot-ok').disabled = !(a && a.cotizar);
+  if (typeof pintarAjustesF6 === 'function') pintarAjustesF6();          // Fase 6: "Ven lo de la Fase 6" (cuentas.js)
   if (a && a.cotizar && !AD.cotizarPintado) {           // Pedir cotización (Fase 3): se llena una vez, para no pisar lo que se escribe
     AD.cotizarPintado = true;
     $('aj-msj-cot').value = a.cotizar.msjCotizacion || '';

@@ -50,6 +50,7 @@ function pintarBarra() {
   document.querySelector('nav.tabs').hidden = sinCompras();
   $('t-admin').hidden = !APP.yo.admin;
   $('t-tareas').hidden = !APP.yo.admin;             // el tablero de tareas es solo de los admins
+  document.querySelectorAll('#s-admin [data-f6]').forEach(function (b) { b.hidden = !APP.yo.fase6; });   // Fase 6: solo los de "Ven lo de la Fase 6"
   $('t-chats').hidden = !veChats();                 // Fase 4, Paso 2: los chats, solo los admins de "Ven los chats" (Feli, 2026-10-06)
   $('b-notif').hidden = sinCompras();               // Paso 2-ter: las notificaciones (notificaciones.js)
 }

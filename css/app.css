@@ -1017,3 +1017,10 @@ tr.rp-falta td:last-child{font-weight:700}
 .panel.chico .cuerpo .cant-u input{flex:1 1 0;min-width:0;width:auto}
 .panel.chico .cuerpo .cant-u select{flex:0 0 auto;width:auto;padding-right:8px}
 .panel.chico .cuerpo .fila2:has(.cant-u){grid-template-columns:1fr 235px}
+
+/* Fase 6, Paso 1: Admin → Cuentas contables (cuentas.js) */
+.cu-centros { list-style: none; padding: 0; margin: 0 0 10px; }
+.cu-centros li { padding: 5px 0; border-bottom: 1px solid var(--line); line-height: 1.35; }
+.cu-sitios { margin-top: 14px; }
+.cu-sitios summary { cursor: pointer; }
+#cu-centros .ad-granja select { max-width: 48%; }
