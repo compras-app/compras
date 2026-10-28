@@ -336,6 +336,9 @@ function pintarChat(alFondo) {
   $('ch-sub').innerHTML = info.proveedor ? esc(info.proveedor) + ' (del padrón)' :
     (grupo ? 'Grupo' : esc('+' + chat.replace(/@.*/, '')) + (d ? ' · <button type="button" class="linkbtn" id="ch-padron">➕ Agregar al padrón de proveedores</button>' : ''));
   if ($('ch-padron')) $('ch-padron').addEventListener('click', agregarAlPadronUI);
+  // Fase 6, Paso 2: el proveedor no tiene CUIT (el servidor manda albor solo a los de "Ven lo de la Fase 6")
+  const albor = d && d.chat && d.chat.albor;
+  $('ch-albor').hidden = !(albor && !albor.cuit);
   const tarjetas = ((d && d.tarjetas) || []).concat((d && d.seguimiento) || []);   // también lo comprado, en seguimiento
   $('ch-ver-tarjetas').textContent = '📋 Tarjetas' + (tarjetas.length ? ' (' + tarjetas.length + ')' : '');
   pintarPanelChat();
@@ -675,3 +678,42 @@ async function agregarAlPadronUI() {
   TB.datosProd = null;
   abrirChat(chat);
 }
+
+
+/* Fase 6, Paso 2 (Feli, 28/10): "Este proveedor no está vinculado en Albor" → cargar su CUIT. La app controla los 11 números
+   y el dígito verificador; el código y el nombre en Albor los completa la primera orden de compra (Paso 5). */
+function digitoCuitBien(d) {
+  const peso = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  let suma = 0;
+  for (let i = 0; i < 10; i++) suma += Number(d.charAt(i)) * peso[i];
+  const dv = (11 - suma % 11) % 11;
+  return dv !== 10 && dv === Number(d.charAt(10));
+}
+$('ch-albor').addEventListener('click', async function () {
+  const d = CH.datos;
+  if (!d || !d.chat || !d.chat.proveedorId) return;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<div class="campo"><label for="ch-cuit">CUIT de ' + esc(d.chat.proveedor) + '</label>' +
+    '<input type="text" id="ch-cuit" inputmode="numeric" maxlength="13" autocomplete="off" placeholder="30-71151425-9">' +
+    '<p class="nota" id="ch-cuit-nota">Con o sin guiones. Con el CUIT, la orden de compra lo encuentra en Albor (o lo da de alta).</p></div>';
+  const cuit = await dialogo({ titulo: 'Vincular en Albor', cuerpo: cuerpo,
+    botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () { return $('ch-cuit').value.trim(); } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      const revisar = function () {
+        const n = $('ch-cuit').value.replace(/\D/g, '');
+        const bien = n.length === 11 && digitoCuitBien(n);
+        $('dg-ok').disabled = !bien;
+        $('ch-cuit-nota').textContent = n.length === 11 && !bien ? 'Ese CUIT no es válido: revisá los números (el último no coincide con los demás).'
+          : n.length > 11 ? 'El CUIT tiene 11 números.' : 'Con o sin guiones. Con el CUIT, la orden de compra lo encuentra en Albor (o lo da de alta).';
+      };
+      $('ch-cuit').addEventListener('input', revisar);
+      revisar();
+      $('ch-cuit').focus();
+    } });
+  if (!cuit) return;
+  const r = await api('cuitProveedor', d.chat.proveedorId, cuit);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: esto se hace con señal. Probá de nuevo en un rato.' : r.error, 'bad');
+  if (CH.datos === d) { d.chat.albor = { cuit: r.cuit }; pintarChat(); }
+  aviso('Listo: ' + d.chat.proveedor + ' quedó vinculado con el CUIT ' + r.cuit + '.');
+});

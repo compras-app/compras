@@ -224,6 +224,10 @@ async function mostrarProveedores() {
   const r = await api('getProveedoresAdmin');
   if (r.ok) { AD.provs = r; notaAd('pv-estado', ''); }
   else if (!AD.provs) { notaAd('pv-estado', textoDeError(r)); return; }
+  // Fase 6, Paso 2: el filtro "Sin vincular en Albor", solo para los de "Ven lo de la Fase 6"
+  const opAlbor = $('pv-ver').querySelector('option[value="sinalbor"]');
+  if (AD.provs.fase6 && !opAlbor) $('pv-ver').insertAdjacentHTML('beforeend', '<option value="sinalbor">Sin vincular en Albor</option>');
+  if (!AD.provs.fase6 && opAlbor) opAlbor.remove();
   armarRubrosFiltro();
   pintarProveedores();
 }
@@ -242,6 +246,7 @@ function pintarProveedores() {
   const l = AD.provs.proveedores.filter(function (p) {
     if (rubro && p.rubros.indexOf(rubro) === -1) return false;
     if (ver === 'sintel' && p.telefono) return false;
+    if (ver === 'sinalbor' && (p.cuit || !AD.provs.fase6)) return false;          // Fase 6, Paso 2
     if (ver === 'inactivos' ? p.activo : false) return false;
     if (ver !== 'inactivos' && !p.activo && ver !== '') return false;
     return !q || sinTildes(p.nombre + ' ' + p.telefono + ' ' + p.rubros.join(' ')).indexOf(q) !== -1;
@@ -256,7 +261,8 @@ function pintarProveedores() {
   $('pv-lista').innerHTML = l.map(function (p) {
     return '<button type="button" class="ad-item ad-fila' + (p.activo ? '' : ' baja') + '" data-id="' + esc(p.id) + '">' +
       '<span class="ad-nom"><b>' + esc(p.nombre) + '</b>' +
-      '<small>' + (p.telefono ? esc(p.telefono) : '⚠️ Sin teléfono') + (p.activo ? '' : ' · Desactivado') + '</small>' +
+      '<small>' + (p.telefono ? esc(p.telefono) : '⚠️ Sin teléfono') + (p.activo ? '' : ' · Desactivado') +
+        (AD.provs.fase6 ? (p.cuit ? ' · Albor: ' + esc(p.codigoAlbor ? p.codigoAlbor + ' · ' : '') + esc(p.cuit) : ' · ⚠️ Sin vincular en Albor') : '') + '</small>' +
       (p.rubros.length ? '<span class="ad-chips">' + p.rubros.map(function (c) { return '<span class="chip">' + esc(c) + '</span>'; }).join('') + '</span>'
                        : '<small>Sin rubros</small>') + '</span><span class="ad-flecha" aria-hidden="true">›</span></button>';
   }).join('') || '<p class="nota">No hay proveedores con eso.</p>';
@@ -273,7 +279,8 @@ $('pv-nuevo').addEventListener('click', function () { if (AD.provs) editarProvee
 async function editarProveedor(p, previo) {
   const v = previo || { nombre: p ? p.nombre : '', telefono: p ? p.telefono : '', email: p ? p.email : '', notas: p ? p.notas : '',
                         contacto: p ? (p.contacto || '') : '', activo: p ? p.activo : true, rubros: p ? p.rubros.slice() : [],
-                        otros: p ? (p.otros || []).join(', ') : '' };
+                        otros: p ? (p.otros || []).join(', ') : '',
+                        cuit: p ? (p.cuit || '') : '', nombreAlbor: p ? (p.nombreAlbor || '') : '', codigoAlbor: p ? (p.codigoAlbor || '') : '' };
   const elegidos = {};
   v.rubros.forEach(function (c) { elegidos[c] = true; });
   const max = AD.provs.maximo;
@@ -289,13 +296,21 @@ async function editarProveedor(p, previo) {
     campoDlg('pr-notas', 'Notas (opcional)', v.notas, { area: true, max: 1000 }) +
     '<div class="campo"><label>Rubros</label><p class="nota">A qué rubros se le pide cotización. Hasta ' + max + ' proveedores por rubro.</p>' +
       '<div class="pr-rubros" id="pr-rubros"></div></div>' +
-    '<label class="check"><input type="checkbox" id="pr-activo"> Activo (si no, no se le piden cotizaciones)</label>';
+    '<label class="check"><input type="checkbox" id="pr-activo"> Activo (si no, no se le piden cotizaciones)</label>' +
+    // Fase 6, Paso 2: su proveedor en Albor (solo los de "Ven lo de la Fase 6")
+    (AD.provs.fase6 ? '<h3>En Albor</h3>' +
+      campoDlg('pr-cuit', 'CUIT', v.cuit, { max: 13, inputmode: 'numeric', placeholder: '30-71151425-9', nota: 'Con o sin guiones. Se controla el último número.' }) +
+      campoDlg('pr-albor-nom', 'Nombre en Albor', v.nombreAlbor, { max: 120, nota: 'Si queda vacío, lo completa la primera orden de compra.' }) +
+      campoDlg('pr-albor-cod', 'Código en Albor', v.codigoAlbor, { max: 8, inputmode: 'numeric', placeholder: 'Ej: 10398' }) : '');
   const datos = await dialogo({
     titulo: p ? p.nombre : 'Agregar proveedor', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
       return { id: p ? p.id : '', nombre: $('pr-nombre').value.trim(), telefono: $('pr-tel').value.trim(), email: $('pr-mail').value.trim(),
                notas: $('pr-notas').value.trim(), contacto: undefined, otros: $('pr-otros').value.trim(), activo: $('pr-activo').checked,
-               rubros: Object.keys(elegidos).filter(function (c) { return elegidos[c]; }).sort() };
+               rubros: Object.keys(elegidos).filter(function (c) { return elegidos[c]; }).sort(),
+               cuit: AD.provs.fase6 ? $('pr-cuit').value.trim() : undefined,
+               nombreAlbor: AD.provs.fase6 ? $('pr-albor-nom').value.trim() : undefined,
+               codigoAlbor: AD.provs.fase6 ? $('pr-albor-cod').value.trim() : undefined };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       $('pr-activo').checked = v.activo !== false;

@@ -1024,3 +1024,8 @@ tr.rp-falta td:last-child{font-weight:700}
 .cu-sitios { margin-top: 14px; }
 .cu-sitios summary { cursor: pointer; }
 #cu-centros .ad-granja select { max-width: 48%; }
+
+/* Fase 6, Paso 2: "Este proveedor no está vinculado en Albor", arriba del chat (chats.js) */
+.ch-albor { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: var(--warn-soft); color: var(--fg);
+  font: inherit; font-weight: 700; text-align: left; padding: 10px 14px; cursor: pointer; }
+.ch-albor small { display: block; font-weight: 400; color: var(--muted); }
