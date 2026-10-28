@@ -51,6 +51,32 @@
       </div>
     </div>
 
+    <!-- Fase 6, Paso 3 (solo "Ven lo de la Fase 6"; formulario.js): un bien de uso, o la cuenta y el centro de costos -->
+    <div class="q" id="q-como" hidden>
+      <label for="como">👤 Probar como</label>
+      <select id="como"></select>
+      <div class="hint" id="como-hint"></div>
+    </div>
+    <div class="q" id="q-bien" hidden>
+      <button type="button" class="btn-bien" id="bien-b">es para un bien de uso</button>
+      <div class="bien-elegido" id="bien-elegido" hidden><span>🚜 <b id="bien-nombre"></b></span><button type="button" class="bien-x" id="bien-x" aria-label="Sacar el bien de uso">✕</button></div>
+      <div id="bien-buscar" hidden>
+        <input type="text" id="bien-q" placeholder="Buscá por nombre o patente" autocomplete="off" aria-label="Buscar el bien de uso">
+        <div class="bien-lista" id="bien-lista"></div>
+      </div>
+      <div class="hint" id="bien-hint" hidden>Un pedido para un bien de uso va sin orden de compra.</div>
+    </div>
+    <div class="q" id="q-cuenta" hidden>
+      <label for="cuenta">Cuenta contable<span class="req">*</span></label>
+      <select id="cuenta"></select>
+      <div class="aviso-cuenta">Hacé un pedido por cuenta. Si necesitás lubricantes y herramientas, son dos pedidos.</div>
+    </div>
+    <div class="q" id="q-centro" hidden>
+      <label for="centro">Centro de costos<span class="req">*</span></label>
+      <select id="centro"></select>
+      <div class="hint" id="centro-sitio"></div>
+    </div>
+
     <div class="q" id="q-sitio">
       <span class="qt" id="l-sitio">Sitio<span class="req">*</span></span>
       <div class="choices" role="radiogroup" aria-labelledby="l-sitio" data-name="sitio"></div>
@@ -106,6 +132,7 @@
 
     <div class="foot">
       <div class="estado" id="estado" role="status" aria-live="polite" hidden></div>
+      <label class="prueba-f6" id="q-prueba" hidden><input type="checkbox" id="prueba"> 🧪 Es una prueba <small>(sale como "PRUEBA - N" y lo ves solo vos)</small></label>
       <button type="submit" class="btn" id="enviar">Enviar pedido</button>
       <button type="button" class="linkbtn" id="reset">Empezar de cero</button>
       <span class="saved" id="saved"></span>

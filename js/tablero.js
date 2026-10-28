@@ -388,7 +388,7 @@ function pintarTanda() {
     (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">No hay ninguno. Acá entran los pedidos 🟢 del formulario' + (admin ? '; también se arrastra una tarjeta hasta acá' : '') + '.</p>' : '') +
     (abierto && lista.length ? '<div class="proc-l">' + lista.map(function (x) {
       return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
-        '<small>' + (x.trabajo ? '📋 Tarjeta de seguimiento · ' : '') + esc(x.solicitante ? 'Pidió ' + x.solicitante : '') + (x.fecha ? ' · cargado el ' + esc(fechaLinda(x.fecha)) : '') +
+        '<small>' + (x.prueba ? '🧪 ' + esc(x.prueba) + ' · ' : '') + (x.trabajo ? '📋 Tarjeta de seguimiento · ' : '') + esc(x.solicitante ? 'Pidió ' + x.solicitante : '') + (x.fecha ? ' · cargado el ' + esc(fechaLinda(x.fecha)) : '') +
         (x.fueraPadron ? ' · ✋ Fuera del padrón' : '') + '</small></button>';
     }).join('') + '</div>' : '');
   $('tb-tanda-h').addEventListener('click', function () {
@@ -466,6 +466,7 @@ function pintarProcesando() {
 function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     (t.nuevo ? '<div class="nuevo-t">Nuevo</div>' : '') +                       // Feli (2026-10-06): nunca lo abriste
+    (t.prueba ? '<div class="sobre">🧪 ' + esc(t.prueba) + '</div>' : '') +          // Fase 6: pedido de prueba (solo lo ven los de "Ven lo de la Fase 6")
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
     (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6
     (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
@@ -1141,7 +1142,8 @@ function pintarTarjeta() {
   chip.disabled = !puedeMover;
   chip.title = puedeMover ? 'Mover a…' : '';
   $('tj-titulo').textContent = (t && t.titulo) || (p && p.titulo) || ref;
-  const subt = (t && t.subtitulo) || (p && p.subtitulo) || '';                   // tarjetas de seguimiento: el proveedor o el rubro
+  const prueba = (t && t.prueba) || (p && p.prueba) || '';                         // Fase 6: "🧪 PRUEBA - 3"
+  const subt = [prueba ? '🧪 ' + prueba : '', (t && t.subtitulo) || (p && p.subtitulo) || ''].filter(Boolean).join(' · ');   // seguimiento: el proveedor o el rubro
   $('tj-subtitulo').textContent = subt;
   $('tj-subtitulo').hidden = !subt;
 

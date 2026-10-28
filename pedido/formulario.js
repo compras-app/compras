@@ -15,13 +15,15 @@
 const K_DATOS = 'compras_formulario';          // lo que trae datosFormulario, para abrir sin señal
 const DRAFT = 'pedido-insumos-borrador-v3';    // el mismo que usaba la página vieja: los borradores siguen
 let FAM = [], NAMES = [], SITIOS = [], URG = [], SOLICITANTES = [];
+let F6 = null;      // Fase 6, Paso 3: {cuentas, predeterminada, bienes, personas} si quien lo abre está en "Ven lo de la Fase 6"
+let F6_PROPIO = null, COMO = '';   // "👤 Probar como" (Feli, 28/10): lo propio, y a quién se está mirando
 let famKey = [], famWords = [], nameWords = [];
 
 function usarDatos(d){
   const P = typeof d.padron === 'string' ? JSON.parse(d.padron) : d.padron;
   FAM = P.F;               // [familia, canal, pedidos 2 años]
   NAMES = P.N;             // [idxFamilia, clave normalizada]
-  SITIOS = d.sitios; URG = d.urgencias; SOLICITANTES = d.solicitantes;
+  SITIOS = d.sitios; URG = d.urgencias; SOLICITANTES = d.solicitantes; F6 = F6_PROPIO = d.fase6 || null; COMO = '';
   famKey = FAM.map(f=>norm(f[0]));
   famWords = famKey.map(k=>k.split(' '));
   nameWords = NAMES.map(n=>n[1].split(' '));
@@ -70,7 +72,8 @@ function buscar(q){
 }
 
 /* ---------- estado ---------- */
-let S = {tipo:'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[],servicio:'',obs:'',adj:[],compartido:[]};
+const F6_VACIO = () => ({cuenta:'',centro:'',bien:'',prueba:false});
+let S = {tipo:'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[],servicio:'',obs:'',adj:[],compartido:[],f6:F6_VACIO()};
 const ADJ_MAX = 10*1024*1024;    // un PDF del servicio: hasta 10 MB
 let nid=1;
 function nuevoProd(){return {id:nid++,texto:'',fi:null,libre:false,espec:'',cantidad:'',unidad:'',desc:'',fotos:[]};}
@@ -87,7 +90,7 @@ function guardar(){
   }catch(e){}
 }
 function cargar(txt){
-  try{const d=JSON.parse(txt||'null'); if(d&&d.prods){S=Object.assign({tipo:'productos',servicio:'',obs:'',adj:[]},d); S.adj=(S.adj||[]).filter(f=>f&&f.id); S.prods.forEach(p=>{p.id=nid++;
+  try{const d=JSON.parse(txt||'null'); if(d&&d.prods){S=Object.assign({tipo:'productos',servicio:'',obs:'',adj:[]},d); S.f6=Object.assign(F6_VACIO(),d.f6||{}); S.adj=(S.adj||[]).filter(f=>f&&f.id); S.prods.forEach(p=>{p.id=nid++;
     // Borradores de la página vieja: sin fotos. Los nuevos: referencias a las fotos guardadas.
     p.fotos=(p.fotos||[]).filter(f=>f&&f.id);
     if(p.fi!==null){ const k=FAM.findIndex(f=>f[0]===p.fam); p.fi=k>=0?k:null; } delete p.fam;}); return true;}}catch(e){}
@@ -114,6 +117,50 @@ function pintarTipo(){
   $('.lead').textContent=serv?'Para algo que hay que mandar a arreglar o hacer afuera (ej.: llevar a arreglar la motoguadaña). Compras lo maneja a mano.'
                              :'Cargá lo que necesita tu granja. Podés agregar todos los productos que quieras en un mismo pedido.';
   $('#enviar').textContent=serv?'Pedir el servicio':'Enviar pedido';
+  pintarF6();
+}
+
+/* ---------- Fase 6, Paso 3 (Feli, 28/10): cuenta y centro de costos, o un bien de uso ----------
+   Solo para los de "Ven lo de la Fase 6" (datosFormulario trae F6) y en los pedidos de productos. La cuenta y el centro van
+   una vez para todo el pedido y el sitio lo pone el servidor según el centro; con un bien de uso, el sitio se elige como siempre. */
+const conF6 = () => !!(F6 && S.tipo!=='servicio');
+const conCuenta = () => conF6() && !S.f6.bien;
+function cuentaF6(cod){ return (F6&&F6.cuentas||[]).find(c=>c.codigo===cod); }
+function pintarF6(){
+  const f6=conF6(), bien=f6&&S.f6.bien?(F6.bienes||[]).find(b=>b.id===S.f6.bien):null;
+  if(f6&&S.f6.bien&&!bien) S.f6.bien='';
+  $('#q-bien').hidden=!f6; $('#q-prueba').hidden=!f6; $('#q-como').hidden=!f6;
+  if(f6){
+    const ps=(F6_PROPIO&&F6_PROPIO.personas||[]).filter(n=>!SES||n!==SES.nombre);
+    $('#como').innerHTML='<option value="">Yo'+(SES?' ('+esc(SES.nombre)+')':'')+'</option>'+ps.map(n=>`<option>${esc(n)}</option>`).join('');
+    $('#como').value=COMO;
+    $('#como-hint').textContent=COMO?'Así le aparece a '+COMO+' (cuando se abra la Fase 6). El pedido sale como prueba, a tu nombre.':'';
+    if(COMO) S.f6.prueba=true;
+    $('#prueba').disabled=!!COMO;
+  }
+  $('#q-cuenta').hidden=!conCuenta(); $('#q-centro').hidden=!conCuenta();
+  $('#q-sitio').hidden=conCuenta();
+  if(!f6) return;
+  $('#prueba').checked=!!S.f6.prueba;
+  $('#bien-b').hidden=!!bien; $('#bien-elegido').hidden=!bien; $('#bien-hint').hidden=!bien;
+  if(bien){ $('#bien-nombre').textContent=bien.nombre+(bien.patente?' · '+bien.patente:''); $('#bien-buscar').hidden=true; }
+  if(!conCuenta()) return;
+  if(!cuentaF6(S.f6.cuenta)) S.f6.cuenta=F6.predeterminada||'';
+  $('#cuenta').innerHTML=F6.cuentas.map(c=>`<option value="${esc(c.codigo)}">${esc(c.nombre)}</option>`).join('');
+  $('#cuenta').value=S.f6.cuenta;
+  const cs=(cuentaF6(S.f6.cuenta)||{}).centros||[];
+  if(cs.length===1) S.f6.centro=cs[0].centro;
+  if(!cs.some(x=>x.centro===S.f6.centro)) S.f6.centro='';
+  $('#centro').innerHTML=(cs.length>1&&!S.f6.centro?'<option value="">Elegí el centro de costos</option>':'')+cs.map(x=>`<option value="${esc(x.centro)}">${esc(x.centro)}</option>`).join('');
+  $('#centro').value=S.f6.centro; $('#centro').disabled=cs.length===1;
+  const cc=cs.find(x=>x.centro===S.f6.centro);
+  $('#centro-sitio').textContent=cc?'Va a '+cc.sitio+'.':'';
+}
+function pintarBienes(){
+  const q=norm($('#bien-q').value);
+  const l=(F6.bienes||[]).filter(b=>!q||norm(b.nombre+' '+b.patente).indexOf(q)!==-1);
+  $('#bien-lista').innerHTML=l.map(b=>`<button type="button" class="opt" data-id="${esc(b.id)}"><b>${esc(b.nombre)}</b><small>${esc([b.patente,b.sitio].filter(Boolean).join(' · '))}</small></button>`).join('')
+    ||'<div class="hint">No hay ninguno con eso.</div>';
 }
 function pintarAdj(){
   const th=$('#adj-thumbs'); if(!th) return;
@@ -260,7 +307,10 @@ function limpiarErr(id){ limpiarErrEl(document.getElementById(id)); }
 function validar(){
   document.querySelectorAll('.invalid').forEach(limpiarErrEl);
   const errs=[];
-  if(!S.sitio) errs.push([$('#q-sitio'),'Elegí el sitio.']);
+  if(conCuenta()){
+    if(!cuentaF6(S.f6.cuenta)) errs.push([$('#q-cuenta'),'Elegí la cuenta contable.']);
+    else if(!S.f6.centro) errs.push([$('#q-centro'),'Elegí el centro de costos.']);
+  } else if(!S.sitio) errs.push([$('#q-sitio'),'Elegí el sitio.']);
   if(!S.urgencia) errs.push([$('#q-urgencia'),'Elegí la urgencia.']);
   if(!S.pide) errs.push([$('#q-pide'),'Elegí quién hace el pedido.']);
   if(!S.razon.trim()) errs.push([$('#q-razon'),'Contá para qué es el pedido.']);
@@ -302,18 +352,27 @@ async function enviar(){
       pintarListo();
       return;
     }
-    const ref=nuevoIdEnvio(), fotos={};
+    // Fase 6: un pedido de prueba tiene la Ref "PRUEBA-…" (el servidor lo numera "PRUEBA - N")
+    const prueba=conF6()&&S.f6.prueba;
+    const ref=prueba?nuevoIdEnvio().replace(/^F/,'PRUEBA-'):nuevoIdEnvio(), fotos={};
     const productos=S.prods.map((p,i)=>{
       p.fotos.forEach(f=>{ fotos[f.id]={linea:i+1,nombre:f.nombre,envio:nuevoId(),subida:null}; });
       return { linea:i+1, familia:p.fi!==null?FAM[p.fi][0]:'', textoEscrito:p.texto.trim(), enPadron:p.fi!==null,
                especificacion:p.espec.trim(), cantidad:String(p.cantidad).trim().replace(',','.'), unidad:p.unidad||'',
                descripcion:p.desc.trim(), fotos:p.fotos.map(f=>f.id) };
     });
-    const datos={ sitio:S.sitio, urgencia:S.urgencia, solicitante:S.pide, razon:S.razon.trim(), productos, ...deSesion() };
+    const datos={ sitio:conCuenta()?'':S.sitio, urgencia:S.urgencia, solicitante:S.pide, razon:S.razon.trim(), productos, ...deSesion() };
+    // Fase 6: la cuenta y el centro (o el bien de uso), y cómo se ve en la lista de pedidos mandados
+    let detalle='';
+    if(conF6()){
+      const b=S.f6.bien?(F6.bienes||[]).find(x=>x.id===S.f6.bien):null;
+      datos.fase6=b?{bienUso:b.id}:{cuenta:S.f6.cuenta,centro:S.f6.centro};
+      detalle=b?'🚜 '+b.nombre+' · '+S.sitio:(cuentaF6(S.f6.cuenta)||{}).nombre+' · '+S.f6.centro;
+    }
     // Para mostrarlo en la lista y poder corregirlo si el servidor lo rechaza
     const borrador=guardado.leer(DRAFT);
-    await PedidosGuardados.agregar({ ref, datos, fotos, borrador,
-      titulo: productos.slice(0,3).map(p=>p.familia||p.textoEscrito).join(', ')+(productos.length>3?' y '+(productos.length-3)+' más':''),
+    await PedidosGuardados.agregar({ ref, datos, fotos, borrador, detalle,
+      titulo: (prueba?'🧪 ':'')+productos.slice(0,3).map(p=>p.familia||p.textoEscrito).join(', ')+(productos.length>3?' y '+(productos.length-3)+' más':''),
       nProductos: productos.length, nFotos: Object.keys(fotos).length });
     // Las fotos ya son del pedido guardado: el borrador se limpia sin borrarlas
     guardado.borrar(DRAFT);
@@ -368,7 +427,7 @@ async function pintarGuardados(){
     const que=e.estado==='enviado'?'Enviado · N° '+e.ref
             :e.estado==='rechazado'?'No se pudo mandar: '+e.error
             :(e.progreso||(APP.enLinea?'Mandándose…':'Guardado: se manda solo cuando haya señal'));
-    d.innerHTML=`<div class="ic">${ic}</div><div><b>${esc(e.titulo||e.ref)}</b><small>${esc(e.datos.sitio)} · cargado ${cuando}</small><small class="${e.estado==='rechazado'?'bad':''}">${esc(que)}</small></div>`;
+    d.innerHTML=`<div class="ic">${ic}</div><div><b>${esc(e.titulo||e.ref)}</b><small>${esc(e.detalle||e.datos.sitio)} · cargado ${cuando}</small><small class="${e.estado==='rechazado'?'bad':''}">${esc(que)}</small></div>`;
     if(e.estado==='rechazado'){
       const a=document.createElement('div'); a.className='acciones';
       a.innerHTML='<button type="button" class="linkbtn">Corregirlo</button>';
@@ -394,13 +453,36 @@ function estado(msg,tipo){ const e=$('#estado'); if(!msg){e.hidden=true;return;}
 function empezarDeCero(){
   S.prods.forEach(p=>p.fotos.forEach(f=>PedidosGuardados.borrarFoto(f.id)));
   (S.adj||[]).forEach(f=>PedidosGuardados.borrarFoto(f.id));
-  S={tipo:S.tipo||'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[nuevoProd()],servicio:'',obs:'',adj:[],compartido:[]};
+  S={tipo:S.tipo||'productos',sitio:'',urgencia:'',pide:'',razon:'',prods:[nuevoProd()],servicio:'',obs:'',adj:[],compartido:[],f6:F6_VACIO()};
   guardado.borrar(DRAFT);
   $('#saved').textContent=''; estado('');
   mirando=null; $('#form').hidden=false; $('#listo').hidden=true; init();
 }
 
 /* ---------- eventos ---------- */
+// Fase 6, Paso 3: "👤 Probar como" (trae lo de esa persona; necesita señal), el bien de uso, la cuenta, el centro y la prueba
+$('#como').addEventListener('change',async e=>{
+  const v=e.target.value;
+  if(!v){ COMO=''; F6=F6_PROPIO; S.f6.cuenta=''; S.f6.centro=''; S.f6.prueba=false; pintarF6(); guardar(); return; }
+  $('#como-hint').textContent='Trayendo lo de '+v+'…';
+  try{
+    const r=await llamar('datosFormulario',[SES?SES.token:'',v]);
+    if(!r.ok||!r.fase6) throw new Error(r.error||'');
+    COMO=v; F6=Object.assign({},r.fase6,{personas:F6_PROPIO.personas}); S.f6.cuenta=''; S.f6.centro=''; S.f6.bien='';
+  }catch(x){ e.target.value=COMO; $('#como-hint').textContent=x.sinRed?'📶 Poca señal: probá de nuevo en un rato.':'No se pudo traer lo de '+v+'. '+(x.message||''); return; }
+  pintarF6(); guardar();
+});
+// Fase 6, Paso 3: el bien de uso, la cuenta, el centro y la prueba
+$('#bien-b').onclick=()=>{ const v=$('#bien-buscar').hidden; $('#bien-buscar').hidden=!v; if(v){ $('#bien-q').value=''; pintarBienes(); $('#bien-q').focus(); } };
+$('#bien-q').addEventListener('input',pintarBienes);
+$('#bien-lista').addEventListener('click',e=>{ const b=e.target.closest('[data-id]'); if(!b) return;
+  S.f6.bien=b.dataset.id; const x=(F6.bienes||[]).find(y=>y.id===S.f6.bien);
+  if(x&&x.sitio&&SITIOS.indexOf(x.sitio)>=0&&!S.sitio){ S.sitio=x.sitio; choices('sitio',SITIOS); }
+  pintarF6(); guardar(); });
+$('#bien-x').onclick=()=>{ S.f6.bien=''; pintarF6(); guardar(); };
+$('#cuenta').addEventListener('change',e=>{ S.f6.cuenta=e.target.value; S.f6.centro=''; limpiarErr('q-cuenta'); pintarF6(); guardar(); });
+$('#centro').addEventListener('change',e=>{ S.f6.centro=e.target.value; limpiarErr('q-centro'); pintarF6(); guardar(); });
+$('#prueba').addEventListener('change',e=>{ S.f6.prueba=e.target.checked; guardar(); });
 $('#form').addEventListener('submit',e=>{ e.preventDefault(); enviar(); });
 $('#otro').onclick=()=>{ mirando=null; empezarDeCero(); window.scrollTo(0,0); };
 $('#corregir').onclick=()=>{ if(mirando) corregir(mirando); };
@@ -487,10 +569,10 @@ async function arrancar(){
   if(guardados){ usarDatos(guardados); mostrarFormulario(); }
   else { $('#cargando').hidden=false; $('#sin-datos').hidden=true; }
   try{
-    const r=await llamar('datosFormulario',[]);
+    const r=await llamar('datosFormulario',[SES?SES.token:'']);     // con la sesión: lo de la Fase 6, si la ve
     if(!r.ok) throw new Error(r.error);
     if(typeof aplicarColor==='function') aplicarColor(r.css); else { if(guardado.leer('compras_css_mio')===null) $('#estiloColor').textContent=r.css; guardado.guardar(K.css,r.css); }
-    guardado.guardarJSON(K_DATOS,{padron:r.padron,sitios:r.sitios,urgencias:r.urgencias,solicitantes:r.solicitantes,actualizado:new Date().toISOString()});
+    guardado.guardarJSON(K_DATOS,{padron:r.padron,sitios:r.sitios,urgencias:r.urgencias,solicitantes:r.solicitantes,fase6:r.fase6||null,actualizado:new Date().toISOString()});
     // La primera vez arranca con lo que llegó; si ya estaba abierto, lo nuevo se usa la próxima vez
     if(!guardados){ usarDatos(r); mostrarFormulario(); }
   }catch(e){
