@@ -147,8 +147,8 @@ function pintarBienes() {
   const l = CU.bienes.bienes;
   $('bi-lista').innerHTML = l.map(function (b) {
     return '<button type="button" class="ad-item ad-fila' + (b.activo ? '' : ' baja') + '" data-id="' + esc(b.id) + '">' +
-      '<span class="ad-nom"><b>' + (b.tipo === 'Generador' ? '⚡ ' : '🚙 ') + esc(b.nombre) + '</b>' +
-      '<small>' + esc([b.tipo, b.patente, b.sitio].filter(Boolean).join(' · ')) + (b.activo ? '' : ' · Dado de baja') + '</small></span>' +
+      '<span class="ad-nom"><b>' + esc(b.nombre) + '</b>' +
+      '<small>' + esc([b.patente, b.sitio].filter(Boolean).join(' · ')) + (b.activo ? '' : ' · Dado de baja') + '</small></span>' +
       '<span class="ad-flecha" aria-hidden="true">›</span></button>';
   }).join('') || '<p class="nota">Todavía no hay ninguno.</p>';
   $('bi-lista').querySelectorAll('[data-id]').forEach(function (x) {
@@ -159,14 +159,11 @@ $('bi-nuevo').addEventListener('click', function () { if (CU.bienes) editarBien(
 
 /** Alta (b = null) o cambio. previo: lo escrito, si el servidor no lo aceptó. */
 async function editarBien(b, previo) {
-  const v = previo || { tipo: b ? b.tipo : 'Vehículo', nombre: b ? b.nombre : '', patente: b ? b.patente : '', sitio: b ? b.sitio : '', activo: b ? b.activo : true };
-  let tipo = v.tipo;
+  const v = previo || { nombre: b ? b.nombre : '', patente: b ? b.patente : '', sitio: b ? b.sitio : '', activo: b ? b.activo : true };
   const sitios = CU.bienes.sitios;
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<div class="campo"><label>Tipo</label><div class="seg" id="bi-tipo">' +
-      CU.bienes.tipos.map(function (t) { return '<button type="button" data-tipo="' + esc(t) + '">' + esc(t) + '</button>'; }).join('') + '</div></div>' +
-    campoDlg('bi-nombre', 'Nombre', v.nombre, { max: 80, placeholder: 'Ej: Camioneta Hilux blanca' }) +
+  cuerpo.innerHTML = campoDlg('bi-nombre', 'Nombre', v.nombre, { max: 80, placeholder: 'Ej: Camioneta Hilux blanca' }) +
     campoDlg('bi-patente', 'Patente o número de identificación', v.patente, { max: 30, placeholder: 'Ej: AB123CD' }) +
     '<div class="campo"><label for="bi-sitio">Sitio</label><select id="bi-sitio"><option value="">—</option>' +
       sitios.map(function (s) { return '<option' + (s === v.sitio ? ' selected' : '') + '>' + esc(s) + '</option>'; }).join('') + '</select></div>' +
@@ -174,15 +171,13 @@ async function editarBien(b, previo) {
   const datos = await dialogo({
     titulo: b ? b.nombre : 'Agregar bien de uso', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
-      return { id: b ? b.id : '', tipo: tipo, nombre: $('bi-nombre').value.trim(), patente: $('bi-patente').value.trim(), sitio: $('bi-sitio').value, activo: $('bi-activo').checked };
+      return { id: b ? b.id : '', nombre: $('bi-nombre').value.trim(), patente: $('bi-patente').value.trim(), sitio: $('bi-sitio').value, activo: $('bi-activo').checked };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       $('bi-activo').checked = v.activo !== false;
-      const pintarTipo = function () { $('bi-tipo').querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.tipo === tipo)); }); };
-      $('bi-tipo').querySelectorAll('button').forEach(function (x) { x.addEventListener('click', function () { tipo = x.dataset.tipo; pintarTipo(); }); });
-      pintarTipo();
-      const revisar = function () { $('dg-ok').disabled = $('bi-nombre').value.trim().length < 2; };
+      const revisar = function () { $('dg-ok').disabled = $('bi-nombre').value.trim().length < 2 || !$('bi-patente').value.trim(); };
       $('bi-nombre').addEventListener('input', revisar);
+      $('bi-patente').addEventListener('input', revisar);
       revisar();
       if (!b) $('bi-nombre').focus();
     }
