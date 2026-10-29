@@ -126,9 +126,13 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>
       Tablero
     </button>
-    <button class="tab" type="button" data-tab="reportes" data-conta hidden>
+    <button class="tab" type="button" data-tab="creportes" data-conta hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
       Reportes
+    </button>
+    <button class="tab" type="button" data-tab="cajustes" data-conta hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></svg>
+      Ajustes
     </button>
     <button class="tab" type="button" data-tab="admin" id="t-admin" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -421,6 +425,21 @@
       <p class="nota">Un pedido entero para un vehículo o un generador va sin orden de compra.</p>
       <p class="nota ad-estado" id="bi-estado" role="status" aria-live="polite"></p>
       <div class="ad-lista" id="bi-lista"></div>
+    </section>
+
+    <!-- Fase 6 (Feli, 29/10): las pestañas Reportes (vacía hasta que contabilidad diga qué datos quiere) y Ajustes del apartado de Contabilidad (contabilidad.js) -->
+    <section id="s-creportes" hidden>
+      <div class="caja ct-vacio">
+        <p><b>📊 Reportes de contabilidad</b></p>
+        <p class="nota">Todavía no hay reportes acá. Los vamos a armar cuando contabilidad nos diga qué datos necesita.</p>
+      </div>
+    </section>
+
+    <section id="s-cajustes" hidden>
+      <div class="ad-menu">
+        <button type="button" class="ad-op" data-ir="cuentas"><span class="ic" aria-hidden="true">📒</span><b>Cuentas contables</b><small>Las cuentas de las órdenes de compra, sus centros de costos y quién ve cada una</small></button>
+        <button type="button" class="ad-op" data-ir="bienes"><span class="ic" aria-hidden="true">🚜</span><b>Bienes de uso</b><small>Vehículos y generadores: un pedido para uno de ellos va sin orden de compra</small></button>
+      </div>
     </section>
 
     <section id="s-masivo" hidden>

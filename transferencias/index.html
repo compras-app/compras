@@ -5772,7 +5772,7 @@
   function anotarMovimientos(tipo, lista, hechos, pedido, extra){
     if(!hechos.length) return;
     var comps = hechos.map(function(x, i){
-      var c = lista[i] || {}, fuera = {};
+      var c = lista[x.bloque != null ? x.bloque : i] || {}, fuera = {};     // la transferencia puede empezar por otra empresa (Feli, 29/10)
       (x.fallados || []).forEach(function(f){ fuera[clave(f.codigo)] = true; });
       var items = (c.items || []).filter(function(it){ return !fuera[clave(it.codigo)]; }).map(function(it){
         return { cod: it.codigo, nombre: it.nombre,

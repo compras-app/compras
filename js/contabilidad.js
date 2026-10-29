@@ -3,7 +3,7 @@
    FASE 6, PASO 4 (Feli, 28/10): EL APARTADO DE CONTABILIDAD
    ------------------------------------------------------------
    Vive en la misma página que Compras, con ?ap=contabilidad y sus
-   propias pestañas (Tablero y Reportes). Lo ven el rol contabilidad y,
+   propias pestañas (Tablero, Reportes y Ajustes). Lo ven el rol contabilidad y,
    mientras se prueba, los de "Ven lo de la Fase 6".
    - Tablero: Pre-compra, Comprado, Recibido y Factura cargada, armado
      con los datos de Compras (getTableroContable). Se actualiza con el
@@ -29,8 +29,12 @@ function modoContable() {
   const ap = misApartados(APP.yo);
   return ap.indexOf('contabilidad') !== -1 && (/[?&]ap=contabilidad\b/.test(location.search) || ap.length === 1);
 }
-// En Contabilidad, "Reportes" es una pestaña propia (en Compras está dentro de Admin)
-if (/[?&]ap=contabilidad\b/.test(location.search)) PANTALLAS.reportes.tab = 'reportes';
+// Reportes (vacía por ahora: se arma cuando contabilidad diga qué datos quiere) y Ajustes, con las cuentas
+// contables y los bienes de uso (Feli, 29/10). En Contabilidad, esas dos pantallas cuelgan de su pestaña Ajustes.
+pantalla('creportes', { titulo: 'Reportes', tab: 'creportes' });
+pantalla('cajustes', { titulo: 'Ajustes', tab: 'cajustes' });
+if (/[?&]ap=contabilidad\b/.test(location.search)) { PANTALLAS.cuentas.tab = 'cajustes'; PANTALLAS.bienes.tab = 'cajustes'; }
+document.querySelectorAll('#s-cajustes [data-ir]').forEach(function (b) { b.addEventListener('click', function () { abrir(b.dataset.ir); }); });
 
 function dinero(n, moneda) {
   if (n === null || n === undefined || n === '' || isNaN(Number(n))) return '';

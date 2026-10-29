@@ -644,7 +644,6 @@ body.con-arrastre #tb-tanda{outline:2px dashed var(--accent);outline-offset:-2px
 body.con-arrastre #tb-tanda .proc-h::after{content:" · Soltá acá para mandarla a la Tanda verde";font-weight:500;color:var(--muted)}
 #tb-tanda.destino{background:var(--accent-soft)}
 .tarjeta.resaltada,.proc-i.resaltada{outline:3px solid var(--accent);outline-offset:2px;transition:outline-color .3s}
-.tarjeta .sobre.en-entregas{color:#ff8a80}
 .proc-i{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 
 /* ============================================================
