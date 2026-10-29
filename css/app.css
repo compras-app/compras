@@ -106,8 +106,8 @@ dd{margin:0;overflow-wrap:anywhere;font-family:var(--f-mono);font-size:13px}
    TABLERO (Paso 3): herramientas, columnas que se deslizan, tarjetas
    ============================================================ */
 body[data-pantalla="tablero"] .contenido,body[data-pantalla="tareas"] .contenido,body[data-pantalla="servicios"] .contenido{max-width:none;padding:0}
-.pantalla-tablero{display:flex;flex-direction:column;height:calc(100dvh - var(--alto-barra) - var(--alto-nav) - env(safe-area-inset-bottom) - var(--alto-aviso,0px))}
-@media (min-width:720px){.pantalla-tablero{height:calc(100dvh - var(--alto-barra) - 48px - var(--alto-aviso,0px))}}
+.pantalla-tablero{display:flex;flex-direction:column;height:calc(100dvh / var(--z,1) - var(--alto-barra) - var(--alto-nav) - env(safe-area-inset-bottom) - var(--alto-aviso,0px))}
+@media (min-width:720px){.pantalla-tablero{height:calc(100dvh / var(--z,1) - var(--alto-barra) - 48px - var(--alto-aviso,0px))}}
 .herramientas{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1.5px solid var(--line);background:var(--bg)}
 .secciones{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .secciones::-webkit-scrollbar{display:none}
@@ -620,7 +620,7 @@ html[data-estilo="aurora"] .tablero .tarjeta:hover{background:rgba(48,48,56,.96)
   html[data-aspecto="programa"] .barra h1{font-size:15px}
   .tabs .tab{height:40px;font-size:14px}
   .tabs .t-largo{display:inline}.tabs .t-corto{display:none}
-  .pantalla-tablero{height:calc(100dvh - var(--alto-barra) - 40px - var(--alto-aviso,0px))}
+  .pantalla-tablero{height:calc(100dvh / var(--z,1) - var(--alto-barra) - 40px - var(--alto-aviso,0px))}
   .sinred{top:calc(var(--alto-barra) + 40px)}
   /* En la compu, todo en una fila compacta y los filtros siempre a la vista */
   #tb-herramientas{flex-direction:row;align-items:center;flex-wrap:wrap;padding:5px 12px;gap:10px}
@@ -775,7 +775,7 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 /* El visor también muestra PDF (página por página) y videos, adentro de la app (Feli, 2026-10-05) */
 .visor-doc{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:calc(52px + env(safe-area-inset-top)) 8px 24px;text-align:center}
 .visor-doc canvas{display:block;margin:0 auto 10px;max-width:100%;background:#fff;border-radius:4px}
-.visor-doc video{max-width:100%;max-height:calc(100vh - 80px);margin-top:20px}
+.visor-doc video{max-width:100%;max-height:calc(100vh / var(--z,1) - 80px);margin-top:20px}
 .visor-titulo{color:#ddd;font-size:13px;margin:0 0 10px}
 .visor-cerrar{z-index:2}
 .pr-ren.pr-mal{border-left:3px solid var(--warn);padding-left:8px;margin-left:2px}

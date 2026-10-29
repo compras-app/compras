@@ -478,16 +478,20 @@ async function confirmarCompra() {
         (conOrden ? '. Al tocar "Comprar", queda comprado y ' + (ext ? 'se carga la orden en Albor' : 'te pido el número y el PDF de la orden') +
                     '. Con el número, al proveedor le llega el PDF de la orden con este mensaje ({numero} se completa solo). Lo podés cambiar.</p>'
                   : '. Al tocar "Comprar y mandar", ya queda comprado: sale la tarjeta de seguimiento y le llega este mensaje por WhatsApp. Lo podés cambiar.</p>') +
-        '<textarea id="cq-msj" rows="' + (conOrden ? 6 : 10) + '">' + esc(conOrden ? mensajeOrden(oq) : mensajeCompra(g)) + '</textarea>';
+        '<textarea id="cq-msj" rows="' + (conOrden ? 6 : 10) + '">' + esc(conOrden ? mensajeOrden(oq) : mensajeCompra(g)) + '</textarea>' +
+        // Feli (29/10): observaciones del presupuesto que van en la orden de compra (se dejan las que sirvan)
+        (conOrden ? '<label for="cq-obs" style="margin-top:10px;display:block">Observaciones en la orden de compra <small class="nota">(opcional; vienen las del presupuesto: dejá las que sirvan)</small></label>' +
+                    '<textarea id="cq-obs" rows="4" maxlength="1500">' + esc((op && op.observaciones) || '') + '</textarea>' : '');
       const texto = await dialogo({ titulo: 'Comprarle a ' + g.col.nombre + (grupos.length > 1 ? ' (' + (i + 1) + ' de ' + grupos.length + ')' : ''), cuerpo: cuerpo,
         botones: [{ texto: 'Volver', valor: null }, { texto: oq && (oq.orden || oq.prueba) ? '🛒 Comprar' : '🛒 Comprar y mandar', clase: 'btn', valor: function () {
           if ($('cq-pedido-np')) g.pedidoNP = $('cq-pedido-np').value;
+          if ($('cq-obs')) g.obsOrden = $('cq-obs').value.trim();
           return $('cq-msj').value.trim();
         } }] });
       if (!texto) break;
       aviso('Comprando a ' + g.col.nombre + '…');
       const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: texto, pedidoNP: g.pedidoNP || '',
-                                            textoSinOrden: conOrden ? mensajeCompra(g) : '' });
+                                            textoSinOrden: conOrden ? mensajeCompra(g) : '', obsOrden: g.obsOrden || '' });
       if (!r.ok) { aviso(r.sinConexion ? '📶 Poca señal: no se pudo comprar a ' + g.col.nombre + '. Probá cuando vuelva.' : r.error, 'bad'); break; }
       compradas++;
       g.lineas.forEach(function (l) { delete CQ.sel[l]; });

@@ -20,8 +20,32 @@ const APARTADOS = {
   // Fase 6, Paso 4: Contabilidad vive en la misma página que Compras, con sus propias pestañas (contabilidad.js)
   contabilidad: { nombre: 'Contabilidad', url: new URL('../?ap=contabilidad', document.currentScript.src).href }
 };
+/* El mismo tamaño en todas las compus (Feli, 29/10): con la escala de Windows (125 %, 150 %) o el zoom del navegador, las
+   tarjetas se veían más grandes y entraba menos. En la compu (mouse) la app compensa esa escala y además queda un 5 % más
+   chica, para que entren más tarjetas, como en Trello. En el celular y la tablet no cambia nada. --z es ese factor (el CSS lo
+   usa para las alturas con 100dvh); lo que se ubica con coordenadas de la pantalla divide por zoomApp(). */
+function calcularZoomApp() {
+  if (!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches)) return 1;
+  const dpr = window.devicePixelRatio || 1;
+  const base = /Windows/i.test(navigator.userAgent) ? 1 : (dpr >= 1.5 ? 2 : 1);     // Windows al 100 % = 1; Mac con retina = 2
+  let f = Math.max(0.6, Math.min(1.4, base / dpr));
+  if (Math.abs(f - 1) < 0.03) f = 1;
+  return Math.round(f * 0.95 * 1000) / 1000;
+}
+let _zoomApp = 1;
+function zoomApp() { return _zoomApp; }
+function aplicarZoomApp() {
+  const f = calcularZoomApp();
+  if (f === _zoomApp && document.documentElement.style.zoom) return;
+  _zoomApp = f;
+  document.documentElement.style.zoom = f === 1 ? '' : String(f);
+  document.documentElement.style.setProperty('--z', String(f));
+}
+aplicarZoomApp();
+window.addEventListener('resize', aplicarZoomApp);           // el zoom del navegador cambia la escala y avisa con un resize
+
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'bce7e71a05';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '0162a5cb0d';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las

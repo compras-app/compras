@@ -1817,7 +1817,7 @@
     var pantalla = document.documentElement.clientWidth;
     var izq = Math.max(16, (pantalla - hace) / 2);
     w.style.width = hace + 'px';
-    w.style.marginLeft = (izq - w.getBoundingClientRect().left) + 'px';
+    w.style.marginLeft = (izq - w.getBoundingClientRect().left / (window.zoomApp ? zoomApp() : 1)) + 'px';
   }
   window.addEventListener('resize', function(){ if(DATA) acomodarAncho(); });
 

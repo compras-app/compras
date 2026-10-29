@@ -661,16 +661,16 @@ function tarjetaAnterior(nodo, ignorar) {
 
 function empezarArrastre(el, ref, x, y, ctx) {
   ctx = ctx || CTX_PEDIDOS;
-  const r = el.getBoundingClientRect();
+  const r = el.getBoundingClientRect(), z = zoomApp();       // las coordenadas de la pantalla, en tamaño de la app (Feli, 29/10)
   const fantasma = el.cloneNode(true);
   fantasma.classList.add('arrastrando');
-  fantasma.style.width = r.width + 'px';
-  fantasma.style.left = r.left + 'px';
-  fantasma.style.top = r.top + 'px';
+  fantasma.style.width = (r.width / z) + 'px';
+  fantasma.style.left = (r.left / z) + 'px';
+  fantasma.style.top = (r.top / z) + 'px';
   document.body.appendChild(fantasma);
   const hueco = document.createElement('div');
   hueco.className = 'hueco';
-  hueco.style.height = r.height + 'px';
+  hueco.style.height = (r.height / z) + 'px';
   el.parentNode.insertBefore(hueco, el);
   el.style.display = 'none';
   const tb = ctx.tb();
@@ -689,8 +689,8 @@ function seguirArrastre(x, y) {
   const a = TB.arrastre;
   if (!a) return;
   a.x = x; a.y = y;
-  a.fantasma.style.left = (x - a.dx) + 'px';
-  a.fantasma.style.top = (y - a.dy) + 'px';
+  a.fantasma.style.left = ((x - a.dx) / zoomApp()) + 'px';
+  a.fantasma.style.top = ((y - a.dy) / zoomApp()) + 'px';
   const bajo = document.elementFromPoint(x, y);
   // Paso 6: soltar sobre la franja de Stand by la manda ahí (solo en el tablero de pedidos)
   const sb = a.ctx === CTX_PEDIDOS && bajo && bajo.closest ? bajo.closest('#tb-standby') : null;

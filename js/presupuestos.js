@@ -1048,6 +1048,16 @@ async function armarOrdenPDF(d) {
                     columnStyles: { 0: { textColor: gris, cellWidth: 45 } }, body: cs.map(function (c) { return [txtPDF(c[0]), txtPDF(c[1])]; }) });
     y = doc.lastAutoTable.finalY + 8;
   }
+  // Observaciones del presupuesto que se eligieron al comprar (Feli, 29/10)
+  if (d.observaciones) {
+    const lineas = doc.splitTextToSize(txtPDF(d.observaciones), ancho - 2 * m);
+    if (y + 8 + lineas.length * 5 > 270) { doc.addPage(); y = 20; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul);
+    doc.text('OBSERVACIONES', m, y);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+    doc.text(lineas, m, y + 6);
+    y += 6 + lineas.length * 5 + 6;
+  }
   if (y > 255) { doc.addPage(); y = 20; }
   // La factura y quién autorizó
   doc.setFillColor(240, 242, 247); doc.setDrawColor.apply(doc, azul);
