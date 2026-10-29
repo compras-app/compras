@@ -1079,3 +1079,16 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .cx-tabla{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
 .cx-tabla th,.cx-tabla td{border-bottom:1px solid var(--line);padding:5px 4px;text-align:left;vertical-align:top}
 .cx-tabla td:nth-child(n+2),.cx-tabla th:nth-child(n+2){text-align:right;white-space:nowrap}
+
+/* Fase 6, Paso 5: la carga de la orden en Albor */
+.oc-albor{max-width:560px;width:calc(100% - 32px);border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--fg);padding:16px}
+.oc-albor::backdrop{background:rgba(0,0,0,.55)}
+.oc-albor h3{margin:0 0 6px}
+.oc-albor pre{white-space:pre-wrap;max-height:220px;overflow:auto;font-size:13px;background:var(--accent-soft);border-radius:8px;padding:8px;margin:8px 0}
+.oc-albor-pausa{border-left:4px solid var(--accent);padding:8px 10px;margin-top:8px}
+.oc-albor-pausa p{white-space:pre-wrap;margin:0 0 10px}
+/* El "Elegir archivo" de los formularios: que parezca un botón (Feli, 29/10) */
+.btn-archivo{display:inline-flex;align-items:center;gap:6px;cursor:pointer;border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft);
+  border-radius:8px;padding:10px 14px;font-weight:700}
+.btn-archivo:hover{filter:brightness(1.1)}
+.archivo-elegido{display:block;margin-top:6px;font-size:14px;color:var(--muted)}

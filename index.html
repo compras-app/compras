@@ -667,6 +667,17 @@
   </div>
 </div>
 
+<!-- Fase 6, Paso 5 (Feli, 29/10): la orden de compra se carga en Albor al comprar, con la extensión (la misma cabeza que Transferencias) -->
+<dialog id="oc-albor" class="oc-albor">
+  <h3 id="oc-albor-t">Cargando la orden de compra en Albor</h3>
+  <p class="nota">Se abre una pestaña de Albor al lado. No la cierres: cuando termina, se cierra sola.</p>
+  <pre id="oc-albor-log" aria-live="polite"></pre>
+  <div id="oc-albor-pausa" class="oc-albor-pausa" hidden>
+    <p id="oc-albor-txt"></p>
+    <div class="ad-acciones"><button type="button" class="btn" id="oc-albor-seguir">Seguir</button>
+      <button type="button" class="btn2" id="oc-albor-cancelar">Cancelar</button></div>
+  </div>
+</dialog>
 <script src="js/base.js"></script>
 <script src="js/login.js"></script>
 <script src="js/envio-pedidos.js"></script>
@@ -684,6 +695,7 @@
 <script src="js/cuentas.js"></script>
 <script src="js/reportes.js"></script>
 <script src="js/contabilidad.js"></script>
+<script src="transferencias/albor.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 </body>

@@ -704,7 +704,7 @@ Albor.prototype.cerrar = async function(){
 
 /* ¿Seguimos adentro de Albor, o nos mandó al login? */
 Albor.prototype.haySesion = async function(){
-  try{ return (await this.pg.loc('#PuntosStock_Lista_disabler, #btReporte, #btnNuevo').count()) > 0; }
+  try{ return (await this.pg.loc('#PuntosStock_Lista_disabler, #btReporte, #btnNuevo, #btNuevoRegistro').count()) > 0; }
   catch(e){ if(e instanceof Cortado) throw e; return false; }
 };
 
@@ -2671,6 +2671,352 @@ function buscar(){
                                            function(){ return null; });
 }
 
+/* ==================================================================
+   Fase 6, Paso 5 (Feli, 28/10 y 29/10): la orden de compra en Albor
+   ------------------------------------------------------------------
+   La arma la app al comprar, en la misma pestaña de Albor de siempre, con
+   los pasos del video (mapa en "Conexion con Albor - Orden de compra/Mapa de
+   la orden de compra en Albor.md"):
+     1. Compras → Órdenes de Compra no Stockeables. Si una orden con la misma
+        clave en sus Observaciones ya está (un intento anterior la guardó), no
+        se carga de nuevo: se lee su número y su PDF.
+     2. Nuevo. Proveedor por su código de Albor o, la primera vez, por CUIT
+        (con guiones) en la ventanita de la lupa. Si no está en Albor, frena
+        para darlo de alta a mano.
+     3. Solicitante, Responsable y Observaciones (con la clave).
+     4. Un ítem por renglón: insumo, cantidad, precio y lo que escribió el
+        proveedor. Se cuentan los renglones de la grilla para no cargar uno
+        dos veces.
+     5. Frena una vez para controlar; GUARDAR una sola vez.
+     6. En la lista: el número ("2026 - OCNS - 124") y el PDF del
+        "Comprobante Detallado" (ExportUrlBase + PDF del visor).
+   ================================================================== */
+var URL_ORDENES = '/1/Ordenes_Compra_No_Stockeables';
+
+function numeroOrden(t){
+  var m = /(\d{4})\s*-\s*([A-Z]{2,6})\s*-\s*(\d+)/.exec(String(t || ''));
+  return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
+}
+
+// La fila de la lista con esa clave en las Observaciones: {id, texto} o null.
+var JS_FILA_ORDEN = String(function(clave){
+  var filas = [].slice.call(document.querySelectorAll('#DetalleGrid tr.jqgrow'));
+  for(var i = 0; i < filas.length; i++){
+    var t = (filas[i].innerText || filas[i].textContent || '').replace(/\s+/g, ' ');
+    if(t.indexOf(clave) >= 0) return { id: filas[i].id, texto: t };
+  }
+  return null;
+});
+
+// Los renglones de la grilla de ítems de la orden (null: no está la grilla).
+var JS_ITEMS_ORDEN = String(function(){
+  var g = document.querySelector('#DetalleGrid');
+  if(!g) return null;
+  return [].slice.call(g.querySelectorAll('tr.jqgrow')).map(function(r){ return (r.innerText || '').replace(/\s+/g, ' ').trim(); });
+});
+
+// El valor de un campo (el nombre que Albor pone al lado de un código).
+var JS_VALOR = String(function(sel){ var e = document.querySelector(sel); return e ? String(('value' in e ? e.value : e.textContent) || '').trim() : null; });
+
+// Pone un texto en un textarea#Observaciones: el de la orden (fuera de la
+// ventanita) o el del ítem (adentro). Hay dos con el mismo nombre.
+var JS_OBSERVACIONES = String(function(o){
+  var ts = [].slice.call(document.querySelectorAll('textarea#Observaciones, textarea[name="Observaciones"]'));
+  var t = ts.filter(function(x){ var d = x.closest('.ui-dialog'); return o.dialogo ? (d && d.offsetParent !== null) : !d; })[0];
+  if(!t) return false;
+  t.focus(); t.value = o.texto;
+  ['input', 'change', 'blur'].forEach(function(ev){ t.dispatchEvent(new Event(ev, { bubbles: true })); });
+  if(window.jQuery) window.jQuery(t).trigger('change');
+  return t.value === o.texto;
+});
+
+// Elige la fila en la lista (jqGrid) para el "Comprobante Detallado".
+var JS_ELEGIR_FILA = String(function(id){
+  try{ if(window.jQuery && window.jQuery('#DetalleGrid').jqGrid){ window.jQuery('#DetalleGrid').jqGrid('setSelection', id); return true; } }catch(e){}
+  var f = document.getElementById(id);
+  if(!f) return false;
+  f.click();
+  return true;
+});
+
+// El PDF del informe abierto: el visor de Microsoft lo da en ExportUrlBase + 'PDF'.
+var JS_PDF_VISOR = String(function(){
+  var v = $find('visorReporte');
+  var url = v._getInternalViewer().ExportUrlBase + 'PDF';
+  return fetch(url, { credentials: 'include' }).then(function(r){
+    if(!r.ok) throw new Error('Albor contestó ' + r.status + ' al pedir el PDF');
+    return r.arrayBuffer();
+  }).then(function(b){
+    var s = '', a = new Uint8Array(b);
+    for(var i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000));
+    return btoa(s);
+  });
+});
+
+// La lupa de un campo: el botón al lado (sus IDs cambian cada vez: "bt_" + letras).
+var JS_LUPA = String(function(campo){
+  var e = document.querySelector(campo);
+  if(!e) return null;
+  for(var p = e.parentElement, n = 0; p && n < 4; p = p.parentElement, n++){
+    var b = p.querySelector('[id^="bt_"], .fa-search, button[title*="usc" i], a[title*="usc" i]');
+    if(b){ var x = b.closest('a, button') || b; if(!x.id) x.id = '__lupa_' + Date.now(); return '#' + x.id; }
+  }
+  return null;
+});
+
+// Las filas de la grilla de la ventanita del proveedor (a la vista). Con elegir, hace clic en la primera.
+var JS_FILAS_PROVEEDOR = String(function(elegir){
+  var filas = [].slice.call(document.querySelectorAll('[id^="DetalleGrid_dialog"] tr.jqgrow')).filter(function(r){ return r.offsetParent !== null; });
+  if(elegir && filas[0]){
+    filas[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    filas[0].click();
+  }
+  return filas.length;
+});
+
+/* Escribe un código y espera el nombre que pone Albor (unos 2 s). Devuelve el nombre o ''. */
+async function codigoConNombre(pg, campo, codigo, limite){
+  await escribirCampo(pg, '#' + campo + '_codigo', codigo, { delay: 70 });
+  await pg.presionar('Tab');
+  var fin = Date.now() + (limite || 15000);
+  while(Date.now() < fin){
+    await esperar(pg, 10000, 100);
+    var n = await pg.evaluar(JS_VALOR, '#' + campo + '_nombre');
+    if(n) return n;
+    await pg.esperar(400);
+  }
+  return '';
+}
+
+/* El proveedor: por su código si ya lo tiene; si no, por CUIT en la ventanita de la lupa. {codigo, nombre}. */
+async function proveedorDeOrden(pg, p, charla){
+  if(p.codigo){
+    var n = await codigoConNombre(pg, 'ID_Tercero_Proveedor', p.codigo);
+    if(n){ charla.decir('Proveedor: ' + p.codigo + ' · ' + n); return { codigo: p.codigo, nombre: n }; }
+    charla.decir('[!] El código ' + p.codigo + ' no trajo ningún proveedor: lo busco por CUIT.');
+  }
+  if(!p.cuit) throw new Error(p.nombre + ' no tiene CUIT: cargalo en la app.');
+  for(var vuelta = 1; vuelta <= 2; vuelta++){
+    var lupa = await pg.evaluar(JS_LUPA, '#ID_Tercero_Proveedor_nombre');
+    if(!lupa) throw new Error('No encontré la lupa del proveedor en Albor.');
+    await pg.loc(lupa).click({ timeout: 15000 });
+    await pg.loc('#gs_CUIT').waitFor('visible', 15000);
+    await esperar(pg, 15000);
+    charla.decir('Buscando el proveedor por CUIT ' + p.cuit + '…');
+    await escribirCampo(pg, '#gs_CUIT', p.cuit, { delay: 50 });
+    await pg.presionar('Enter');
+    await pg.esperar(800);
+    await esperar(pg, 20000);
+    var cuantas = await pg.evaluar(JS_FILAS_PROVEEDOR, false);
+    if(cuantas === 1){
+      await pg.evaluar(JS_FILAS_PROVEEDOR, true);          // la elige (clic en la fila, como jqGrid)
+      await pg.esperar(300);
+      await pg.loc('#btSeleccionarDialogoPopUp').click({ timeout: 10000 });
+      await esperar(pg, 15000);
+      var fin = Date.now() + 15000, nom = '', cod = '';
+      while(Date.now() < fin && !nom){
+        nom = await pg.evaluar(JS_VALOR, '#ID_Tercero_Proveedor_nombre');
+        cod = await pg.evaluar(JS_VALOR, '#ID_Tercero_Proveedor_codigo');
+        if(!nom) await pg.esperar(400);
+      }
+      if(nom){ charla.decir('Proveedor (por CUIT): ' + cod + ' · ' + nom); return { codigo: cod, nombre: nom }; }
+    }
+    if(cuantas > 1) throw new Error('Albor tiene ' + cuantas + ' proveedores con el CUIT ' + p.cuit + '. Elegí el bueno a mano y cargá su código en la app.');
+    // No está en Albor: se da de alta a mano (con AFIP) y se sigue
+    if(vuelta === 2) break;
+    await charla.pausa('El proveedor ' + p.nombre + ' (CUIT ' + p.cuit + ') no está en Albor.\n\nEn la ventanita del proveedor tocá «Nuevo», ' +
+                       'escribí el CUIT, «Cargar datos desde AFIP», tildá «Proveedor» y «Guardar». Después cerrá la ventanita y tocá Seguir: lo busco de nuevo.',
+                       'Seguir');
+    await cerrarPopups(pg);
+  }
+  throw new Error('No encontré en Albor el proveedor con CUIT ' + p.cuit + '.');
+}
+
+/* Un ítem: insumo, cantidad, precio y lo que escribió el proveedor. Lanza si no entró. */
+async function itemDeOrden(pg, it, antes){
+  await cerrarAnuncios(pg);
+  await pg.loc('#btAdd_DetalleGrid').click({ timeout: 15000 });
+  await pg.loc('#ID_Insumo_No_Stockeable_codigo').waitFor('visible', 15000);
+  await esperar(pg, 8000);
+  var nombre = await codigoConNombre(pg, 'ID_Insumo_No_Stockeable', it.insumo);
+  if(!nombre) throw new Error('Albor no encontró el insumo ' + it.insumo);
+  await escribirCampo(pg, '#Cantidad', unidadesAlbor(it.cantidad), { secuencial: false });
+  await escribirCampo(pg, '#Precio_Unitario', unidadesAlbor(it.precio), { secuencial: false });
+  if(it.observaciones) await pg.evaluar(JS_OBSERVACIONES, { texto: it.observaciones, dialogo: true });
+  await pg.loc('#btAceptar_dialog').click({ timeout: 15000 });
+  var fin = Date.now() + 20000;
+  for(;;){
+    var ahora = (await pg.evaluar(JS_ITEMS_ORDEN)) || [];
+    if(ahora.length > antes) break;
+    if(Date.now() > fin) throw new Error('la ventanita del ítem no se cerró (Albor no lo tomó)');
+    await pg.esperar(500);
+  }
+  if(await pg.loc('#ID_Insumo_No_Stockeable_codigo').isVisible()){
+    try{ await pg.loc('#btCancelar_dialog').click({ timeout: 3000 }); }catch(e){ if(e instanceof Cortado) throw e; }
+  }
+  await esperar(pg, 10000);
+}
+
+/* Arma la orden (sin guardar). Si Albor pide ingresar en el medio, se arma de nuevo desde el principio (como en Transferencias). */
+async function armarOrden(pg, o, charla){
+  charla.decir('Nueva orden de compra…');
+  await pg.loc('#btNuevoRegistro').click({ timeout: 20000 });
+  await pg.loc('#ID_Tercero_Proveedor_codigo').waitFor('visible', 40000);
+  await esperar(pg, 40000);
+  var prov = await proveedorDeOrden(pg, o.proveedor, charla);
+  charla.revisar();
+  var sol = await codigoConNombre(pg, 'ID_Personal_Solicitante', o.solicitante);
+  var res = await codigoConNombre(pg, 'ID_Personal_Responsable', o.responsable);
+  charla.decir('Solicitante: ' + (sol || '¿' + o.solicitante + '?') + ' · Responsable: ' + (res || '¿' + o.responsable + '?'));
+  if(!(await pg.evaluar(JS_OBSERVACIONES, { texto: o.observaciones, dialogo: false })))
+    charla.decir('[!] No pude escribir las Observaciones de la orden: escribí «' + o.clave + '» a mano.');
+  var cargados = 0, fallados = [];
+  for(var i = 0; i < o.items.length; i++){
+    var it = o.items[i];
+    charla.revisar();
+    var antes = ((await pg.evaluar(JS_ITEMS_ORDEN)) || []).length;
+    charla.decir('Ítem ' + (i + 1) + ' de ' + o.items.length + ': ' + it.insumo + ' · ' + it.cantidad + ' × $ ' + unidadesAlbor(it.precio));
+    var ok = false;
+    for(var intento = 1; intento <= 2 && !ok; intento++){
+      try{ await itemDeOrden(pg, it, antes); ok = true; }
+      catch(e){
+        if(e instanceof Cortado || e instanceof Cancelado) throw e;
+        if(await M.albor.enLogin()) throw new SesionPerdida('Albor cerró la sesión mientras se armaba la orden.');
+        // ¿Entró igual? (la ventanita no se cerró a tiempo): no se carga de nuevo
+        if(((await pg.evaluar(JS_ITEMS_ORDEN)) || []).length > antes){ ok = true; await cerrarPopups(pg); break; }
+        charla.decir('   [!] ' + primeraLinea(e) + (intento === 1 ? ': pruebo de nuevo.' : ''));
+        await cerrarPopups(pg);
+      }
+    }
+    if(ok) cargados++; else fallados.push(it);
+  }
+  return { prov: prov, sol: sol, res: res, cargados: cargados, fallados: fallados };
+}
+
+/* Guarda una sola vez y espera a que Albor vuelva a la lista. */
+async function guardarOrden(pg, charla){
+  charla.decir('Guardando…');
+  var r = await tocarYEsperar(pg, '#btGuardar', async function(){
+    var u = await pg.url();
+    return u.indexOf('/Create') < 0 && u.indexOf(URL_ORDENES) >= 0;
+  }, 90000);
+  if(r.ok) { charla.decir('   guardada.'); return; }
+  if(r.sesion){
+    if(M.albor && await M.albor.enLogin()) await tocarIngresar(pg);
+    await charla.pausa('Albor cerró la sesión justo mientras guardaba la orden, así que no sé si quedó.\n\nEntrá de nuevo en la pestaña de ' +
+                       'Albor (si pide la contraseña) y fijate en Órdenes de Compra no Stockeables. Si no está, cargala y guardala a mano. Después tocá «Ya lo revisé».',
+                       'Ya lo revisé');
+    return;
+  }
+  if(r.advertencia){
+    await charla.pausa(textoAdvertencia(r.advertencia, 'guardar') .replace('Si todavía no está guardado, lo guardo yo.', 'Guardala a mano.'), 'Ya está guardada');
+    return;
+  }
+  await charla.pausa((r.noToco ? 'No pude tocar Guardar.' : 'Albor no confirmó que guardó la orden (pasó un minuto y medio).') +
+                     '\nFijate en Albor: si hay un recuadro rojo arriba, resolvelo. Guardala a mano y tocá «Ya está guardada».', 'Ya está guardada');
+}
+
+/* En la lista: la fila de la orden (por la clave). Recarga unas veces si todavía no aparece. */
+async function filaDeOrden(pg, clave, intentos){
+  for(var i = 0; i < (intentos || 4); i++){
+    if(i){ await pg.ir(C.BASE + URL_ORDENES); await esperar(pg, 40000); }
+    else if((await pg.url()).indexOf('/Create') >= 0 || (await pg.url()).indexOf(URL_ORDENES) < 0){ await pg.ir(C.BASE + URL_ORDENES); await esperar(pg, 40000); }
+    try{ await pg.loc('#btNuevoRegistro').waitFor('visible', 30000); }catch(e){ if(e instanceof Cortado) throw e; }
+    await esperar(pg, 20000);
+    var f = await pg.evaluar(JS_FILA_ORDEN, clave);
+    if(f) return f;
+    await pg.esperar(1500);
+  }
+  return null;
+}
+
+/* El PDF del "Comprobante Detallado" de una orden de la lista (base64) o ''. */
+async function pdfDeOrden(pg, fila, charla){
+  try{
+    await pg.evaluar(JS_ELEGIR_FILA, fila.id);
+    await pg.esperar(300);
+    await pg.loc('#btReporteDetallado').click({ timeout: 15000 });
+    await pg.loc('#iframeReporte').waitFor('attached', 30000);
+    var fin = Date.now() + 90000, marco = null;
+    while(Date.now() < fin){
+      await pg.esperar(1500);
+      try{ marco = await pg.marcoDe('#iframeReporte'); }catch(e){ if(e instanceof Cortado) throw e; }
+      if(marco && await visorListo(pg, marco)) break;
+      marco = null;
+    }
+    if(!marco) throw new Error('el informe no terminó de armarse');
+    var b64 = await pg.evaluar(JS_PDF_VISOR, undefined, marco);
+    if(!b64 || String(b64).indexOf('JVBER') !== 0) throw new Error('lo que bajó no es un PDF');
+    charla.decir('PDF de la orden bajado (' + Math.round(b64.length * 3 / 4 / 1024) + ' KB).');
+    await cerrarPopups(pg);
+    return b64;
+  }catch(e){
+    if(e instanceof Cortado) throw e;
+    charla.decir('[!] No pude bajar el PDF de la orden (' + primeraLinea(e) + ').');
+    return '';
+  }
+}
+
+/* La carga entera. o = lo que da datosOrdenAlbor: {id, clave, observaciones, proveedor: {nombre, cuit, codigo},
+   solicitante, responsable, items: [{insumo, cantidad, precio, observaciones}], total}.
+   Devuelve {ok, numero, pdf, proveedor: {codigo, nombre}} o {ok: false, motivo, cancelado}. */
+function cargar_orden_compra(o){
+  pedirPermisoAvisos();
+  o = o || {};
+  if(!o.clave || !(o.items || []).length) return Promise.resolve({ ok: false, motivo: 'La orden llegó sin ítems.' });
+  return trabajo('__alborLog', async function(){
+    M.cancelar = false;
+    var charla = new Charla(function(t){ anotar(t); avisar(t); }, preguntar, function(){ return M.cancelar; });
+    try{
+      var a = await alborConSesion(), pg = a.pg, prov = null;
+      await pg.ir(C.BASE + URL_ORDENES);
+      await esperar(pg, 40000);
+      await cerrarAnuncios(pg);
+      // ¿Ya está? (un intento anterior la guardó): nunca dos veces
+      var fila = await filaDeOrden(pg, o.clave, 1);
+      if(fila) charla.decir('Esta orden ya estaba guardada en Albor: leo su número.');
+      else{
+        var r = null;
+        for(var vuelta = 1; vuelta <= 2 && !r; vuelta++){
+          try{ r = await armarOrden(pg, o, charla); }
+          catch(e){
+            if(!(e instanceof SesionPerdida) || vuelta === 2) throw e;
+            charla.decir('[!] Albor cerró la sesión mientras armaba la orden (no estaba guardada): la armo de nuevo.');
+            if(!(await a.asegurarSesion(5))) throw new Error('Albor sigue sin sesión. Iniciá sesión y tocá «Cargar en Albor» de nuevo.');
+            await pg.ir(C.BASE + URL_ORDENES); await esperar(pg, 40000);
+          }
+        }
+        prov = r.prov;
+        var en = (await pg.evaluar(JS_ITEMS_ORDEN)) || [];
+        var aviso = r.fallados.length ? '\n\n⚠️ No pude cargar ' + r.fallados.length + ' ítem' + (r.fallados.length === 1 ? '' : 's') + ': ' +
+                    r.fallados.map(function(i){ return i.insumo + ' (' + i.cantidad + ' × ' + unidadesAlbor(i.precio) + ')'; }).join(', ') + '. Cargalos a mano antes de guardar.' : '';
+        if(en.length > o.items.length) aviso += '\n\n⚠️ La grilla tiene ' + en.length + ' renglones y son ' + o.items.length + ': borrá los de más antes de guardar.';
+        await charla.pausa('Revisá la orden en Albor antes de guardarla:\n' +
+                           '• Proveedor: ' + prov.nombre + '\n• Solicitante: ' + (r.sol || '—') + ' · Responsable: ' + (r.res || '—') + '\n' +
+                           '• ' + r.cargados + ' de ' + o.items.length + ' ítems · total $ ' + unidadesAlbor(o.total) + (o.prueba ? '\n\n🧪 Es una prueba: después borrala en Albor.' : '') +
+                           aviso + '\n\nTocá Guardar y la guardo (una sola vez).', 'Guardar');
+        await guardarOrden(pg, charla);
+        fila = await filaDeOrden(pg, o.clave, 4);
+      }
+      if(!fila) throw new Error('Albor guardó, pero no encontré la orden en la lista (busqué «' + o.clave + '» en las Observaciones). Cargá el número y el PDF a mano.');
+      var numero = numeroOrden(fila.texto);
+      charla.decir('Orden de compra N° ' + (numero || '?'));
+      var pdf = await pdfDeOrden(pg, fila, charla);
+      await a.cerrar();
+      M.albor = null;
+      avisarCompu('Listo: la orden ' + numero + ' quedó en Albor', 'Volvé a la app.', false);
+      return { ok: true, numero: numero, pdf: pdf, proveedor: prov || null };
+    }catch(e){
+      if(e instanceof Cancelado) return { ok: false, cancelado: true, motivo: 'Cancelaste la carga de la orden. Si ya estaba guardada en Albor, la próxima vez la encuentro.' };
+      anotar('ERROR: ' + String((e && e.stack) || e).slice(0, 600));
+      avisarCompu('La orden no quedó cargada en Albor', motivoDe(e), false);
+      return { ok: false, motivo: motivoDe(e) };
+    }finally{
+      M.esperando = null;
+    }
+  });
+}
+
 window.AlborExt = {
   buscar: buscar,
   registro: function(){ return REGISTRO.slice(); },
@@ -2679,6 +3025,7 @@ window.AlborExt = {
     bajar_existencias: bajar_existencias,
     cargar_transferencia: cargar_transferencia,
     cargar_egresos: cargar_egresos,
+    cargar_orden_compra: cargar_orden_compra,          // Fase 6, Paso 5
     responder_carga: responder_carga,
     cerrar_albor: cerrar_albor,
     abrir_carpeta: abrir_carpeta,

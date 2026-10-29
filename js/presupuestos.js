@@ -743,7 +743,8 @@ function pintarCompra() {
   $('tj-compra').querySelectorAll('[data-abrir-ref]').forEach(function (x) { x.addEventListener('click', function () { irPorAccesoDirecto(x.dataset.abrirRef); }); });
   $('tj-compra').querySelectorAll('[data-pr-chat]').forEach(function (x) { x.addEventListener('click', function () { irAlChat(x.dataset.prChat); }); });
   $('tj-compra').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
-  if ($('tj-oc-mano')) $('tj-oc-mano').addEventListener('click', cargarOrdenAManoUI);
+  if ($('tj-oc-mano')) $('tj-oc-mano').addEventListener('click', function () { cargarOrdenAManoUI(TB.abierta); });
+  if ($('tj-oc-albor')) $('tj-oc-albor').addEventListener('click', function () { cargarOrdenEnAlbor(TB.abierta); });
   if ($('tj-oc-sin')) $('tj-oc-sin').addEventListener('click', mandarSinOrdenUI);
   if ($('tj-oc-mandar')) $('tj-oc-mandar').addEventListener('click', mandarOrdenUI);
   if ($('tj-anular')) $('tj-anular').addEventListener('click', function () {
@@ -757,11 +758,12 @@ function pintarCompra() {
 /** El estado de la orden en el bloque "🛒 Compra" (solo las compras de la Fase 6 la tienen). */
 function htmlOrdenCompra(o) {
   if (!o) return '';
-  if (o.estado === 'Pendiente') {
-    return '<div class="pr-orden pendiente"><b>⚠️ Orden de compra pendiente</b>' +
-      '<div class="pr-nota">' + (o.prueba ? '🧪 Es una prueba: nunca le llega nada al proveedor. ' : 'El proveedor todavía no recibió nada: el mensaje sale con el número de la orden. ') +
-      'Más adelante la va a cargar sola la extensión en Albor; mientras, cargala a mano.</div>' +
-      '<div class="cambio-b"><button type="button" class="btn-chico si" id="tj-oc-mano">📄 Cargar la orden a mano</button> ' +
+  if (o.estado === 'Pendiente' || o.estado === 'Armando') {
+    return '<div class="pr-orden pendiente"><b>⚠️ Orden de compra pendiente' + (o.estado === 'Armando' ? ' (se está cargando en Albor)' : '') + '</b>' +
+      '<div class="pr-nota">' + (o.prueba ? '🧪 Es una prueba: nunca le llega nada al proveedor. ' : 'El proveedor todavía no recibió nada: le llega con la orden. ') +
+      (o.motivo ? 'La última vez: ' + esc(o.motivo) : '') + '</div>' +
+      '<div class="cambio-b"><button type="button" class="btn-chico si" id="tj-oc-albor">🧾 Cargar en Albor</button> ' +
+      '<button type="button" class="btn-chico" id="tj-oc-mano">📄 Cargar la orden a mano</button> ' +
       '<button type="button" class="btn-chico" id="tj-oc-sin">Mandar sin orden</button></div></div>';
   }
   if (o.estado === 'Sin orden') return '<div class="pr-orden pendiente"><b>Sin orden de compra</b><div class="pr-nota">' + esc(o.motivo || '') + '</div></div>';
@@ -784,19 +786,24 @@ function leerPdfBase64(f) {
 }
 
 /** "📄 Cargar la orden a mano": el número que dio Albor y el PDF; después se le manda al proveedor (en una prueba, a nadie). */
-async function cargarOrdenAManoUI() {
-  const wid = TB.abierta, o = TB.detalle && TB.detalle.compra && TB.detalle.compra.orden;
-  if (!o) return;
+async function cargarOrdenAManoUI(wid, prueba) {
+  const o = TB.abierta === wid && TB.detalle && TB.detalle.compra && TB.detalle.compra.orden;
+  if (prueba === undefined) prueba = !!(o && o.prueba);
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
+  // Feli (29/10): el archivo se elige con un botón que parezca un botón ("Choose File" no lo parecía)
   cuerpo.innerHTML = '<div class="campo"><label for="oc-num">Número de la orden en Albor</label><input type="text" id="oc-num" maxlength="40" placeholder="Ej: 2026-OCNS-124" autocomplete="off"></div>' +
-    '<div class="campo"><label for="oc-pdf">El PDF de la orden</label><input type="file" id="oc-pdf" accept="application/pdf,.pdf"></div>' +
-    '<p class="nota">' + (o.prueba ? '🧪 Es una prueba: el PDF queda en la compra y en Contabilidad, y no se le manda nada al proveedor.'
-                                   : 'Al guardar, al proveedor le llega el PDF con el mensaje de Admin → Ajustes.') + '</p>';
+    '<div class="campo"><label for="oc-pdf">El PDF de la orden</label><label class="btn-archivo" for="oc-pdf">📎 Elegir el PDF</label>' +
+    '<input type="file" id="oc-pdf" accept="application/pdf,.pdf" hidden><span class="archivo-elegido" id="oc-pdf-n">Todavía no elegiste ninguno.</span></div>' +
+    '<p class="nota">' + (prueba ? '🧪 Es una prueba: el PDF queda en la compra y en Contabilidad, y no se le manda nada al proveedor.'
+                                 : 'Al guardar, al proveedor le llega el PDF con el mensaje de la orden.') + '</p>';
   const d = await dialogo({ titulo: 'Cargar la orden de compra', cuerpo: cuerpo,
     botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () { return { numero: $('oc-num').value.trim(), f: $('oc-pdf').files[0] }; } }],
     alAbrir: function () {
-      const revisar = function () { $('dg-ok').disabled = !$('oc-num').value.trim() || !$('oc-pdf').files.length; };
+      const revisar = function () {
+        $('dg-ok').disabled = !$('oc-num').value.trim() || !$('oc-pdf').files.length;
+        $('oc-pdf-n').textContent = $('oc-pdf').files.length ? '📄 ' + $('oc-pdf').files[0].name : 'Todavía no elegiste ninguno.';
+      };
       $('oc-num').addEventListener('input', revisar);
       $('oc-pdf').addEventListener('change', revisar);
       revisar();
@@ -811,6 +818,74 @@ async function cargarOrdenAManoUI() {
   if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: la orden se carga con señal. Probá de nuevo en un rato.' : r.error, 'bad');
   aviso(r.prueba ? 'Listo: la orden ' + d.numero + ' quedó cargada (es una prueba: no se le mandó nada al proveedor).' : 'Listo: la orden ' + d.numero + ' quedó cargada y le llegó al proveedor.');
   if (TB.abierta === wid) traerTarjeta(wid);
+}
+
+/* ---------- Parte B: la orden se carga en Albor con la extensión, en el mismo momento de la compra (Feli, 29/10) ---------- */
+
+/** ¿Está la extensión de Albor en esta compu? (en el celular, nunca) */
+async function hayExtensionAlbor() {
+  try { return !!(window.AlborExt && await window.AlborExt.buscar()); } catch (e) { return false; }
+}
+
+/** El recuadro de avance y las pausas (las mismas de Transferencias: también salen en la pestaña de Albor). */
+const OC_ALBOR = {
+  abrir: function (titulo) {
+    $('oc-albor-t').textContent = titulo;
+    $('oc-albor-log').textContent = '';
+    $('oc-albor-pausa').hidden = true;
+    if (!$('oc-albor').open) $('oc-albor').showModal();
+  },
+  cerrar: function () { if ($('oc-albor').open) $('oc-albor').close(); }
+};
+window.__alborLog = function (t) { const l = $('oc-albor-log'); l.textContent += (l.textContent ? '\n' : '') + t; l.scrollTop = l.scrollHeight; };
+window.__alborPausa = function (texto, boton) {
+  $('oc-albor-txt').textContent = texto;
+  $('oc-albor-seguir').textContent = boton;
+  $('oc-albor-pausa').hidden = false;
+};
+window.__alborPausaFin = function () { $('oc-albor-pausa').hidden = true; };
+$('oc-albor-seguir').addEventListener('click', function () { $('oc-albor-pausa').hidden = true; window.AlborExt.api.responder_carga('seguir'); });
+$('oc-albor-cancelar').addEventListener('click', function () { $('oc-albor-pausa').hidden = true; window.AlborExt.api.responder_carga('cancelar'); });
+$('oc-albor').addEventListener('cancel', function (e) { e.preventDefault(); });      // no se cierra con Escape mientras trabaja
+
+/** Carga la orden de una compra en Albor y, con el número y el PDF, se la manda al proveedor (en una prueba, a nadie). */
+async function cargarOrdenEnAlbor(wid) {
+  if (!(await hayExtensionAlbor())) {
+    const mano = await dialogo({ titulo: 'La orden se carga desde la compu',
+      texto: 'Para cargar la orden en Albor hace falta la compu con la extensión de Albor (la de Transferencias). Si ya la cargaste en Albor, podés poner el número y el PDF a mano.',
+      botones: [{ texto: 'Volver', valor: null }, { texto: '📄 Cargarla a mano', clase: 'btn', valor: true }] });
+    if (mano) cargarOrdenAManoUI(wid);
+    return false;
+  }
+  const d = await api('datosOrdenAlbor', wid);
+  if (!d.ok) { aviso(d.sinConexion ? '📶 Hace falta señal para cargar la orden.' : d.error, 'bad'); return false; }
+  OC_ALBOR.abrir('Cargando la orden de compra en Albor');
+  let r;
+  try { r = await window.AlborExt.api.cargar_orden_compra(d.orden); }
+  catch (e) { r = { ok: false, motivo: String(e && e.message || e) }; }
+  if (!r.ok || !r.numero) {
+    OC_ALBOR.cerrar();
+    await api('ordenNoCargada', wid, r.motivo || 'No se leyó el número de la orden');
+    await dialogo({ titulo: r.cancelado ? 'Se canceló la carga' : 'La orden no quedó cargada', texto: (r.motivo || 'No se pudo leer el número de la orden.') +
+      '\n\nLa compra quedó hecha con la orden pendiente: desde su tarjeta podés tocar "🧾 Cargar en Albor" de nuevo, cargarla a mano o mandar sin orden.',
+      botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
+    if (TB.abierta === wid) traerTarjeta(wid);
+    return false;
+  }
+  window.__alborLog('Guardando el número y el PDF en la app…');
+  let x;
+  if (r.pdf) x = await apiLenta('cargarOrdenAMano', wid, r.numero, { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + r.numero, base64: r.pdf }, r.proveedor || null);
+  OC_ALBOR.cerrar();
+  if (!r.pdf) {
+    aviso('La orden ' + r.numero + ' quedó en Albor, pero no pude bajar su PDF: bajalo de Albor y cargalo a mano.', 'bad');
+    cargarOrdenAManoUI(wid);
+    return false;
+  }
+  if (!x.ok) { aviso('La orden ' + r.numero + ' quedó en Albor, pero no se guardó en la app (' + (x.error || 'sin señal') + '). Cargala a mano con ese número.', 'bad'); return false; }
+  aviso(x.prueba ? 'Listo: la orden ' + r.numero + ' quedó en Albor y en la app (es una prueba: no se le mandó nada al proveedor).'
+                 : 'Listo: la orden ' + r.numero + ' quedó en Albor y le llegó al proveedor con el PDF.');
+  if (TB.abierta === wid) traerTarjeta(wid);
+  return true;
 }
 
 /** "Mandar sin orden": la confirmación de siempre (en una prueba, no sale nada). */

@@ -398,6 +398,11 @@ function mensajeCompra(g) {
   return q.msjCompra.replace(/[ \t]*\{contacto\}/g, c ? ' ' + c : '').split('{codigo}').join(q.codigo).split('{productos}').join(productos);
 }
 
+/** El mensaje de la orden (Ajustes), con el mail ya puesto; {numero} queda para cuando Albor lo da. */
+function mensajeOrden(oq) {
+  return String(oq.msjOrden || '').split('{mail}').join(oq.mail || '(falta el mail)');
+}
+
 /** Fase 6, Paso 5: qué pasa con la orden de compra de esta compra (solo en las de la Fase 6). */
 function htmlOrdenEnCompra(oq) {
   if (!oq) return '';
@@ -451,6 +456,16 @@ async function confirmarCompra() {
         if (!rc.ok) { aviso(rc.sinConexion ? '📶 Hace falta señal para cargar el CUIT.' : rc.error, 'bad'); break; }
         op.cuit = cuit;
       }
+      // Parte B (Feli, 29/10): la orden se carga en Albor en el mismo momento de la compra, desde la compu con la extensión
+      const conOrden = !!(oq && oq.orden);
+      const ext = conOrden && await hayExtensionAlbor();
+      if (conOrden && !ext) {
+        const igual = await dialogo({ titulo: 'Esta compra lleva orden de compra',
+          texto: 'La orden se carga en Albor en el mismo momento de la compra, así que se compra desde la compu con la extensión de Albor (la de Transferencias). ' +
+                 'Si comprás igual, la orden queda pendiente y la cargás a mano.',
+          botones: [{ texto: 'Volver', valor: null }, { texto: 'Comprar igual', clase: 'btn', valor: true }] });
+        if (!igual) break;
+      }
       // Lo no pedido de una tarjeta de la tanda (varios pedidos): a cuál va
       const pedidos = CQ.datos.pedidos || [];
       const conNP = g.lineas.some(function (l) { return /^NP\|/.test(l); }) && pedidos.length > 1;
@@ -460,9 +475,10 @@ async function confirmarCompra() {
         pedidos.map(function (p) { return '<option value="' + esc(p.ref) + '">' + esc([p.sitio, p.titulo || p.ref].filter(String).join(' · ')) + '</option>'; }).join('') + '</select></div>' : '') +
         htmlOrdenEnCompra(oq) +
         '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') + (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
-        (oq && oq.orden ? '. Al tocar "Comprar", ya queda comprado: sale la tarjeta de seguimiento con la orden de compra pendiente. Este mensaje se usa solo si después se manda sin orden.</p>'
-                        : '. Al tocar "Comprar y mandar", ya queda comprado: sale la tarjeta de seguimiento y le llega este mensaje por WhatsApp. Lo podés cambiar.</p>') +
-        '<textarea id="cq-msj" rows="10">' + esc(mensajeCompra(g)) + '</textarea>';
+        (conOrden ? '. Al tocar "Comprar", queda comprado y ' + (ext ? 'se carga la orden en Albor' : 'te pido el número y el PDF de la orden') +
+                    '. Con el número, al proveedor le llega el PDF de la orden con este mensaje ({numero} se completa solo). Lo podés cambiar.</p>'
+                  : '. Al tocar "Comprar y mandar", ya queda comprado: sale la tarjeta de seguimiento y le llega este mensaje por WhatsApp. Lo podés cambiar.</p>') +
+        '<textarea id="cq-msj" rows="' + (conOrden ? 6 : 10) + '">' + esc(conOrden ? mensajeOrden(oq) : mensajeCompra(g)) + '</textarea>';
       const texto = await dialogo({ titulo: 'Comprarle a ' + g.col.nombre + (grupos.length > 1 ? ' (' + (i + 1) + ' de ' + grupos.length + ')' : ''), cuerpo: cuerpo,
         botones: [{ texto: 'Volver', valor: null }, { texto: oq && (oq.orden || oq.prueba) ? '🛒 Comprar' : '🛒 Comprar y mandar', clase: 'btn', valor: function () {
           if ($('cq-pedido-np')) g.pedidoNP = $('cq-pedido-np').value;
@@ -470,10 +486,17 @@ async function confirmarCompra() {
         } }] });
       if (!texto) break;
       aviso('Comprando a ' + g.col.nombre + '…');
-      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: texto, pedidoNP: g.pedidoNP || '' });
+      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: texto, pedidoNP: g.pedidoNP || '',
+                                            textoSinOrden: conOrden ? mensajeCompra(g) : '' });
       if (!r.ok) { aviso(r.sinConexion ? '📶 Poca señal: no se pudo comprar a ' + g.col.nombre + '. Probá cuando vuelva.' : r.error, 'bad'); break; }
       compradas++;
       g.lineas.forEach(function (l) { delete CQ.sel[l]; });
+      if (r.orden) {
+        // En el mismo momento: la orden en Albor (o, sin la extensión, a mano)
+        if (ext) await cargarOrdenEnAlbor(r.tarjeta);
+        else await cargarOrdenAManoUI(r.tarjeta, !!oq.prueba);
+        continue;
+      }
       aviso(r.orden ? 'Listo: comprado a ' + g.col.nombre + '. La orden de compra quedó pendiente: cargala desde la tarjeta de seguimiento.'
             : r.prueba ? 'Listo: comprado a ' + g.col.nombre + ' (es una prueba: no se le mandó nada).'
             : r.enviado ? 'Listo: comprado a ' + g.col.nombre + ' y le llegó la confirmación.' : 'Comprado a ' + g.col.nombre + ', pero el mensaje no salió: mandalo desde el chat.',
