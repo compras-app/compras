@@ -37,7 +37,7 @@ function mostrarBuscar() {
   if (!BU.armado) {
     BU.armado = true;
     $('bu-sitio').innerHTML = '<option value="">Todas</option>' +
-      ((APP.config && APP.config.sitios) || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+      ((APP.config && (APP.config.sitiosFiltro || APP.config.sitios)) || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
   }
   pintarFiltrosBuscar();
   buscarPedidos();

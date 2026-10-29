@@ -153,7 +153,7 @@ function armarFiltros() {
   $('tb-aprobar').hidden = !APP.yo.aprueba;
   if (admin) {
     sitio.innerHTML = '<option value="">Ver todos</option>' +
-      (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+      (APP.config.sitiosFiltro || APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
     resp.innerHTML = '<option value="">Ver todos</option><option value="-">Sin responsable</option>' +
       (APP.config.admins || []).map(function (a) { return '<option>' + esc(a) + '</option>'; }).join('');
   }
@@ -162,7 +162,7 @@ function armarFiltros() {
 /** Las opciones de granja y responsable con la lista nueva (al volver a la app: alguien dado de baja ya no sale), sin perder lo elegido. */
 function rearmarOpcionesFiltros() {
   if (!APP.yo || !APP.yo.admin || !$('tb-resp')) return;
-  $('tb-sitio').innerHTML = '<option value="">Ver todos</option>' + (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+  $('tb-sitio').innerHTML = '<option value="">Ver todos</option>' + (APP.config.sitiosFiltro || APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
   $('tb-resp').innerHTML = '<option value="">Ver todos</option><option value="-">Sin responsable</option>' +
     (APP.config.admins || []).map(function (a) { return '<option>' + esc(a) + '</option>'; }).join('');
   if (TB.filtros.resp && TB.filtros.resp !== '-' && (APP.config.admins || []).indexOf(TB.filtros.resp) === -1) TB.filtros.resp = '';

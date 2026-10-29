@@ -61,7 +61,7 @@ function mostrarServicios() {
   $('sv-aprobar').hidden = !APP.yo.aprueba;                 // Feli (19/10)
   if (admin) {
     $('sv-sitio').innerHTML = '<option value="">Ver todos</option>' +
-      (APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+      (APP.config.sitiosFiltro || APP.config.sitios || []).map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
     $('sv-resp').innerHTML = '<option value="">Ver todos</option><option value="-">Sin responsable</option>' +
       (APP.config.admins || []).map(function (a) { return '<option>' + esc(a) + '</option>'; }).join('');
   }

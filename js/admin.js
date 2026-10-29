@@ -408,11 +408,13 @@ function pintarAjustes() {
 function granjasCambiadas(sitios) {
   AD.ajustes.sitios = sitios;
   APP.config.sitios = sitios;
+  if (APP.config.sitiosFiltro) APP.config.sitiosFiltro = sitios.concat(APP.config.sitiosFiltro.indexOf('Extras') !== -1 && sitios.indexOf('Extras') === -1 ? ['Extras'] : []);
   if (typeof BU !== 'undefined') BU.armado = false;
   const sel = $('tb-sitio'), actual = sel.value;
   if (sel && APP.yo.admin) {
-    sel.innerHTML = '<option value="">Ver todos</option>' + sitios.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
-    sel.value = sitios.indexOf(actual) !== -1 ? actual : '';
+    const filtro = APP.config.sitiosFiltro || sitios;
+    sel.innerHTML = '<option value="">Ver todos</option>' + filtro.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join('');
+    sel.value = filtro.indexOf(actual) !== -1 ? actual : '';
     if (TB.filtros && sel.value !== TB.filtros.sitio) { TB.filtros.sitio = sel.value; }
   }
   AD.masivo.sitiosArmados = false;
