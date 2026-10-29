@@ -221,7 +221,8 @@ function pintarTarjetaContable() {
     h += '<h2 class="cx-titulo">' + esc(t.titulo) + '</h2>' + (t.prueba ? '<p class="nota">🧪 Compra de un pedido de prueba</p>' : '') +
       (r.orden && r.orden.numero
         ? '<div class="caja cx-oc"><h3>📄 Orden de compra N° ' + esc(r.orden.numero) + '</h3>' +
-          (r.orden.pdf ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdf) + '">Ver la orden de compra</button>' : '') + '</div>'
+          '<div class="ad-acciones">' + (r.orden.pdf ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdf) + '">Ver la orden de Albor</button>' : '') +
+          (r.orden.pdfProveedor ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdfProveedor) + '">Ver la orden enviada al proveedor</button>' : '') + '</div></div>'
         : t.sinOrden ? '<div class="caja cx-sinorden"><b>Este pedido no tiene orden de compra</b>' + (t.motivo ? '<small>' + esc(t.motivo) + '</small>' : '') + '</div>' : '') +
       '<div class="caja"><h3>Compra</h3><dl class="ad-datos">' +
         '<dt>Proveedor</dt><dd>' + esc(t.proveedor || '—') + '</dd><dt>CUIT</dt><dd>' + esc(t.cuit || 'No está cargado') + '</dd>' +

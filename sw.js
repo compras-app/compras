@@ -5,11 +5,11 @@
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
 // El formulario (pedido/) y Transferencias (transferencias/) también son parte de la app.
-const VERSION = 'app-8e01b918c6';
+const VERSION = 'app-bce7e71a05';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
   './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js', './js/tablero.js', './js/cotizar.js', './js/recepcion.js', './js/chats.js', './js/presupuestos.js', './js/cuadro.js', './js/tareas.js', './js/servicios.js', './js/notificaciones.js', './js/buscar.js', './js/admin.js', './js/cuentas.js', './js/reportes.js', './js/contabilidad.js',
-  './manifest.webmanifest', './icono-180.png', './icono-192.png', './icono-512.png',
+  './manifest.webmanifest', './icono-180.png', './icono-192.png', './icono-512.png', './img/logo-la-quimera.jpg',
   // El formulario (pedido/)
   './pedido/', './pedido/index.html', './pedido/formulario.css', './pedido/formulario.js',
   './pedido/manifest.webmanifest', './pedido/icono-180.png', './pedido/icono-192.png', './pedido/icono-512.png',

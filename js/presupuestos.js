@@ -767,7 +767,8 @@ function htmlOrdenCompra(o) {
       '<button type="button" class="btn-chico" id="tj-oc-sin">Mandar sin orden</button></div></div>';
   }
   if (o.estado === 'Sin orden') return '<div class="pr-orden pendiente"><b>Sin orden de compra</b><div class="pr-nota">' + esc(o.motivo || '') + '</div></div>';
-  const ver = o.pdf ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdf) + '">Ver la orden</button>' : '';
+  const ver = (o.pdfProveedor ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdfProveedor) + '">Ver la orden enviada al proveedor</button>' : '') +
+              (o.pdf ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdf) + '">Ver la orden de Albor</button>' : '');
   if (o.estado === 'Mandada') return '<div class="pr-orden"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +
     (o.prueba ? '<div class="pr-nota">🧪 Es una prueba: no se le mandó nada al proveedor.</div>' : '') + ver + '</div>';
   return '<div class="pr-orden pendiente"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +
@@ -814,7 +815,8 @@ async function cargarOrdenAManoUI(wid, prueba) {
   if (d.f.size > 10 * 1024 * 1024) return aviso('El PDF pesa más de 10 MB.', 'bad');
   aviso('Guardando la orden…');
   const base64 = await leerPdfBase64(d.f);
-  const r = await apiLenta('cargarOrdenAMano', wid, d.numero, { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + d.numero, base64: base64 });
+  const prov = await ordenParaProveedor(wid, d.numero);
+  const r = await apiLenta('cargarOrdenAMano', wid, d.numero, { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + d.numero + ' (Albor)', base64: base64 }, null, prov);
   if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: la orden se carga con señal. Probá de nuevo en un rato.' : r.error, 'bad');
   aviso(r.prueba ? 'Listo: la orden ' + d.numero + ' quedó cargada (es una prueba: no se le mandó nada al proveedor).' : 'Listo: la orden ' + d.numero + ' quedó cargada y le llegó al proveedor.');
   if (TB.abierta === wid) traerTarjeta(wid);
@@ -909,7 +911,11 @@ async function cargarOrdenEnAlbor(wid) {
   }
   window.__alborLog('Guardando el número y el PDF en la app…');
   let x;
-  if (r.pdf) x = await apiLenta('cargarOrdenAMano', wid, r.numero, { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + r.numero, base64: r.pdf }, r.proveedor || null);
+  if (r.pdf) {
+    window.__alborLog('Armando la orden para el proveedor…');
+    const prov = await ordenParaProveedor(wid, r.numero);
+    x = await apiLenta('cargarOrdenAMano', wid, r.numero, { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + r.numero + ' (Albor)', base64: r.pdf }, r.proveedor || null, prov);
+  }
   OC_ALBOR.cerrar();
   if (!r.pdf) {
     aviso('La orden ' + r.numero + ' quedó en Albor, pero no pude bajar su PDF: bajalo de Albor y cargalo a mano.', 'bad');
@@ -921,6 +927,147 @@ async function cargarOrdenEnAlbor(wid) {
                  : 'Listo: la orden ' + r.numero + ' quedó en Albor y le llegó al proveedor con el PDF.');
   if (TB.abierta === wid) traerTarjeta(wid);
   return true;
+}
+
+/* ---------- La orden de compra para el proveedor (Feli, 29/10): hecha por la app con su plantilla, no la de Albor ----------
+   En castellano, con el logo; sin "Entregar en" ni categoría; subtotal, IVA y total como en el presupuesto; "Autorizó" = quien
+   compró. Se arma en PDF (jsPDF de cdnjs, como las planillas de Transferencias) con el número que dio Albor. */
+const PDF_LIBS_OC = ['https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+                     'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'];
+let _librosOC = null;
+function librosPDFOrden() {
+  if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return Promise.resolve(window.jspdf.jsPDF);
+  if (!_librosOC) {
+    _librosOC = PDF_LIBS_OC.reduce(function (p, src) {
+      return p.then(function () {
+        return new Promise(function (ok, mal) {
+          const sc = document.createElement('script');
+          sc.src = src; sc.onload = ok;
+          sc.onerror = function () { sc.remove(); mal(new Error('No se pudo bajar lo que hace falta para armar el PDF.')); };
+          document.head.appendChild(sc);
+        });
+      });
+    }, Promise.resolve()).then(function () { return window.jspdf.jsPDF; });
+    _librosOC.catch(function () { _librosOC = null; });
+  }
+  return _librosOC;
+}
+// La letra del PDF (Helvetica) solo tiene los caracteres latinos: lo demás (emojis, comillas raras) se cambia
+function txtPDF(v) {
+  return String(v == null ? '' : v).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—−]/g, '-')
+    .replace(/[  ]/g, ' ').replace(/[^\u0000-ÿ]/g, '');
+}
+function numPDF(n, dec) { return n === null || n === undefined || n === '' ? '' : Number(n).toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+let _logoOC = null;
+function logoOrden() {
+  if (!_logoOC) {
+    _logoOC = fetch('img/logo-la-quimera.jpg').then(function (r) { if (!r.ok) throw new Error('sin logo'); return r.blob(); })
+      .then(function (b) { return new Promise(function (ok) { const fr = new FileReader(); fr.onload = function () { ok(fr.result); }; fr.readAsDataURL(b); }); })
+      .catch(function () { _logoOC = null; return null; });
+  }
+  return _logoOC;
+}
+
+/** El PDF de la orden para el proveedor (base64, sin el "data:"). d = lo de datosOrdenProveedor. */
+async function armarOrdenPDF(d) {
+  const jsPDF = await librosPDFOrden();
+  const logo = await logoOrden();
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const azul = [27, 36, 64], gris = [110, 110, 110], ancho = 210, m = 15;
+  const mon = d.moneda === 'USD' ? 'US$' : '$';
+  if (logo) doc.addImage(logo, 'JPEG', m, 8, 32, 32);
+  doc.setTextColor.apply(doc, azul);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(22);
+  doc.text('Orden de compra', ancho - m, 22, { align: 'right' });
+  doc.setFontSize(13);
+  doc.text(txtPDF('N° ' + d.numero), ancho - m, 30, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor.apply(doc, gris);
+  doc.text(txtPDF('Fecha: ' + new Date(d.fecha || Date.now()).toLocaleDateString('es-AR')), ancho - m, 36, { align: 'right' });
+  // Pedido por / Proveedor
+  let y = 50;
+  const bloque = function (x, titulo, lineas) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul);
+    doc.text(titulo, x, y);
+    doc.setDrawColor.apply(doc, azul); doc.setLineWidth(0.5); doc.line(x, y + 1.5, x + 85, y + 1.5);
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+    let yy = y + 7;
+    lineas.filter(Boolean).forEach(function (l, i) {
+      if (i === 0) doc.setFont('helvetica', 'bold'); else doc.setFont('helvetica', 'normal');
+      doc.text(txtPDF(l), x, yy, { maxWidth: 85 }); yy += 5.5;
+    });
+    return yy;
+  };
+  const p = d.proveedor || {}, e = d.empresa || {};
+  const y1 = bloque(m, 'PEDIDO POR', [e.nombre, e.cuit ? 'CUIT ' + e.cuit : '', e.mail]);
+  const y2 = bloque(110, 'PROVEEDOR', [p.nombre, p.cuit ? 'CUIT ' + p.cuit : '', p.mail]);        // sin contacto ni teléfono (Feli, 29/10)
+  y = Math.max(y1, y2) + 4;
+  // Detalle de la orden
+  const cond = d.condiciones || {};
+  const detalle = [['N° de orden', d.numero], ['Fecha', new Date(d.fecha || Date.now()).toLocaleDateString('es-AR')],
+                   cond.plazo ? ['Plazo de entrega', cond.plazo] : null, ['Moneda', d.moneda === 'USD' ? 'Dólares' : 'Pesos']].filter(Boolean);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul);
+  doc.text('DETALLE DE LA ORDEN', m, y);
+  doc.line(m, y + 1.5, ancho - m, y + 1.5);
+  doc.autoTable({ startY: y + 3, theme: 'plain', margin: { left: m }, tableWidth: 110, styles: { fontSize: 10, cellPadding: 1.4, textColor: [30, 30, 30] },
+                  columnStyles: { 0: { textColor: gris, cellWidth: 45 } }, body: detalle.map(function (r) { return [txtPDF(r[0]), txtPDF(r[1])]; }) });
+  y = doc.lastAutoTable.finalY + 8;
+  // Productos
+  doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, azul);
+  doc.text('PRODUCTOS', m, y);
+  const cuerpo = (d.renglones || []).map(function (r) {
+    const u = r.unidad && !/^(u|un|und|unid|unidad|unidades)\.?$/i.test(r.unidad) ? ' ' + r.unidad : '';
+    return [txtPDF(r.texto), txtPDF(numPDF(r.cantidad, 0) + u), r.precio === null || r.precio === undefined ? '' : mon + ' ' + numPDF(r.precio, 2),
+            r.importe === null || r.importe === undefined ? '' : mon + ' ' + numPDF(r.importe, 2)];
+  });
+  doc.autoTable({ startY: y + 3, margin: { left: m, right: m }, head: [['Descripción', 'Cantidad', 'Precio unitario', 'Total']], body: cuerpo,
+                  styles: { fontSize: 10, cellPadding: 2, lineColor: [215, 215, 215], lineWidth: 0.2 },
+                  headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
+                  columnStyles: { 1: { halign: 'right', cellWidth: 25 }, 2: { halign: 'right', cellWidth: 35 }, 3: { halign: 'right', cellWidth: 35, fontStyle: 'bold' } },
+                  didParseCell: function (c) { if (c.section === 'head' && c.column.index > 0) c.cell.styles.halign = 'right'; } });
+  y = doc.lastAutoTable.finalY + 6;
+  // Totales
+  const tot = [['Subtotal (sin IVA)', d.subtotal]];
+  if (d.iva !== null && d.iva !== undefined) tot.push(['IVA', d.iva]);
+  if (d.total !== null && d.total !== undefined) tot.push(['Total', d.total]);
+  tot.forEach(function (t, i) {
+    const ult = i === tot.length - 1 && tot.length > 1;
+    doc.setFont('helvetica', ult ? 'bold' : 'normal'); doc.setFontSize(ult ? 12 : 10); doc.setTextColor(30, 30, 30);
+    doc.text(t[0], ancho - m - 45, y, { align: 'right' });
+    doc.text(t[1] === null || t[1] === undefined ? '' : mon + ' ' + numPDF(t[1], 2), ancho - m, y, { align: 'right' });
+    y += ult ? 7 : 6;
+  });
+  doc.setFont('helvetica', 'italic'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, gris);
+  doc.text('Precios según presupuesto.', ancho - m, y, { align: 'right' });
+  y += 8;
+  // Condiciones del presupuesto
+  const cs = [['Forma de pago', cond.formaPago], ['Validez', cond.validez], ['Flete', cond.flete], ['Entrega', cond.entrega]].filter(function (c) { return c[1]; });
+  if (cs.length) {
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul);
+    doc.text('CONDICIONES', m, y);
+    doc.autoTable({ startY: y + 2, theme: 'plain', margin: { left: m }, tableWidth: ancho - 2 * m, styles: { fontSize: 10, cellPadding: 1.2, textColor: [30, 30, 30] },
+                    columnStyles: { 0: { textColor: gris, cellWidth: 45 } }, body: cs.map(function (c) { return [txtPDF(c[0]), txtPDF(c[1])]; }) });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+  if (y > 255) { doc.addPage(); y = 20; }
+  // La factura y quién autorizó
+  doc.setFillColor(240, 242, 247); doc.setDrawColor.apply(doc, azul);
+  doc.rect(m, y, ancho - 2 * m, 16, 'FD');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul);
+  doc.text(txtPDF('Por favor, indicá en la factura el N° de orden ' + d.numero + (d.mailFacturas ? ' y enviala a ' + d.mailFacturas + '.' : '.')),
+           m + 4, y + 9.5, { maxWidth: ancho - 2 * m - 8 });
+  y += 26;
+  doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+  if (d.autorizo) doc.text(txtPDF('Autorizó: ' + d.autorizo), m, y);
+  return doc.output('datauristring').replace(/^data:[^,]*,/, '');
+}
+
+/** La orden para el proveedor, como adjunto para cargarOrdenAMano (o null si no se pudo armar: va la de Albor). */
+async function ordenParaProveedor(wid, numero) {
+  try {
+    const d = await api('datosOrdenProveedor', wid, numero);
+    if (!d.ok) return null;
+    return { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + numero, base64: await armarOrdenPDF(d.orden) };
+  } catch (e) { return null; }
 }
 
 /** "Mandar sin orden": la confirmación de siempre (en una prueba, no sale nada). */
