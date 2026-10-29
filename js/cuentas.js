@@ -201,6 +201,8 @@ function pintarAjustesF6() {
   CU.f6Pintado = true;
   const ps = f.personas.slice();
   f.ven.forEach(function (n) { if (ps.indexOf(n) === -1) ps.push(n); });
+  $('aj-f6-msj').value = f.msjOrden || '';
+  $('aj-f6-mail').value = f.mailFacturas || '';
   $('aj-f6-ven').innerHTML = ps.map(function (n) {
     return '<label class="pa-check"><input type="checkbox" value="' + esc(n) + '"' + (f.ven.indexOf(n) !== -1 ? ' checked' : '') + '> ' + esc(n) + '</label>';
   }).join('');
@@ -211,4 +213,37 @@ $('aj-f6-ok').addEventListener('click', async function () {
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   AD.ajustes.fase6.ven = r.f6Ven;
   aviso('Listo: lo de la Fase 6 lo ven ' + r.f6Ven.join(', ') + '. A los demás les aparece la próxima vez que abran la app.');
+});
+
+/* Paso 5 (Feli, 29/10): el mensaje de la orden, el mail para las facturas y los pedidos de prueba */
+$('aj-f6-msj-ok').addEventListener('click', async function () {
+  const r = await api('guardarTextoOrden', { msj: $('aj-f6-msj').value.trim(), mail: $('aj-f6-mail').value.trim() });
+  if (!r.ok) return aviso(textoDeError(r), 'bad');
+  AD.ajustes.fase6.msjOrden = r.msjOrden;
+  AD.ajustes.fase6.mailFacturas = r.mailFacturas;
+  aviso('Listo: se guardó el mensaje de la orden de compra.');
+});
+$('aj-f6-pruebas').addEventListener('click', async function () {
+  const b = this;
+  b.disabled = true;
+  aviso('Armando los pedidos de prueba…');
+  const r = await apiLenta('crearPruebasF6');
+  b.disabled = false;
+  if (!r.ok) return aviso(textoDeError(r), 'bad');
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<p class="nota">Están en Decisión de Compras, con su presupuesto revisado. Abrí cada uno → "📊 Cuadro comparativo de compra" → "🛒 Realizar la compra".</p><ul>' +
+    r.hechos.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ul>';
+  await dialogo({ titulo: 'Listo: pedidos de prueba armados', cuerpo: cuerpo, botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
+  if (typeof cargarTablero === 'function') cargarTablero();
+});
+$('aj-f6-borrar').addEventListener('click', async function () {
+  const si = await dialogo({ titulo: '¿Borrar todos los pedidos de prueba?', texto: 'Se borran enteros todos los "PRUEBA - N" (pedidos, productos, presupuestos, compras y órdenes de la app). Las órdenes de prueba que estén en Albor se borran a mano allá. No se puede deshacer.',
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Sí, borrarlos', clase: 'btn peligro-btn', valor: true }] });
+  if (!si) return;
+  aviso('Borrando…');
+  const r = await apiLenta('borrarPruebasF6');
+  if (!r.ok) return aviso(textoDeError(r), 'bad');
+  aviso('Listo: se borraron ' + r.borrados + ' pedidos de prueba.');
+  if (typeof cargarTablero === 'function') cargarTablero();
 });

@@ -731,8 +731,11 @@ function pintarCompra() {
     }).join('') +
     (c.total !== null ? '<div class="pr-totales"><div><span>Total (sin IVA)</span><b>' + esc(plata(c.total, c.moneda)) + '</b></div></div>' : '') +
     (cond.length ? '<div class="pr-cond">' + cond.map(function (x) { return '<div><span>' + x[0] + ':</span> ' + esc(x[1]) + '</div>'; }).join('') + '</div>' : '') +
-    '<div class="pr-msjs">' + (c.manual ? '<div class="pr-nota">✅ Confirmada a mano por el chat (la app no le mandó mensaje).</div>' : '') + (m ? (m.enviado ? '<div class="pr-nota">✅ La confirmación le llegó por WhatsApp.</div>'
-                                                : '<div class="pr-problema">El mensaje de confirmación no salió: mandalo desde el chat.</div>') : '') +
+    htmlOrdenCompra(c.orden) +
+    '<div class="pr-msjs">' + (c.manual ? '<div class="pr-nota">✅ Confirmada a mano por el chat (la app no le mandó mensaje).</div>' : '') +
+    (m ? (m.prueba ? (c.orden ? '' : '<div class="pr-nota">🧪 Es una compra de prueba: no se le mandó nada al proveedor.</div>')
+          : m.enviado ? '<div class="pr-nota">✅ ' + (m.orden ? 'La orden de compra' : 'La confirmación') + ' le llegó por WhatsApp.</div>'
+          : m.espera ? '' : '<div class="pr-problema">El mensaje de confirmación no salió: mandalo desde el chat.</div>') : '') +
     (c.archivo ? '<button type="button" class="btn-chico" data-ver-archivo="' + esc(c.archivo) + '">Ver el presupuesto</button> ' : '') +
     (chatEsMio(c.chat) ? '<button type="button" class="btn-chico" data-pr-chat="' + esc(c.chat) + '">💬 Ir al chat</button>' : '') +
     // Feli (2026-10-06): a la vista, para anularla (es lo mismo que cancelar la tarjeta)
@@ -740,10 +743,100 @@ function pintarCompra() {
   $('tj-compra').querySelectorAll('[data-abrir-ref]').forEach(function (x) { x.addEventListener('click', function () { irPorAccesoDirecto(x.dataset.abrirRef); }); });
   $('tj-compra').querySelectorAll('[data-pr-chat]').forEach(function (x) { x.addEventListener('click', function () { irAlChat(x.dataset.prChat); }); });
   $('tj-compra').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
+  if ($('tj-oc-mano')) $('tj-oc-mano').addEventListener('click', cargarOrdenAManoUI);
+  if ($('tj-oc-sin')) $('tj-oc-sin').addEventListener('click', mandarSinOrdenUI);
+  if ($('tj-oc-mandar')) $('tj-oc-mandar').addEventListener('click', mandarOrdenUI);
   if ($('tj-anular')) $('tj-anular').addEventListener('click', function () {
     const t = buscarEnVista(TB.abierta);
     if (t) anularCompraUI(TB.abierta, t);
   });
+}
+
+/* ---------- Fase 6, Paso 5: la orden de compra de la compra (Feli, 28/10 y 29/10) ---------- */
+
+/** El estado de la orden en el bloque "🛒 Compra" (solo las compras de la Fase 6 la tienen). */
+function htmlOrdenCompra(o) {
+  if (!o) return '';
+  if (o.estado === 'Pendiente') {
+    return '<div class="pr-orden pendiente"><b>⚠️ Orden de compra pendiente</b>' +
+      '<div class="pr-nota">' + (o.prueba ? '🧪 Es una prueba: nunca le llega nada al proveedor. ' : 'El proveedor todavía no recibió nada: el mensaje sale con el número de la orden. ') +
+      'Más adelante la va a cargar sola la extensión en Albor; mientras, cargala a mano.</div>' +
+      '<div class="cambio-b"><button type="button" class="btn-chico si" id="tj-oc-mano">📄 Cargar la orden a mano</button> ' +
+      '<button type="button" class="btn-chico" id="tj-oc-sin">Mandar sin orden</button></div></div>';
+  }
+  if (o.estado === 'Sin orden') return '<div class="pr-orden pendiente"><b>Sin orden de compra</b><div class="pr-nota">' + esc(o.motivo || '') + '</div></div>';
+  const ver = o.pdf ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdf) + '">Ver la orden</button>' : '';
+  if (o.estado === 'Mandada') return '<div class="pr-orden"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +
+    (o.prueba ? '<div class="pr-nota">🧪 Es una prueba: no se le mandó nada al proveedor.</div>' : '') + ver + '</div>';
+  return '<div class="pr-orden pendiente"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +
+    '<div class="pr-problema">' + (o.estado === 'Mandando' ? 'Se estaba mandando: fijate en el chat si le llegó.' : 'Está guardada, pero el mensaje no salió.') + '</div>' +
+    ver + ' <button type="button" class="btn-chico si" id="tj-oc-mandar">Mandar la orden</button></div>';
+}
+
+/** Lee un PDF elegido (hasta 10 MB) como base64. */
+function leerPdfBase64(f) {
+  return new Promise(function (ok, mal) {
+    const fr = new FileReader();
+    fr.onload = function () { ok(String(fr.result).replace(/^data:[^,]*,/, '')); };
+    fr.onerror = mal;
+    fr.readAsDataURL(f);
+  });
+}
+
+/** "📄 Cargar la orden a mano": el número que dio Albor y el PDF; después se le manda al proveedor (en una prueba, a nadie). */
+async function cargarOrdenAManoUI() {
+  const wid = TB.abierta, o = TB.detalle && TB.detalle.compra && TB.detalle.compra.orden;
+  if (!o) return;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<div class="campo"><label for="oc-num">Número de la orden en Albor</label><input type="text" id="oc-num" maxlength="40" placeholder="Ej: 2026-OCNS-124" autocomplete="off"></div>' +
+    '<div class="campo"><label for="oc-pdf">El PDF de la orden</label><input type="file" id="oc-pdf" accept="application/pdf,.pdf"></div>' +
+    '<p class="nota">' + (o.prueba ? '🧪 Es una prueba: el PDF queda en la compra y en Contabilidad, y no se le manda nada al proveedor.'
+                                   : 'Al guardar, al proveedor le llega el PDF con el mensaje de Admin → Ajustes.') + '</p>';
+  const d = await dialogo({ titulo: 'Cargar la orden de compra', cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () { return { numero: $('oc-num').value.trim(), f: $('oc-pdf').files[0] }; } }],
+    alAbrir: function () {
+      const revisar = function () { $('dg-ok').disabled = !$('oc-num').value.trim() || !$('oc-pdf').files.length; };
+      $('oc-num').addEventListener('input', revisar);
+      $('oc-pdf').addEventListener('change', revisar);
+      revisar();
+      $('oc-num').focus();
+    } });
+  if (!d) return;
+  if (!(d.f.type === 'application/pdf' || /\.pdf$/i.test(d.f.name))) return aviso('La orden tiene que ser un PDF.', 'bad');
+  if (d.f.size > 10 * 1024 * 1024) return aviso('El PDF pesa más de 10 MB.', 'bad');
+  aviso('Guardando la orden…');
+  const base64 = await leerPdfBase64(d.f);
+  const r = await apiLenta('cargarOrdenAMano', wid, d.numero, { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + d.numero, base64: base64 });
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: la orden se carga con señal. Probá de nuevo en un rato.' : r.error, 'bad');
+  aviso(r.prueba ? 'Listo: la orden ' + d.numero + ' quedó cargada (es una prueba: no se le mandó nada al proveedor).' : 'Listo: la orden ' + d.numero + ' quedó cargada y le llegó al proveedor.');
+  if (TB.abierta === wid) traerTarjeta(wid);
+}
+
+/** "Mandar sin orden": la confirmación de siempre (en una prueba, no sale nada). */
+async function mandarSinOrdenUI() {
+  const wid = TB.abierta, c = TB.detalle && TB.detalle.compra, o = c && c.orden;
+  if (!o) return;
+  const si = await dialogo({ titulo: '¿Mandar sin orden de compra?',
+    texto: o.prueba ? 'Es una prueba: la compra queda "Sin orden de compra" (en rojo en Contabilidad) y no se le manda nada al proveedor.'
+                    : 'Al proveedor le llega la confirmación de siempre, sin orden. En Contabilidad queda en rojo, "Sin orden de compra".',
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Mandar sin orden', clase: 'btn', valor: true }] });
+  if (!si) return;
+  aviso('Un momento…');
+  const r = await api('mandarSinOrden', wid);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: probá de nuevo en un rato.' : r.error, 'bad');
+  aviso(r.prueba ? 'Listo: quedó sin orden de compra (es una prueba: no se mandó nada).' : r.enviado ? 'Listo: le llegó la confirmación, sin orden.' : 'Quedó sin orden, pero el mensaje no salió: mandalo desde el chat.', r.enviado || r.prueba ? '' : 'bad');
+  if (TB.abierta === wid) traerTarjeta(wid);
+}
+
+/** "Mandar la orden": de nuevo, si el mensaje no salió. */
+async function mandarOrdenUI() {
+  const wid = TB.abierta;
+  aviso('Mandando la orden…');
+  const r = await apiLenta('mandarOrden', wid);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: probá de nuevo en un rato.' : r.error, 'bad');
+  aviso(r.prueba ? 'Listo (es una prueba: no se mandó nada).' : 'Listo: la orden le llegó al proveedor.');
+  if (TB.abierta === wid) traerTarjeta(wid);
 }
 
 /** Las columnas de los terminados (Entregado y Cancelado). */

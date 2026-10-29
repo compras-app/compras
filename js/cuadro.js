@@ -398,6 +398,35 @@ function mensajeCompra(g) {
   return q.msjCompra.replace(/[ \t]*\{contacto\}/g, c ? ' ' + c : '').split('{codigo}').join(q.codigo).split('{productos}').join(productos);
 }
 
+/** Fase 6, Paso 5: qué pasa con la orden de compra de esta compra (solo en las de la Fase 6). */
+function htmlOrdenEnCompra(oq) {
+  if (!oq) return '';
+  return '<div class="cq-orden' + (oq.orden ? '' : ' mal') + '"><b>' + (oq.orden ? '📄 Lleva orden de compra' : 'Va sin orden de compra: ' + esc(oq.motivo)) + '</b>' +
+    (oq.prueba ? '<div class="nota">🧪 Es una prueba: no se le manda nada al proveedor.</div>' : '') + '</div>';
+}
+
+/** El CUIT de un proveedor que no lo tiene, para comprarle con orden (con el dígito verificador, como en el chat). */
+async function pedirCuitCompra(nombre) {
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<p class="cq-orden mal" style="margin-top:0"><b>' + esc(nombre) + ' no tiene su CUIT cargado</b></p>' +
+    '<label for="cq-cuit">CUIT (11 números, con o sin guiones)</label><input type="text" id="cq-cuit" inputmode="numeric" maxlength="13" autocomplete="off">' +
+    '<p class="nota" id="cq-cuit-n"></p>';
+  return dialogo({ titulo: 'Falta el CUIT', cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar y seguir', clase: 'btn', id: 'dg-ok', valor: function () { return $('cq-cuit').value.replace(/\D/g, ''); } }],
+    alAbrir: function () {
+      const revisar = function () {
+        const d = $('cq-cuit').value.replace(/\D/g, '');
+        const bien = d.length === 11 && digitoCuitBien(d);
+        $('dg-ok').disabled = !bien;
+        $('cq-cuit-n').textContent = d.length === 11 && !bien ? 'El último número no coincide: revisalo.' : '';
+      };
+      $('cq-cuit').addEventListener('input', revisar);
+      revisar();
+      $('cq-cuit').focus();
+    } });
+}
+
 async function confirmarCompra() {
   const grupos = compraElegida();
   if (!grupos.length || CQ.comprando) return;
@@ -413,6 +442,15 @@ async function confirmarCompra() {
                                    botones: [{ texto: 'Volver', valor: false }, { texto: 'Comprar igual', clase: 'btn', valor: true }] });
         if (!si) break;
       }
+      // Fase 6, Paso 5: sin CUIT no se compra con orden; se carga acá mismo (Feli, 29/10)
+      const oq = CQ.datos.orden, op = oq && oq.proveedores[g.col.proveedor];
+      if (oq && oq.orden && op && !op.cuit) {
+        const cuit = await pedirCuitCompra(op.nombre || g.col.nombre);
+        if (!cuit) break;
+        const rc = await api('cuitProveedor', g.col.proveedor, cuit);
+        if (!rc.ok) { aviso(rc.sinConexion ? '📶 Hace falta señal para cargar el CUIT.' : rc.error, 'bad'); break; }
+        op.cuit = cuit;
+      }
       // Lo no pedido de una tarjeta de la tanda (varios pedidos): a cuál va
       const pedidos = CQ.datos.pedidos || [];
       const conNP = g.lineas.some(function (l) { return /^NP\|/.test(l); }) && pedidos.length > 1;
@@ -420,11 +458,13 @@ async function confirmarCompra() {
       cuerpo.className = 'cuerpo';
       cuerpo.innerHTML = (conNP ? '<div class="campo"><label for="cq-pedido-np">Lo que no se pidió va al pedido</label><select id="cq-pedido-np">' +
         pedidos.map(function (p) { return '<option value="' + esc(p.ref) + '">' + esc([p.sitio, p.titulo || p.ref].filter(String).join(' · ')) + '</option>'; }).join('') + '</select></div>' : '') +
+        htmlOrdenEnCompra(oq) +
         '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') + (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
-        '. Al tocar "Comprar y mandar", ya queda comprado: sale la tarjeta de seguimiento y le llega este mensaje por WhatsApp. Lo podés cambiar.</p>' +
+        (oq && oq.orden ? '. Al tocar "Comprar", ya queda comprado: sale la tarjeta de seguimiento con la orden de compra pendiente. Este mensaje se usa solo si después se manda sin orden.</p>'
+                        : '. Al tocar "Comprar y mandar", ya queda comprado: sale la tarjeta de seguimiento y le llega este mensaje por WhatsApp. Lo podés cambiar.</p>') +
         '<textarea id="cq-msj" rows="10">' + esc(mensajeCompra(g)) + '</textarea>';
       const texto = await dialogo({ titulo: 'Comprarle a ' + g.col.nombre + (grupos.length > 1 ? ' (' + (i + 1) + ' de ' + grupos.length + ')' : ''), cuerpo: cuerpo,
-        botones: [{ texto: 'Volver', valor: null }, { texto: '🛒 Comprar y mandar', clase: 'btn', valor: function () {
+        botones: [{ texto: 'Volver', valor: null }, { texto: oq && (oq.orden || oq.prueba) ? '🛒 Comprar' : '🛒 Comprar y mandar', clase: 'btn', valor: function () {
           if ($('cq-pedido-np')) g.pedidoNP = $('cq-pedido-np').value;
           return $('cq-msj').value.trim();
         } }] });
@@ -434,7 +474,10 @@ async function confirmarCompra() {
       if (!r.ok) { aviso(r.sinConexion ? '📶 Poca señal: no se pudo comprar a ' + g.col.nombre + '. Probá cuando vuelva.' : r.error, 'bad'); break; }
       compradas++;
       g.lineas.forEach(function (l) { delete CQ.sel[l]; });
-      aviso(r.enviado ? 'Listo: comprado a ' + g.col.nombre + ' y le llegó la confirmación.' : 'Comprado a ' + g.col.nombre + ', pero el mensaje no salió: mandalo desde el chat.', r.enviado ? '' : 'bad');
+      aviso(r.orden ? 'Listo: comprado a ' + g.col.nombre + '. La orden de compra quedó pendiente: cargala desde la tarjeta de seguimiento.'
+            : r.prueba ? 'Listo: comprado a ' + g.col.nombre + ' (es una prueba: no se le mandó nada).'
+            : r.enviado ? 'Listo: comprado a ' + g.col.nombre + ' y le llegó la confirmación.' : 'Comprado a ' + g.col.nombre + ', pero el mensaje no salió: mandalo desde el chat.',
+            r.enviado || r.orden || r.prueba ? '' : 'bad');
     }
   } finally {
     CQ.comprando = false;

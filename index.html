@@ -365,6 +365,16 @@
         <p class="nota">Las órdenes de compra y la contabilidad se están probando: lo nuevo lo ven solo las personas tildadas. Para los demás, la app sigue igual.</p>
         <div id="aj-f6-ven" class="aj-chats-ven"></div>
         <button type="button" class="btn2" id="aj-f6-ok">Guardar</button>
+        <!-- Paso 5 (Feli, 29/10): el mensaje de la orden de compra y el mail para las facturas -->
+        <div class="campo"><label for="aj-f6-msj">Mensaje de la orden de compra</label><textarea id="aj-f6-msj" rows="5"></textarea>
+          <small class="nota">Le llega al proveedor con el PDF de la orden. {numero}: el número de la orden. {mail}: el mail de abajo.</small></div>
+        <div class="campo"><label for="aj-f6-mail">Mail para las facturas</label><input type="email" id="aj-f6-mail" autocomplete="off" placeholder="Todavía no está">
+          <small class="nota">Hasta que esté, las órdenes de verdad no se mandan (las de prueba, sí).</small></div>
+        <button type="button" class="btn2" id="aj-f6-msj-ok">Guardar</button>
+        <h3>Pedidos de prueba de la orden de compra</h3>
+        <p class="nota">Arma 7 pedidos "PRUEBA - N" con su presupuesto ya revisado, en Decisión, listos para "🛒 Realizar la compra". Solo los ven los tildados de arriba y no le mandan nada a nadie.</p>
+        <div class="ad-acciones"><button type="button" class="btn2" id="aj-f6-pruebas">🧪 Armar los pedidos de prueba</button>
+          <button type="button" class="btn2 peligro-btn2" id="aj-f6-borrar">Borrar todos los pedidos de prueba</button></div>
       </div>
       <p class="nota ad-estado" id="aj-estado" role="status" aria-live="polite"></p>
     </section>

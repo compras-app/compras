@@ -100,7 +100,9 @@ function htmlTarjetaCt(t) {
   const recep = t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCorta(t.fechaRetiro) : '') : ' · ' + t.columna)
                            : '⏳ ' + t.columna;
   return '<div class="tarjeta ct-t" data-id="' + esc(t.id) + '" role="button" tabindex="0">' + prueba +
-    (t.sinOrden ? '<div class="ct-orden">Sin orden de compra</div>' : '') +
+    // Paso 5 (Feli, 29/10): el número de la orden arriba de la tarjeta; sin número, en rojo (con "pendiente" si se está armando)
+    (t.numeroOrden ? '<div class="ct-oc">📄 Orden de compra N° ' + esc(t.numeroOrden) + '</div>'
+                   : t.sinOrden ? '<div class="ct-orden">' + (t.motivo === 'Orden de compra pendiente' ? '⚠️ Orden de compra pendiente' : 'Sin orden de compra') + '</div>' : '') +
     t.cuentas.map(htmlCuentaCt).join('') +
     '<div class="t">' + esc(t.titulo) + '</div>' +
     '<div class="sub-t">🏪 ' + esc(t.proveedor || 'Sin proveedor') + (t.cuit ? ' · CUIT ' + esc(t.cuit) : '') + '</div>' +
@@ -217,7 +219,10 @@ function pintarTarjetaContable() {
     const t = r.tarjeta, c = r.compra;
     $('b-titulo').textContent = 'Compra';
     h += '<h2 class="cx-titulo">' + esc(t.titulo) + '</h2>' + (t.prueba ? '<p class="nota">🧪 Compra de un pedido de prueba</p>' : '') +
-      (t.sinOrden ? '<div class="caja cx-sinorden"><b>Este pedido no tiene orden de compra</b>' + (t.motivo ? '<small>' + esc(t.motivo) + '</small>' : '') + '</div>' : '') +
+      (r.orden && r.orden.numero
+        ? '<div class="caja cx-oc"><h3>📄 Orden de compra N° ' + esc(r.orden.numero) + '</h3>' +
+          (r.orden.pdf ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdf) + '">Ver la orden de compra</button>' : '') + '</div>'
+        : t.sinOrden ? '<div class="caja cx-sinorden"><b>Este pedido no tiene orden de compra</b>' + (t.motivo ? '<small>' + esc(t.motivo) + '</small>' : '') + '</div>' : '') +
       '<div class="caja"><h3>Compra</h3><dl class="ad-datos">' +
         '<dt>Proveedor</dt><dd>' + esc(t.proveedor || '—') + '</dd><dt>CUIT</dt><dd>' + esc(t.cuit || 'No está cargado') + '</dd>' +
         (t.total !== null ? '<dt>Total</dt><dd><b>' + esc(dinero(t.total, t.moneda)) + '</b></dd>' : '') +
