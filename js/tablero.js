@@ -970,7 +970,7 @@ async function precargarMisTarjetas() {
       guardarDetalle(t.ref, { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
                               trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {},
                               solicitudes: r.solicitudes || [], presupuestos: r.presupuestos || [], compra: r.compra || null,
-                              cargarPresupuesto: !!r.cargarPresupuesto });
+                              cargarPresupuesto: !!r.cargarPresupuesto, imputacion: r.imputacion || null });
     }
   } finally { precargando = false; }
 }
@@ -1038,6 +1038,7 @@ async function traerTarjeta(ref) {
                    trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {}, solicitudes: r.solicitudes || [],
                    presupuestos: r.presupuestos || [], compra: r.compra || null,          // Fase 4, Pasos 3 y 5
                    cargarPresupuesto: !!r.cargarPresupuesto,                               // "📎 Cargar presupuesto" (Feli, 19/10)
+                   imputacion: r.imputacion || null,                                       // Fase 6: la cuenta o el bien de uso (Feli, 29/10)
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -1219,6 +1220,7 @@ function pintarTarjeta() {
   pintarRecepcion();                                                       // Fase 4, Paso 1-bis (recepcion.js)
   pintarPresupuestos();                                                    // Fase 4, Paso 3 (presupuestos.js)
   pintarCompra();                                                         // Fase 4, Paso 5 (presupuestos.js)
+  if (typeof pintarImputacion === 'function') pintarImputacion();         // Fase 6 (cuentas.js)
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {

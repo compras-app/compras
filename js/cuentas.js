@@ -247,3 +247,78 @@ $('aj-f6-borrar').addEventListener('click', async function () {
   aviso('Listo: se borraron ' + r.borrados + ' pedidos de prueba.');
   if (typeof cargarTablero === 'function') cargarTablero();
 });
+
+/* ============================================================
+   La cuenta o el bien de uso en la tarjeta abierta de Compras (Feli, 29/10)
+   Se ven y se cambian (mientras se prueba, solo los de "Ven lo de la Fase 6"). En una tarjeta de seguimiento, los de
+   cada pedido. Con un bien de uso, el pedido no lleva cuenta; con una cuenta, el sitio sale del centro de costos.
+   ============================================================ */
+function pintarImputacion() {
+  const b = $('tj-cuenta-b');
+  if (!b) return;
+  const d = TB.detalle, im = d && d.imputacion;
+  b.hidden = !im || !im.length || TB.tipo === 'tarea';
+  if (b.hidden) return;
+  const varios = im.length > 1;
+  $('tj-cuenta').innerHTML = im.map(function (x) {
+    const c = x.cuenta || {};
+    return '<div class="imp-fila">' + (varios ? '<div class="imp-ped">' + esc(x.prueba || x.titulo || x.ref) + '</div>' : '') +
+      '<div class="imp-cta' + (c.tipo === 'sin' ? ' sin' : '') + '">' + esc(c.texto || 'Sin cuenta contable') + '</div>' +
+      '<button type="button" class="btn-chico" data-imp="' + esc(x.ref) + '">✏️ Cambiar</button></div>';
+  }).join('');
+  $('tj-cuenta').querySelectorAll('[data-imp]').forEach(function (x) { x.addEventListener('click', function () { cambiarImputacionUI(x.dataset.imp); }); });
+}
+
+async function cambiarImputacionUI(ref) {
+  const abierta = TB.abierta, x = (TB.detalle.imputacion || []).filter(function (i) { return i.ref === ref; })[0];
+  if (!x) return;
+  aviso('Un momento…');
+  const op = await api('opcionesImputacion');
+  if (!op.ok) return aviso(op.sinConexion ? '📶 Hace falta señal para cambiar la cuenta.' : op.error, 'bad');
+  let modo = x.bien ? 'bien' : 'cuenta', cuenta = (x.cuenta && x.cuenta.cuenta) || '', centro = (x.cuenta && x.cuenta.centro) || '', bien = x.bien || '';
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<div class="seg-imp"><label><input type="radio" name="imp-modo" value="cuenta"> Cuenta contable</label>' +
+    '<label><input type="radio" name="imp-modo" value="bien"> 🚜 Bien de uso</label></div>' +
+    '<div id="imp-c"><div class="campo"><label for="imp-cuenta">Cuenta contable</label><select id="imp-cuenta"></select></div>' +
+    '<div class="campo"><label for="imp-centro">Centro de costos</label><select id="imp-centro"></select><p class="nota" id="imp-sitio"></p></div></div>' +
+    '<div id="imp-b"><div class="campo"><label for="imp-bien">Bien de uso</label><select id="imp-bien"></select>' +
+    '<p class="nota">Un pedido para un bien de uso no lleva cuenta ni orden de compra. El sitio queda como está (' + esc(x.sitio || '—') + ').</p></div></div>';
+  const ok = await dialogo({ titulo: 'Cambiar la cuenta de ' + (x.prueba || x.titulo || x.ref), cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
+      return modo === 'bien' ? { bienUso: bien } : { cuenta: cuenta, centro: centro };
+    } }],
+    alAbrir: function () {
+      const pintar = function () {
+        cuerpo.querySelector('input[value="' + modo + '"]').checked = true;
+        $('imp-c').hidden = modo !== 'cuenta';
+        $('imp-b').hidden = modo !== 'bien';
+        $('imp-cuenta').innerHTML = (cuenta ? '' : '<option value="">Elegí la cuenta</option>') +
+          op.cuentas.map(function (c) { return '<option value="' + esc(c.codigo) + '">' + esc(c.nombre) + '</option>'; }).join('');
+        $('imp-cuenta').value = cuenta;
+        const cs = (op.cuentas.filter(function (c) { return c.codigo === cuenta; })[0] || {}).centros || [];
+        if (cs.length === 1) centro = cs[0].centro;
+        if (!cs.some(function (c) { return c.centro === centro; })) centro = '';
+        $('imp-centro').innerHTML = (centro ? '' : '<option value="">Elegí el centro de costos</option>') +
+          cs.map(function (c) { return '<option value="' + esc(c.centro) + '">' + esc(c.centro) + '</option>'; }).join('');
+        $('imp-centro').value = centro;
+        const cc = cs.filter(function (c) { return c.centro === centro; })[0];
+        $('imp-sitio').textContent = cc ? 'El pedido queda en ' + cc.sitio + '.' : '';
+        $('imp-bien').innerHTML = (bien ? '' : '<option value="">Elegí el bien de uso</option>') +
+          op.bienes.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.nombre + (b.patente ? ' · ' + b.patente : '')) + '</option>'; }).join('');
+        $('imp-bien').value = bien;
+        $('dg-ok').disabled = modo === 'bien' ? !bien : !(cuenta && centro);
+      };
+      cuerpo.querySelectorAll('input[name="imp-modo"]').forEach(function (r) { r.addEventListener('change', function () { modo = r.value; pintar(); }); });
+      $('imp-cuenta').addEventListener('change', function () { cuenta = this.value; centro = ''; pintar(); });
+      $('imp-centro').addEventListener('change', function () { centro = this.value; pintar(); });
+      $('imp-bien').addEventListener('change', function () { bien = this.value; pintar(); });
+      pintar();
+    } });
+  if (!ok) return;
+  aviso('Guardando…');
+  const r = await api('cambiarImputacion', ref, ok);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para cambiar la cuenta.' : r.error, 'bad');
+  aviso(r.aviso ? 'Listo. ' + r.aviso : 'Listo: se cambió la cuenta.', r.aviso ? 'bad' : '');
+  if (TB.abierta === abierta) traerTarjeta(abierta);
+}

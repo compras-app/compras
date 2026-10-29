@@ -1092,3 +1092,13 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
   border-radius:8px;padding:10px 14px;font-weight:700}
 .btn-archivo:hover{filter:brightness(1.1)}
 .archivo-elegido{display:block;margin-top:6px;font-size:14px;color:var(--muted)}
+
+/* La cuenta o el bien de uso en la tarjeta de Compras (Feli, 29/10) */
+.imp-fila{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 0;border-bottom:1px solid var(--line)}
+.imp-fila:last-child{border-bottom:0}
+.imp-ped{width:100%;font-size:13px;color:var(--muted)}
+.imp-cta{flex:1;min-width:180px;font-weight:600}
+.imp-cta.sin{color:var(--danger)}
+.seg-imp{display:flex;gap:16px;margin-bottom:10px}
+.seg-imp label{display:flex;align-items:center;gap:6px;font-weight:600;cursor:pointer}
+.seg-imp input[type=radio]{width:18px;height:18px;min-height:0;flex:none;margin:0;padding:0;accent-color:var(--accent)}
