@@ -57,7 +57,7 @@ const NOTA_TELEFONO = 'Con código de país, sin 0 ni 15. Ejemplo: <b>5493525415
 /* ============================================================
    PERSONAS Y DISPOSITIVOS
    ============================================================ */
-const ROL_CORTO = { admin: 'Admin', encargado: 'Encargado', empleado: 'Empleado' };
+const ROL_CORTO = { admin: 'Admin', encargado: 'Encargado', empleado: 'Empleado', contabilidad: 'Contabilidad' };
 
 async function mostrarPersonas() {
   if (!AD.personas) notaAd('pe-estado', 'Cargando…');
@@ -130,10 +130,12 @@ async function editarPersona(p, previo) {
   cuerpo.innerHTML = campoDlg('pp-nombre', 'Nombre', v.nombre, { max: 60, placeholder: 'Como aparece en la app' }) +
     campoDlg('pp-tel', 'Teléfono (WhatsApp)', v.telefono, { tipo: 'tel', max: 20, inputmode: 'tel', placeholder: '5493525415029', nota: NOTA_TELEFONO + ' Ahí le llega el código para entrar.' }) +
     '<div class="campo"><label>Rol</label><div class="seg" id="pp-rol">' +
-      '<button type="button" data-rol="empleado">Empleado</button><button type="button" data-rol="encargado">Encargado</button><button type="button" data-rol="admin">Admin</button></div>' +
+      '<button type="button" data-rol="empleado">Empleado</button><button type="button" data-rol="encargado">Encargado</button><button type="button" data-rol="admin">Admin</button>' +
+      (AD.fase6 || v.rol === 'contabilidad' ? '<button type="button" data-rol="contabilidad">Contabilidad</button>' : '') + '</div>' +      // Fase 6, Paso 4
       (yo ? '<p class="nota">Tu propio rol lo cambia otro admin.</p>'
           : '<p class="nota">Admin: ve y maneja todo. Encargado: un encargado de granja; arma los pedidos de transferencia de sus granjas. ' +
-            'Empleado: el resto. En Compras, encargados y empleados cargan pedidos y ven los suyos.</p>') + '</div>' +
+            'Empleado: el resto. En Compras, encargados y empleados cargan pedidos y ven los suyos.' +
+            (AD.fase6 ? ' Contabilidad: ve solo su apartado (el tablero de Contabilidad y Reportes).' : '') + '</p>') + '</div>' +
     '<div class="campo" id="pp-granjas-c"><label>Granjas</label><div class="pila" id="pp-granjas">' +
       granjas.map(function (g) {
         return '<label class="check"><input type="checkbox" value="' + esc(g) + '"' + ((v.granjas || []).indexOf(g) !== -1 ? ' checked' : '') + '> ' + esc(g) + '</label>';

@@ -1029,3 +1029,44 @@ tr.rp-falta td:last-child{font-weight:700}
 .ch-albor { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--line); background: var(--warn-soft); color: var(--fg);
   font: inherit; font-weight: 700; text-align: left; padding: 10px 14px; cursor: pointer; }
 .ch-albor small { display: block; font-weight: 400; color: var(--muted); }
+
+/* Fase 6, Paso 4: zoom en los documentos (tablero.js) */
+.visor-zoom{position:absolute;top:calc(10px + env(safe-area-inset-top));left:10px;z-index:3;display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.6);border-radius:999px;padding:3px}
+.visor-zoom button{background:none;border:0;color:#fff;font-size:22px;width:38px;height:38px;border-radius:50%;cursor:pointer}
+.visor-zoom button:hover{background:rgba(255,255,255,.14)}
+.visor-zoom span{color:#ddd;font-size:13px;min-width:44px;text-align:center}
+.visor.con-zoom{display:block;overflow:auto;-webkit-overflow-scrolling:touch}
+.visor.con-zoom img{display:block;margin:56px auto 20px;border-radius:4px}
+.visor-doc canvas{max-width:none}
+
+/* Fase 6, Paso 4: el apartado de Contabilidad (contabilidad.js) */
+body[data-pantalla="contabilidad"] .contenido{max-width:none}
+.ct-filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.ct-filtros input[type=search]{flex:1 1 220px;min-width:0}
+.ct-filtros select{flex:0 1 auto;max-width:100%}
+.ct-proc{margin:0 0 10px;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
+.ct-proc summary{cursor:pointer;font-weight:600}
+.ct-cols{display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:12px;-webkit-overflow-scrolling:touch}
+.ct-col{flex:0 0 290px;max-width:85vw;background:var(--col);border-radius:12px;padding:10px}
+.ct-col h3{margin:2px 4px 10px;font-size:15px}
+.ct-col h3 .n{color:var(--muted);font-weight:400}
+.ct-col .tarjeta{margin-bottom:10px}
+.ct-vacia{margin:6px 4px}
+.ct-cuenta{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+.ct-cuenta.sin{color:var(--muted);font-weight:400}
+.ct-orden{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--danger);border-radius:6px;padding:2px 8px;margin-bottom:6px}
+.ct-fac{font-size:13px;font-weight:600;margin-top:6px}
+.ct-recep{font-size:12px;color:var(--muted);margin-top:4px}
+.ct-col-c{color:var(--muted);font-size:12px}
+.cx-titulo{margin:4px 0 10px}
+.cx-sub{margin:14px 0 6px}
+.cx-cuenta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.cx-cuenta .ct-cuenta{font-size:14px;margin:0}
+.cx-sinorden{border-left:4px solid var(--danger)}
+.cx-sinorden b{color:var(--danger);display:block}
+.cx-sinorden small{color:var(--muted)}
+.cx-prods{margin:0;padding-left:18px}
+.cx-prods li{margin:4px 0}
+.cx-tabla{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
+.cx-tabla th,.cx-tabla td{border-bottom:1px solid var(--line);padding:5px 4px;text-align:left;vertical-align:top}
+.cx-tabla td:nth-child(n+2),.cx-tabla th:nth-child(n+2){text-align:right;white-space:nowrap}

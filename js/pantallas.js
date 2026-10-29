@@ -17,7 +17,12 @@ pantalla('cuenta',  { titulo: 'Tu cuenta', tab: '', alMostrar: pantallaCuenta })
 function mostrarApp() {
   const ap = misApartados(APP.yo);
   const transf = ap.indexOf('transferencias') !== -1;
-  if (transf && !location.hash && (ap.indexOf('compras') === -1 || guardado.leer(K_APARTADO) === 'transferencias')) {
+  // Fase 6, Paso 4: Contabilidad (misma página, ?ap=contabilidad). Quien ve solo eso, o la abrió la última vez, va ahí
+  const conta = ap.indexOf('contabilidad') !== -1;
+  if (conta && !modoContable() && !location.hash && (ap.length === 1 || guardado.leer(K_APARTADO) === 'contabilidad')) {
+    return location.replace(APARTADOS.contabilidad.url);
+  }
+  if (transf && !modoContable() && !location.hash && (ap.indexOf('compras') === -1 || guardado.leer(K_APARTADO) === 'transferencias')) {
     return location.replace(APARTADOS.transferencias.url);
   }
   $('login').hidden = true;
@@ -26,7 +31,8 @@ function mostrarApp() {
   $('t-nuevo').href = FORMULARIO + '?desde=app';
   pintarBarra();
   pintarSinRed();
-  if (sinCompras()) ir('cuenta');
+  if (modoContable()) ir('contabilidad');
+  else if (sinCompras()) ir('cuenta');
   else if (location.hash === '#cuenta') {
     // Viene de "Tu cuenta" en Transferencias: #cuenta no es un pedido (si queda, el tablero lo abría como tarjeta)
     history.replaceState(null, '', location.pathname + location.search);
@@ -39,20 +45,26 @@ function mostrarApp() {
 /** ¿No ve el apartado Compras? Entonces solo tiene Tu cuenta acá. */
 function sinCompras() { return misApartados(APP.yo).indexOf('compras') === -1; }
 
-const NOMBRE_ROL = { admin: 'Administrador', encargado: 'Encargado de granja', empleado: 'Empleado' };
+const NOMBRE_ROL = { admin: 'Administrador', encargado: 'Encargado de granja', empleado: 'Empleado', contabilidad: 'Contabilidad' };
 
 /** La barra según quién sos (se vuelve a pintar si inicioApp trae algo nuevo). */
 function pintarBarra() {
   $('b-nombre').textContent = APP.yo.nombre;
   $('b-inicial').textContent = APP.yo.nombre.charAt(0).toUpperCase();
-  pintarApartados($('b-apartados'), APP.yo, 'compras');
-  if (sinCompras()) $('b-apartados').hidden = true;
-  document.querySelector('nav.tabs').hidden = sinCompras();
+  const conta = modoContable();
+  pintarApartados($('b-apartados'), APP.yo, conta ? 'contabilidad' : 'compras');
+  if (sinCompras() && !conta) $('b-apartados').hidden = true;
+  document.querySelector('nav.tabs').hidden = sinCompras() && !conta;
   $('t-admin').hidden = !APP.yo.admin;
   $('t-tareas').hidden = !APP.yo.admin;             // el tablero de tareas es solo de los admins
   document.querySelectorAll('#s-admin [data-f6]').forEach(function (b) { b.hidden = !APP.yo.fase6; });   // Fase 6: solo los de "Ven lo de la Fase 6"
   $('t-chats').hidden = !veChats();                 // Fase 4, Paso 2: los chats, solo los admins de "Ven los chats" (Feli, 2026-10-06)
-  $('b-notif').hidden = sinCompras();               // Paso 2-ter: las notificaciones (notificaciones.js)
+  $('b-notif').hidden = sinCompras() || conta;      // Paso 2-ter: las notificaciones (notificaciones.js)
+  // Fase 6, Paso 4: en Contabilidad, solo sus pestañas (Tablero y Reportes)
+  document.querySelectorAll('nav.tabs .tab').forEach(function (t) {
+    if (t.hasAttribute('data-conta')) t.hidden = !conta;
+    else if (conta) t.hidden = true;
+  });
 }
 
 function pantallaCuenta() {

@@ -121,6 +121,15 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
       <span class="t-largo">Nuevo pedido</span><span class="t-corto">Nuevo</span>
     </a>
+    <!-- Fase 6, Paso 4: las pestañas del apartado de Contabilidad (contabilidad.js) -->
+    <button class="tab" type="button" data-tab="contabilidad" data-conta hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>
+      Tablero
+    </button>
+    <button class="tab" type="button" data-tab="reportes" data-conta hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      Reportes
+    </button>
     <button class="tab" type="button" data-tab="admin" id="t-admin" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       Admin
@@ -360,6 +369,25 @@
       <p class="nota ad-estado" id="aj-estado" role="status" aria-live="polite"></p>
     </section>
 
+    <!-- Fase 6, Paso 4: el tablero de Contabilidad y su tarjeta abierta (contabilidad.js) -->
+    <section id="s-contabilidad" hidden>
+      <div class="ct-filtros">
+        <input type="search" id="ct-q" placeholder="Buscar proveedor, producto o pedido…" autocomplete="off" aria-label="Buscar">
+        <select id="ct-sitio" aria-label="Sitio"><option value="">Todos los sitios</option></select>
+        <select id="ct-cuenta" aria-label="Cuenta"><option value="">Todas las cuentas</option></select>
+        <label class="pa-check"><input type="checkbox" id="ct-sinorden"> Sin orden de compra</label>
+        <button type="button" class="refrescar" id="ct-refrescar" aria-label="Actualizar"><span class="ic">↻</span></button>
+      </div>
+      <p class="nota ad-estado" id="ct-estado" role="status" aria-live="polite"></p>
+      <details class="ct-proc" id="ct-proc" hidden><summary id="ct-proc-t"></summary><div id="ct-proc-l"></div></details>
+      <div class="ct-cols" id="ct-cols"></div>
+    </section>
+    <section id="s-ctarjeta" hidden>
+      <p class="nota ad-estado" id="cx-estado" role="status" aria-live="polite"></p>
+      <div id="cx-cuerpo"></div>
+      <input type="file" id="cx-factura" accept="application/pdf,.pdf" hidden>
+    </section>
+
     <!-- Fase 6, Paso 1: cuentas contables y bienes de uso (cuentas.js) -->
     <section id="s-cuentas" hidden>
       <div class="pa-filtros">
@@ -597,6 +625,10 @@
     <img id="visor-img" alt="Foto del producto">
     <!-- PDF y videos, adentro de la app: nunca se va a Drive (Feli, 2026-10-05) -->
     <div class="visor-doc" id="visor-doc" hidden></div>
+    <!-- Fase 6, Paso 4 (Feli, 28/10): zoom en los documentos (tablero.js) -->
+    <div class="visor-zoom" id="visor-zoom" hidden>
+      <button type="button" id="visor-menos" aria-label="Achicar">−</button><span id="visor-zoom-n">100%</span><button type="button" id="visor-mas" aria-label="Agrandar">＋</button>
+    </div>
     <p class="visor-carga" id="visor-carga">Cargando la foto…</p>
   </div>
 
@@ -641,6 +673,7 @@
 <script src="js/admin.js"></script>
 <script src="js/cuentas.js"></script>
 <script src="js/reportes.js"></script>
+<script src="js/contabilidad.js"></script>
 <script src="js/pantallas.js"></script>
 <script>arrancar();</script>
 </body>

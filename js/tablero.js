@@ -2536,6 +2536,7 @@ function verFoto(id) {
 }
 function cerrarFoto() {
   $('visor').hidden = true;
+  reiniciarZoom();
   $('visor-img').removeAttribute('src');
   $('visor-doc').hidden = true;
   $('visor-doc').innerHTML = '';                       // un video que suena se corta
@@ -2562,6 +2563,7 @@ function cargarPdfJs() {
 async function verArchivo(idDrive) {
   if (!idDrive) return;
   VISOR.abierto = idDrive;
+  reiniciarZoom();
   $('visor-img').hidden = true;
   $('visor-doc').hidden = true;
   $('visor-doc').innerHTML = '';
@@ -2582,7 +2584,7 @@ async function verArchivo(idDrive) {
     const mime = a.mime.toLowerCase();
     if (/^image\//.test(mime)) {
       const img = $('visor-img');
-      img.onload = function () { $('visor-carga').hidden = true; img.hidden = false; };
+      img.onload = function () { $('visor-carga').hidden = true; img.hidden = false; VISOR.baseFoto = img.clientWidth; $('visor-zoom').hidden = false; };
       img.src = URL.createObjectURL(new Blob([a.bytes], { type: mime }));
     } else if (/^video\//.test(mime)) {
       $('visor-doc').innerHTML = '<video controls playsinline autoplay src="' + URL.createObjectURL(new Blob([a.bytes], { type: mime })) + '"></video>';
@@ -2593,21 +2595,11 @@ async function verArchivo(idDrive) {
       await cargarPdfJs();
       const pdf = await window.pdfjsLib.getDocument({ data: a.bytes.slice() }).promise;
       if (VISOR.abierto !== idDrive) return;
-      const doc = $('visor-doc');
-      doc.innerHTML = '<p class="visor-titulo">' + esc(a.nombre || 'PDF') + ' · ' + pdf.numPages + ' página' + (pdf.numPages === 1 ? '' : 's') + '</p>';
-      doc.hidden = false;
+      VISOR.pdf = pdf; VISOR.nombrePdf = a.nombre || 'PDF';
+      $('visor-doc').hidden = false;
       $('visor-carga').hidden = true;
-      const ancho = Math.min(doc.clientWidth - 16, 1000), escala = window.devicePixelRatio || 1;
-      for (let n = 1; n <= pdf.numPages; n++) {
-        if (VISOR.abierto !== idDrive) return;
-        const pag = await pdf.getPage(n);
-        const v0 = pag.getViewport({ scale: 1 }), v = pag.getViewport({ scale: ancho / v0.width * escala });
-        const c = document.createElement('canvas');
-        c.width = v.width; c.height = v.height;
-        c.style.width = (v.width / escala) + 'px';
-        doc.appendChild(c);
-        await pag.render({ canvasContext: c.getContext('2d'), viewport: v }).promise;
-      }
+      $('visor-zoom').hidden = false;
+      await dibujarPdf();
     } else {
       $('visor-carga').textContent = 'Este archivo no se puede ver en la app.';
     }
@@ -2616,6 +2608,78 @@ async function verArchivo(idDrive) {
     $('visor-carga').textContent = e && e.message ? e.message : 'No se pudo abrir.';
   }
 }
+/* Zoom en los documentos (Fase 6, Paso 4; Feli, 28/10): ＋ / −, pellizcar en el celular y Ctrl (o ⌘) + rueda en la compu.
+   El PDF se vuelve a dibujar al tamaño nuevo, así la letra queda nítida; la foto se agranda y se recorre. */
+async function dibujarPdf() {
+  const pdf = VISOR.pdf, id = VISOR.abierto, vez = (VISOR.dibujo = (VISOR.dibujo || 0) + 1);
+  if (!pdf) return;
+  const doc = $('visor-doc');
+  const ancho = Math.min(doc.clientWidth - 16, 1000) * VISOR.zoom, escala = window.devicePixelRatio || 1;
+  const hojas = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const pag = await pdf.getPage(n);
+    if (VISOR.abierto !== id || VISOR.dibujo !== vez) return;
+    const v0 = pag.getViewport({ scale: 1 }), v = pag.getViewport({ scale: ancho / v0.width * escala });
+    const c = document.createElement('canvas');
+    c.width = v.width; c.height = v.height;
+    c.style.width = (v.width / escala) + 'px';
+    hojas.push(c);
+    await pag.render({ canvasContext: c.getContext('2d'), viewport: v }).promise;
+    if (VISOR.abierto !== id || VISOR.dibujo !== vez) return;
+    if (n === 1 || VISOR.zoom === 1) {       // la primera hoja se ve enseguida; con zoom, todas juntas (no salta)
+      doc.innerHTML = '<p class="visor-titulo">' + esc(VISOR.nombrePdf) + ' · ' + pdf.numPages + ' página' + (pdf.numPages === 1 ? '' : 's') + '</p>';
+      hojas.forEach(function (h) { doc.appendChild(h); });
+    } else doc.appendChild(c);
+  }
+}
+function reiniciarZoom() {
+  VISOR.zoom = 1; VISOR.pdf = null; VISOR.baseFoto = 0;
+  $('visor-zoom').hidden = true;
+  $('visor-zoom-n').textContent = '100%';
+  $('visor').classList.remove('con-zoom');
+  const img = $('visor-img');
+  img.style.width = ''; img.style.maxWidth = ''; img.style.maxHeight = '';
+  $('visor-doc').style.transform = ''; img.style.transform = '';
+}
+function zoomVisor(z) {
+  z = Math.min(4, Math.max(0.5, Math.round(z * 100) / 100));
+  if (z === VISOR.zoom) return;
+  VISOR.zoom = z;
+  $('visor-zoom-n').textContent = Math.round(z * 100) + '%';
+  if (VISOR.pdf) { clearTimeout(VISOR.esperaZoom); VISOR.esperaZoom = setTimeout(dibujarPdf, 150); return; }
+  const img = $('visor-img');
+  if (!VISOR.baseFoto) return;
+  const grande = z !== 1;
+  $('visor').classList.toggle('con-zoom', grande);
+  img.style.maxWidth = grande ? 'none' : ''; img.style.maxHeight = grande ? 'none' : '';
+  img.style.width = grande ? Math.round(VISOR.baseFoto * z) + 'px' : '';
+}
+$('visor-mas').addEventListener('click', function (e) { e.stopPropagation(); zoomVisor(VISOR.zoom * 1.25); });
+$('visor-menos').addEventListener('click', function (e) { e.stopPropagation(); zoomVisor(VISOR.zoom / 1.25); });
+$('visor').addEventListener('wheel', function (e) {
+  if (!e.ctrlKey && !e.metaKey) return;               // la rueda sola sigue bajando por el documento
+  e.preventDefault();
+  zoomVisor(VISOR.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+}, { passive: false });
+(function () {                                         // pellizcar con dos dedos
+  let d0 = 0, z0 = 1, esc0 = 1;
+  const dist = function (t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); };
+  const blanco = function () { return VISOR.pdf ? $('visor-doc') : $('visor-img'); };
+  $('visor').addEventListener('touchstart', function (e) { if (e.touches.length === 2 && !$('visor-zoom').hidden) { d0 = dist(e.touches); z0 = VISOR.zoom; esc0 = 1; } }, { passive: true });
+  $('visor').addEventListener('touchmove', function (e) {
+    if (e.touches.length !== 2 || !d0) return;
+    e.preventDefault();
+    esc0 = dist(e.touches) / d0;
+    blanco().style.transformOrigin = 'center top';
+    blanco().style.transform = 'scale(' + esc0 + ')';            // se ve mientras se pellizca; al soltar se dibuja de verdad
+  }, { passive: false });
+  $('visor').addEventListener('touchend', function (e) {
+    if (!d0 || e.touches.length) return;
+    blanco().style.transform = '';
+    d0 = 0;
+    zoomVisor(z0 * esc0);
+  });
+})();
 $('visor-cerrar').addEventListener('click', cerrarFoto);
 $('visor').addEventListener('click', function (e) { if (e.target === this || (e.target.id === 'visor-img' && $('visor-doc').hidden)) cerrarFoto(); });
 document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('visor').hidden) { e.stopImmediatePropagation(); cerrarFoto(); } }, true);
