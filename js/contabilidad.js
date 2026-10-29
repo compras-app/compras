@@ -91,7 +91,7 @@ function htmlCuentaCt(texto) {
 function htmlTarjetaCt(t) {
   const prueba = t.prueba ? '<div class="sobre">🧪 ' + esc(t.prueba === true ? 'PRUEBA' : t.prueba) + '</div>' : '';
   if (!t.trabajo) {
-    return '<div class="tarjeta ct-t" data-id="' + esc(t.ref) + '" role="button" tabindex="0">' + prueba + htmlCuentaCt(t.cuenta.texto) +
+    return '<div class="tarjeta ct-t" data-id="' + esc(t.ref) + '" role="button" tabindex="0">' + prueba +
       '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
       '<div class="sub-t">' + esc([t.sitio, t.solicitante].filter(Boolean).join(' · ')) + '</div>' +
       '<div class="pie"><span>' + esc(emojiUrgencia(t.urgencia)) + '</span><span class="ct-col-c">' + esc(t.columna) + '</span>' +
@@ -100,10 +100,10 @@ function htmlTarjetaCt(t) {
   const recep = t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCorta(t.fechaRetiro) : '') : ' · ' + t.columna)
                            : '⏳ ' + t.columna;
   return '<div class="tarjeta ct-t" data-id="' + esc(t.id) + '" role="button" tabindex="0">' + prueba +
-    // Paso 5 (Feli, 29/10): el número de la orden arriba de la tarjeta; sin número, en rojo (con "pendiente" si se está armando)
-    (t.numeroOrden ? '<div class="ct-oc">📄 Orden de compra N° ' + esc(t.numeroOrden) + '</div>'
+    // Paso 5 (Feli, 29/10): el número de la orden arriba de la tarjeta, chiquito; sin número, en rojo (con "pendiente" si se está armando).
+    // La cuenta no se ve en el tablero (Feli, 29/10: estaba muy cargado); está en la tarjeta abierta y en el filtro
+    (t.numeroOrden ? '<div class="ct-oc">OC ' + esc(t.numeroOrden) + '</div>'
                    : t.sinOrden ? '<div class="ct-orden">' + (t.motivo === 'Orden de compra pendiente' ? '⚠️ Orden de compra pendiente' : 'Sin orden de compra') + '</div>' : '') +
-    t.cuentas.map(htmlCuentaCt).join('') +
     '<div class="t">' + esc(t.titulo) + '</div>' +
     '<div class="sub-t">🏪 ' + esc(t.proveedor || 'Sin proveedor') + (t.cuit ? ' · CUIT ' + esc(t.cuit) : '') + '</div>' +
     '<div class="pie"><span>' + esc(t.sitios.join(', ')) + '</span>' + (t.total !== null ? '<span><b>' + esc(dinero(t.total, t.moneda)) + '</b></span>' : '') + '</div>' +
