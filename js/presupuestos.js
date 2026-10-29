@@ -829,16 +829,38 @@ async function hayExtensionAlbor() {
 
 /** El recuadro de avance y las pausas (las mismas de Transferencias: también salen en la pestaña de Albor). */
 const OC_ALBOR = {
+  ultimo: 0, reloj: null, abandonar: null,
   abrir: function (titulo) {
     $('oc-albor-t').textContent = titulo;
     $('oc-albor-log').textContent = '';
     $('oc-albor-pausa').hidden = true;
+    $('oc-albor-quieto').hidden = true;
+    $('oc-albor-pie').hidden = false;
+    OC_ALBOR.ultimo = Date.now();
+    clearInterval(OC_ALBOR.reloj);
+    // Si no avanza en un minuto y medio (sin una pausa a la vista), se avisa (Feli, 29/10: la pestaña quedó trabada en Safari)
+    OC_ALBOR.reloj = setInterval(function () {
+      $('oc-albor-quieto').hidden = !$('oc-albor-pausa').hidden || Date.now() - OC_ALBOR.ultimo < 90000;
+    }, 5000);
     if (!$('oc-albor').open) $('oc-albor').showModal();
   },
-  cerrar: function () { if ($('oc-albor').open) $('oc-albor').close(); }
+  cerrar: function () { clearInterval(OC_ALBOR.reloj); OC_ALBOR.abandonar = null; if ($('oc-albor').open) $('oc-albor').close(); }
 };
-window.__alborLog = function (t) { const l = $('oc-albor-log'); l.textContent += (l.textContent ? '\n' : '') + t; l.scrollTop = l.scrollHeight; };
+window.__alborLog = function (t) {
+  const l = $('oc-albor-log');
+  l.textContent += (l.textContent ? '\n' : '') + t; l.scrollTop = l.scrollHeight;
+  OC_ALBOR.ultimo = Date.now();
+  $('oc-albor-quieto').hidden = true;
+};
+$('oc-albor-abandonar').addEventListener('click', function () { if (OC_ALBOR.abandonar) OC_ALBOR.abandonar(); });
+
+/** Lo último que anotó la carga en Albor (para mandárselo a Claude si algo no anduvo). */
+function registroAlbor() {
+  try { return (window.AlborExt.registro() || []).slice(-12).join('\n'); } catch (e) { return ''; }
+}
 window.__alborPausa = function (texto, boton) {
+  OC_ALBOR.ultimo = Date.now();
+  $('oc-albor-quieto').hidden = true;
   $('oc-albor-txt').textContent = texto;
   $('oc-albor-seguir').textContent = boton;
   $('oc-albor-pausa').hidden = false;
@@ -860,14 +882,27 @@ async function cargarOrdenEnAlbor(wid) {
   const d = await api('datosOrdenAlbor', wid);
   if (!d.ok) { aviso(d.sinConexion ? '📶 Hace falta señal para cargar la orden.' : d.error, 'bad'); return false; }
   OC_ALBOR.abrir('Cargando la orden de compra en Albor');
+  // "Cancelar la carga" siempre a mano: si la pestaña de Albor se traba o se cierra, la app no se queda esperando
+  const abandono = new Promise(function (ok) {
+    OC_ALBOR.abandonar = function () {
+      try { window.AlborExt.api.responder_carga('cancelar'); } catch (e) {}
+      ok({ ok: false, cancelado: true, abandonada: true, motivo: 'Cancelaste la carga de la orden.' });
+    };
+  });
   let r;
-  try { r = await window.AlborExt.api.cargar_orden_compra(d.orden); }
+  try { r = await Promise.race([window.AlborExt.api.cargar_orden_compra(d.orden), abandono]); }
   catch (e) { r = { ok: false, motivo: String(e && e.message || e) }; }
   if (!r.ok || !r.numero) {
+    const reg = registroAlbor();
     OC_ALBOR.cerrar();
     await api('ordenNoCargada', wid, r.motivo || 'No se leyó el número de la orden');
-    await dialogo({ titulo: r.cancelado ? 'Se canceló la carga' : 'La orden no quedó cargada', texto: (r.motivo || 'No se pudo leer el número de la orden.') +
-      '\n\nLa compra quedó hecha con la orden pendiente: desde su tarjeta podés tocar "🧾 Cargar en Albor" de nuevo, cargarla a mano o mandar sin orden.',
+    const cuerpo = document.createElement('div');
+    cuerpo.className = 'cuerpo';
+    cuerpo.innerHTML = '<p>' + esc(r.motivo || 'No se pudo leer el número de la orden.') + '</p>' +
+      '<p class="nota">La compra quedó hecha con la orden pendiente: desde su tarjeta podés tocar "🧾 Cargar en Albor" de nuevo, cargarla a mano o mandar sin orden.' +
+      (r.abandonada ? ' Si la pestaña de Albor sigue abierta, cerrala; la extensión puede tardar un minuto en soltarla.' : '') + '</p>' +
+      (reg ? '<details><summary>Lo último que pasó (para mandárselo a Claude)</summary><pre class="oc-albor-reg">' + esc(reg) + '</pre></details>' : '');
+    await dialogo({ titulo: r.cancelado ? 'Se canceló la carga' : 'La orden no quedó cargada', cuerpo: cuerpo,
       botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
     if (TB.abierta === wid) traerTarjeta(wid);
     return false;

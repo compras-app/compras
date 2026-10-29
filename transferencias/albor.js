@@ -2860,7 +2860,8 @@ async function itemDeOrden(pg, it, antes){
 /* Arma la orden (sin guardar). Si Albor pide ingresar en el medio, se arma de nuevo desde el principio (como en Transferencias). */
 async function armarOrden(pg, o, charla){
   charla.decir('Nueva orden de compra…');
-  await pg.loc('#btNuevoRegistro').click({ timeout: 20000 });
+  // Feli (29/10, Safari): "Nuevo" abre otra página y la extensión de Safari se quedaba en la anterior. Se va directo, como a las demás páginas.
+  await pg.ir(C.BASE + URL_ORDENES + '/Create');
   await pg.loc('#ID_Tercero_Proveedor_codigo').waitFor('visible', 40000);
   await esperar(pg, 40000);
   var prov = await proveedorDeOrden(pg, o.proveedor, charla);
@@ -2916,11 +2917,11 @@ async function guardarOrden(pg, charla){
                      '\nFijate en Albor: si hay un recuadro rojo arriba, resolvelo. Guardala a mano y tocá «Ya está guardada».', 'Ya está guardada');
 }
 
-/* En la lista: la fila de la orden (por la clave). Recarga unas veces si todavía no aparece. */
-async function filaDeOrden(pg, clave, intentos){
+/* En la lista: la fila de la orden (por la clave). La abre de nuevo cada vez (después de Guardar, Albor vuelve solo a la lista,
+   pero la extensión de Safari puede quedar en la página anterior); yaEsta: se acaba de abrir. */
+async function filaDeOrden(pg, clave, intentos, yaEsta){
   for(var i = 0; i < (intentos || 4); i++){
-    if(i){ await pg.ir(C.BASE + URL_ORDENES); await esperar(pg, 40000); }
-    else if((await pg.url()).indexOf('/Create') >= 0 || (await pg.url()).indexOf(URL_ORDENES) < 0){ await pg.ir(C.BASE + URL_ORDENES); await esperar(pg, 40000); }
+    if(i || !yaEsta){ await pg.ir(C.BASE + URL_ORDENES); await esperar(pg, 40000); }
     try{ await pg.loc('#btNuevoRegistro').waitFor('visible', 30000); }catch(e){ if(e instanceof Cortado) throw e; }
     await esperar(pg, 20000);
     var f = await pg.evaluar(JS_FILA_ORDEN, clave);
@@ -2973,7 +2974,7 @@ function cargar_orden_compra(o){
       await esperar(pg, 40000);
       await cerrarAnuncios(pg);
       // ¿Ya está? (un intento anterior la guardó): nunca dos veces
-      var fila = await filaDeOrden(pg, o.clave, 1);
+      var fila = await filaDeOrden(pg, o.clave, 1, true);
       if(fila) charla.decir('Esta orden ya estaba guardada en Albor: leo su número.');
       else{
         var r = null;
