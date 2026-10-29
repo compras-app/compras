@@ -468,6 +468,7 @@ function htmlTarjeta(t, enPorRecibir) {
     (t.nuevo ? '<div class="nuevo-t">Nuevo</div>' : '') +                       // Feli (2026-10-06): nunca lo abriste
     (t.prueba ? '<div class="sobre">🧪 ' + esc(t.prueba) + '</div>' : '') +          // Fase 6: pedido de prueba (solo lo ven los de "Ven lo de la Fase 6")
     (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
+    (t.ordenPendiente ? '<div class="sobre orden-pend">⚠️ Orden de compra pendiente</div>' : '') +   // Fase 6, Paso 5 (Feli, 29/10)
     (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6
     (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
     htmlMarcaRecepcion(t) +                                                        // Fase 4, Paso 1-bis (recepcion.js)

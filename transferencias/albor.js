@@ -2753,6 +2753,17 @@ var JS_PDF_VISOR = String(function(){
   });
 });
 
+// Abre el "Comprobante Detallado" de una orden por su número interno (lo que hace abrirReporte_OC con la fila elegida).
+var JS_REPORTE_ORDEN = String(function(id){
+  var campo = document.querySelector('#ID_Comprobante');
+  if(typeof window.mostrarReporteEnDialogo !== 'function' || !campo) return false;
+  var $ = window.jQuery;
+  if($) $('#ID_Comprobante').val(id); else campo.value = id;
+  try{ if($){ var v = $.fn.tval ? 'tval' : 'val'; $('#Hash_Actual')[v]($('#Hash_Actual_Reporte')[v]()); } }catch(e){}     // Albor usa su .tval()
+  window.mostrarReporteEnDialogo('#dialogoReporte', 'Comprobante_OC_No_Stockeable', 'Comprobante Detallado', '#frmFiltrosReportes');
+  return true;
+});
+
 // La lupa de un campo: el botón al lado (sus IDs cambian cada vez: "bt_" + letras).
 var JS_LUPA = String(function(campo){
   var e = document.querySelector(campo);
@@ -2917,15 +2928,36 @@ async function guardarOrden(pg, charla){
                      '\nFijate en Albor: si hay un recuadro rojo arriba, resolvelo. Guardala a mano y tocá «Ya está guardada».', 'Ya está guardada');
 }
 
-/* En la lista: la fila de la orden (por la clave). La abre de nuevo cada vez (después de Guardar, Albor vuelve solo a la lista,
-   pero la extensión de Safari puede quedar en la página anterior); yaEsta: se acaba de abrir. */
+/* La orden con esa clave en las Observaciones, pidiéndole a Albor la lista de los últimos días (Feli, 29/10: la lista en
+   pantalla recuerda un filtro de fechas viejo, "del 13/10 al 28/10", y la orden de hoy no aparecía). {id, texto} o null.
+   Si Albor no contesta así (o en el Albor falso sin esa dirección), se mira la lista en pantalla. */
+var JS_BUSCAR_ORDEN = String(function(o){
+  function f(d){ return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  var hoy = new Date(), desde = new Date(hoy.getTime() - o.dias * 86400000), hasta = new Date(hoy.getTime() + 86400000);
+  var base = {};
+  try{ if(window.jQuery && window.jQuery('#DetalleGrid').jqGrid) base = window.jQuery('#DetalleGrid').jqGrid('getGridParam', 'postData') || {}; }catch(e){}
+  var q = Object.assign({ _search: false, filtro_Solo_No_Stockeable: 'True', filtro_OC_Sin_Pendientes: 'false' }, base,
+                        { rows: 200, page: 1, sidx: 'Fecha', sord: 'desc', nd: Date.now(), filtro_FechaDesde: f(desde), filtro_FechaHasta: f(hasta) });
+  return fetch('/1/Ordenes_Compra/ObtenerLista?jqGridID=DetalleGrid&' + new URLSearchParams(q).toString(), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      if(!j || !Array.isArray(j.rows)) return { sinLista: true };
+      var x = j.rows.filter(function(r){ return String(r.Observaciones || '').indexOf(o.clave) >= 0; })[0];
+      return x ? { id: String(x.ID_Comprobante), texto: String(x.Referencia || '') + ' ' + String(x.Observaciones || '') } : null;
+    })
+    .catch(function(){ return { sinLista: true }; });
+});
+
+/* La orden de la lista (por la clave). Abre la lista cada vez (después de Guardar, Albor vuelve solo a la lista, pero la
+   extensión de Safari puede quedar en la página anterior); yaEsta: se acaba de abrir. */
 async function filaDeOrden(pg, clave, intentos, yaEsta){
   for(var i = 0; i < (intentos || 4); i++){
     if(i || !yaEsta){ await pg.ir(C.BASE + URL_ORDENES); await esperar(pg, 40000); }
     try{ await pg.loc('#btNuevoRegistro').waitFor('visible', 30000); }catch(e){ if(e instanceof Cortado) throw e; }
     await esperar(pg, 20000);
-    var f = await pg.evaluar(JS_FILA_ORDEN, clave);
-    if(f) return f;
+    var b = await pg.evaluar(JS_BUSCAR_ORDEN, { clave: clave, dias: 10 });
+    if(b && !b.sinLista) return b;
+    if(b && b.sinLista){ var f = await pg.evaluar(JS_FILA_ORDEN, clave); if(f) return f; }
     await pg.esperar(1500);
   }
   return null;
@@ -2934,9 +2966,13 @@ async function filaDeOrden(pg, clave, intentos, yaEsta){
 /* El PDF del "Comprobante Detallado" de una orden de la lista (base64) o ''. */
 async function pdfDeOrden(pg, fila, charla){
   try{
-    await pg.evaluar(JS_ELEGIR_FILA, fila.id);
-    await pg.esperar(300);
-    await pg.loc('#btReporteDetallado').click({ timeout: 15000 });
+    // Como "Comprobante Detallado" (abrirReporte_OC), pero con el número interno de la orden: no hace falta que esté a la vista
+    var directo = await pg.evaluar(JS_REPORTE_ORDEN, fila.id);
+    if(!directo){
+      await pg.evaluar(JS_ELEGIR_FILA, fila.id);
+      await pg.esperar(300);
+      await pg.loc('#btReporteDetallado').click({ timeout: 15000 });
+    }
     await pg.loc('#iframeReporte').waitFor('attached', 30000);
     var fin = Date.now() + 90000, marco = null;
     while(Date.now() < fin){
