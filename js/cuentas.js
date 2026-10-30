@@ -148,7 +148,7 @@ function pintarBienes() {
   $('bi-lista').innerHTML = l.map(function (b) {
     return '<button type="button" class="ad-item ad-fila' + (b.activo ? '' : ' baja') + '" data-id="' + esc(b.id) + '">' +
       '<span class="ad-nom"><b>' + esc(b.nombre) + '</b>' +
-      '<small>' + esc([b.patente, b.sitio].filter(Boolean).join(' · ')) + (b.activo ? '' : ' · Dado de baja') + '</small></span>' +
+      '<small>' + esc([b.nombre.toUpperCase().indexOf(String(b.patente).toUpperCase()) === -1 ? b.patente : '', b.sitio].filter(Boolean).join(' · ')) + (b.activo ? '' : ' · Dado de baja') + '</small></span>' +
       '<span class="ad-flecha" aria-hidden="true">›</span></button>';
   }).join('') || '<p class="nota">Todavía no hay ninguno.</p>';
   $('bi-lista').querySelectorAll('[data-id]').forEach(function (x) {
@@ -320,7 +320,7 @@ function elegirImputacion(op, ini, titulo, notaSitio) {
         sitio = cc ? cc.sitio : '';
         $('imp-sitio').textContent = cc ? 'El pedido queda en ' + cc.sitio + '.' : '';
         $('imp-bien').innerHTML = (bien ? '' : '<option value="">Elegí el bien de uso</option>') +
-          op.bienes.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.nombre + (b.patente ? ' · ' + b.patente : '')) + '</option>'; }).join('');
+          op.bienes.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.nombre + (b.patente && b.nombre.toUpperCase().indexOf(b.patente.toUpperCase()) === -1 ? ' · ' + b.patente : '')) + '</option>'; }).join('');
         $('imp-bien').value = bien;
         $('dg-ok').disabled = modo === 'bien' ? !bien : !(cuenta && centro);
       };

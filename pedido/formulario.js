@@ -143,7 +143,7 @@ function pintarF6(){
   if(!f6) return;
   $('#prueba').checked=!!S.f6.prueba;
   $('#bien-b').hidden=!!bien; $('#bien-elegido').hidden=!bien; $('#bien-hint').hidden=!bien;
-  if(bien){ $('#bien-nombre').textContent=bien.nombre+(bien.patente?' · '+bien.patente:''); $('#bien-buscar').hidden=true; }
+  if(bien){ $('#bien-nombre').textContent=bien.nombre+(bien.patente&&bien.nombre.toUpperCase().indexOf(bien.patente.toUpperCase())===-1?' · '+bien.patente:''); $('#bien-buscar').hidden=true; }
   if(!conCuenta()) return;
   if(!cuentaF6(S.f6.cuenta)) S.f6.cuenta=F6.predeterminada||'';
   $('#cuenta').innerHTML=F6.cuentas.map(c=>`<option value="${esc(c.codigo)}">${esc(c.nombre)}</option>`).join('');
@@ -159,7 +159,7 @@ function pintarF6(){
 function pintarBienes(){
   const q=norm($('#bien-q').value);
   const l=(F6.bienes||[]).filter(b=>!q||norm(b.nombre+' '+b.patente).indexOf(q)!==-1);
-  $('#bien-lista').innerHTML=l.map(b=>`<button type="button" class="opt" data-id="${esc(b.id)}"><b>${esc(b.nombre)}</b><small>${esc([b.patente,b.sitio].filter(Boolean).join(' · '))}</small></button>`).join('')
+  $('#bien-lista').innerHTML=l.map(b=>`<button type="button" class="opt" data-id="${esc(b.id)}"><b>${esc(b.nombre)}</b><small>${esc([b.nombre.toUpperCase().indexOf(String(b.patente).toUpperCase())===-1?b.patente:'',b.sitio].filter(Boolean).join(' · '))}</small></button>`).join('')
     ||'<div class="hint">No hay ninguno con eso.</div>';
 }
 function pintarAdj(){

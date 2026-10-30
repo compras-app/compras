@@ -260,7 +260,7 @@ function pintarTarjetaContable() {
   ['cx-fac-cargar', 'cx-fac-otra'].forEach(function (id) { if ($(id)) $(id).addEventListener('click', function () { $('cx-factura').click(); }); });
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
   if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () {
-    window.open('https://laquimerasa.alboragro.com/1/Comprobantes_Compras/Create', '_blank', 'noopener');
+    window.open('https://laquimerasa.alboragro.com/1/Comprobantes_Compra/Create', '_blank', 'noopener');
   });
 }
 
