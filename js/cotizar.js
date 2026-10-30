@@ -264,17 +264,62 @@ async function abrirPedirCotizacion(refs) {
     alAbrir: pintar
   });
   if (!listo || !listo.length) return;
+  // Feli (31/10): antes de mandar, se ve el mensaje de cada proveedor y se puede cambiar
+  if (!(await revisarMensajesCotizacion(listo, deNuevo))) return;
   listo.forEach(function (e) {
     const huellas = {};
     r.productos.forEach(function (x) { if (x.cref === e.ref) huellas[x.id] = x.huella; });
     const pt = partes.filter(function (x) { return x.ref === e.ref; })[0] || {};
     const t = buscarEnVista(e.ref) || { titulo: pt.titulo };
-    bandeja.agregar('pedirCotizacion', [e.ref, { id: 'Q' + nuevoId(), mensajes: e.mensajes, huellas: huellas, deNuevo: deNuevo }],
+    bandeja.agregar('pedirCotizacion', [e.ref, { id: 'Q' + nuevoId(), mensajes: e.mensajes, huellas: huellas, deNuevo: deNuevo, codigoPrevio: e.codigoPrevio || '' }],
       'pedir cotización de "' + (t.titulo || e.ref) + '" a ' + e.mensajes.length + (e.mensajes.length === 1 ? ' proveedor' : ' proveedores'));
   });
   pintarTablero();
   if (listo.some(function (e) { return TB.abierta === e.ref; })) pintarTarjeta();
   aviso(APP.enLinea ? '📤 Mandando el pedido de cotización…' : '📶 Poca señal: el pedido de cotización se manda solo cuando vuelva.');
+}
+
+/**
+ * Feli (31/10): el mensaje de cada proveedor antes de mandarlo, para revisarlo y cambiarlo. Le pone a cada mensaje de
+ * `listo` su texto (y a cada envío el código que se mostró). false = volvió sin mandar. Sin señal, avisa y pregunta.
+ */
+async function revisarMensajesCotizacion(listo, deNuevo) {
+  aviso('Armando los mensajes…');
+  const previas = [];
+  for (const e of listo) {
+    const p = await api('previaCotizacion', e.ref, { mensajes: e.mensajes, deNuevo: deNuevo });
+    if (!p.ok) {
+      if (!p.sinConexion) { aviso(p.error, 'bad'); return false; }
+      return !!(await dialogo({ titulo: '📶 Poca señal', texto: 'Sin señal no puedo mostrarte cómo queda el mensaje. ¿Lo mando igual, con el texto de siempre? Sale solo cuando vuelva la señal.',
+        botones: [{ texto: 'Mandar igual', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] }));
+    }
+    e.codigoPrevio = p.codigo;
+    previas.push({ e: e, p: p });
+  }
+  aviso('');
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo cot-previa';
+  let k = 0;
+  cuerpo.innerHTML = '<p class="nota">Así le va a llegar a cada proveedor. Podés cambiar el texto antes de mandarlo.</p>' +
+    previas.map(function (x) {
+      return x.p.mensajes.map(function (m) {
+        const id = 'cz-msj-' + (k++);
+        return '<div class="campo"><label for="' + id + '">Para ' + esc(m.nombre) + '</label>' +
+          '<textarea id="' + id + '" rows="' + Math.min(14, Math.max(5, m.texto.split('\n').length + 1)) + '" data-ref="' + esc(x.e.ref) + '" data-prov="' + esc(m.proveedor) + '">' +
+          esc(m.texto) + '</textarea>' + (m.fotos ? '<small class="nota">Después del texto van ' + m.fotos + (m.fotos === 1 ? ' foto' : ' fotos') + ' de los productos.</small>' : '') + '</div>';
+      }).join('');
+    }).join('');
+  const n = previas.reduce(function (s, x) { return s + x.p.mensajes.length; }, 0);
+  const ok = await dialogo({ titulo: '📤 Revisá ' + (n === 1 ? 'el mensaje' : 'los ' + n + ' mensajes'), cuerpo: cuerpo,
+    botones: [{ texto: n === 1 ? 'Mandar' : 'Mandar los ' + n, clase: 'btn', valor: function () {
+      const textos = {};
+      cuerpo.querySelectorAll('textarea').forEach(function (t) { textos[t.dataset.ref + '|' + t.dataset.prov] = t.value.trim(); });
+      if (Object.keys(textos).some(function (k) { return !textos[k]; })) { aviso('Hay un mensaje vacío.', 'bad'); return undefined; }
+      return textos;
+    } }, { texto: 'Volver', valor: null }] });
+  if (!ok) return false;
+  listo.forEach(function (e) { e.mensajes.forEach(function (m) { const t = ok[e.ref + '|' + m.proveedor]; if (t) m.texto = t; }); });
+  return true;
 }
 
 /* Fase 4, Paso 6: los recordatorios al proveedor que no contestó, y "Sin respuesta" (solo acá, en la tarjeta: Feli). */

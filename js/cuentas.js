@@ -269,6 +269,26 @@ function pintarImputacion() {
   $('tj-cuenta').querySelectorAll('[data-imp]').forEach(function (x) { x.addEventListener('click', function () { cambiarImputacionUI(x.dataset.imp); }); });
 }
 
+/** Las órdenes de compra del pedido original (Feli, 31/10): quedan también acá, por si su tarjeta de seguimiento deja de estar. */
+function pintarOrdenesPedido() {
+  const b = $('tj-ordenes-b');
+  if (!b) return;
+  const l = TB.detalle && TB.detalle.ordenes;
+  b.hidden = !l || !l.length || TB.tipo === 'tarea';
+  if (b.hidden) return;
+  $('tj-ordenes').innerHTML = l.map(function (o) {
+    const anular = o.estado === 'Para anular';
+    return '<div class="pr-orden' + (anular || !o.numero ? ' pendiente' : '') + '"><b>' + esc(o.numero ? 'Orden N° ' + o.numero : 'Orden pendiente') + ' · ' + esc(o.proveedor) + '</b>' +
+      (anular ? '<div class="pr-problema">⚠️ ' + esc(o.motivo || 'Se anuló la compra: anulá la orden en Albor.') + '</div>' : '') +
+      (o.prueba ? '<div class="pr-nota">🧪 Es una prueba.</div>' : '') +
+      (o.pdfProveedor ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdfProveedor) + '">Orden de compra</button>' : '') +
+      (o.pdf ? ' <button type="button" class="link-gris" data-ver-archivo="' + esc(o.pdf) + '">Orden de compra de Albor</button>' : '') +
+      (o.tarjeta ? ' <button type="button" class="link-gris" data-ir-w="' + esc(o.tarjeta) + '">Ver la tarjeta de seguimiento</button>' : '') + '</div>';
+  }).join('');
+  $('tj-ordenes').querySelectorAll('[data-ver-archivo]').forEach(function (x) { x.addEventListener('click', function () { verArchivo(x.dataset.verArchivo); }); });
+  $('tj-ordenes').querySelectorAll('[data-ir-w]').forEach(function (x) { x.addEventListener('click', function () { irPorAccesoDirecto(x.dataset.irW); }); });
+}
+
 async function cambiarImputacionUI(ref) {
   const abierta = TB.abierta, x = (TB.detalle.imputacion || []).filter(function (i) { return i.ref === ref; })[0];
   if (!x) return;

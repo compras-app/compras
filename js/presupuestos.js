@@ -796,6 +796,10 @@ function htmlOrdenCompra(o) {
       '<button type="button" class="btn-chico" id="tj-oc-sin">Mandar sin orden</button></div></div>';
   }
   if (o.estado === 'Sin orden') return '<div class="pr-orden pendiente"><b>Sin orden de compra</b><div class="pr-nota">' + esc(o.motivo || '') + '</div></div>';
+  // Feli (31/10): la compra se anuló y la orden ya estaba en Albor
+  if (o.estado === 'Para anular') return '<div class="pr-orden pendiente"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b><div class="pr-problema">⚠️ ' +
+    esc(o.motivo || 'Se anuló la compra: anulá la orden en Albor.') + '</div>' +
+    (o.pdf ? ' <button type="button" class="link-gris" data-ver-archivo="' + esc(o.pdf) + '">Orden de compra de Albor</button>' : '') + '</div>';
   // Feli (30/10): "Orden de compra" (la que se le mandó al proveedor) y a su derecha, sin globito, en gris y más chica, la de Albor
   const ver = (o.pdfProveedor ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdfProveedor) + '">Orden de compra</button>' : '') +
               (o.pdf ? ' <button type="button" class="link-gris" data-ver-archivo="' + esc(o.pdf) + '">Orden de compra de Albor</button>' : '');

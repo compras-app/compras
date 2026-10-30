@@ -1087,6 +1087,9 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .cq-orden.mal{border-left-color:var(--danger)}
 .cq-orden.mal b{color:var(--danger)}
 .cx-sinorden{border-left:4px solid var(--danger)}
+.cx-orden-p{padding:6px 0;border-bottom:1px solid var(--line)}
+.cx-orden-p:last-child{border-bottom:0}
+.cx-orden-anular{color:var(--warn);font-size:13px;margin-top:3px}
 .cx-sinorden b{color:var(--danger);display:block}
 .cx-sinorden small{color:var(--muted)}
 .cx-prods{margin:0;padding-left:18px}

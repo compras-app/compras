@@ -209,6 +209,17 @@ function htmlPresupuestosCt(l) {
   }).join('');
 }
 
+/** Las órdenes de compra de un pedido original (Feli, 31/10: quedan también en el pedido). */
+function htmlOrdenesCt(l) {
+  if (!l || !l.length) return '';
+  return '<div class="caja"><h3>📄 Órdenes de compra</h3>' + l.map(function (o) {
+    return '<div class="cx-orden-p' + (o.estado === 'Para anular' ? ' anular' : '') + '"><b>' + esc(o.numero ? 'N° ' + o.numero : 'Pendiente') + '</b> · ' + esc(o.proveedor) +
+      (o.estado === 'Para anular' ? '<div class="cx-orden-anular">⚠️ ' + esc(o.motivo || 'Se anuló la compra: anulá la orden en Albor.') + '</div>' : '') +
+      '<div class="ad-acciones">' + (o.pdfProveedor ? '<button type="button" class="btn2" data-ver="' + esc(o.pdfProveedor) + '">Orden de compra</button>' : '') +
+      (o.pdf ? '<button type="button" class="link-gris" data-ver="' + esc(o.pdf) + '">Orden de compra de Albor</button>' : '') + '</div></div>';
+  }).join('') + '</div>';
+}
+
 function htmlProductosCt(l) {
   return '<ul class="cx-prods">' + l.map(function (x) {
     return '<li><b>' + esc(x.cantidad) + ' × ' + esc(x.nombre) + '</b>' + (x.especificacion ? ' <small>(' + esc(x.especificacion) + ')</small>' : '') +
@@ -224,7 +235,7 @@ function pintarTarjetaContable() {
     $('b-titulo').textContent = 'Pedido';
     h += '<h2 class="cx-titulo">' + esc(r.pedido.titulo || r.pedido.ref) + '</h2>' + (r.pedido.prueba ? '<p class="nota">🧪 ' + esc(r.pedido.prueba) + '</p>' : '') +
       htmlPedidoCt(r.pedido, false) +
-      '<div class="caja"><h3>Productos</h3>' + htmlProductosCt(r.productos) + '</div>' +
+      '<div class="caja"><h3>Productos</h3>' + htmlProductosCt(r.productos) + '</div>' + htmlOrdenesCt(r.ordenes) +
       '<div class="caja"><h3>Presupuestos</h3>' + htmlPresupuestosCt(r.presupuestos) + '</div>';
   } else {
     const t = r.tarjeta, c = r.compra;
@@ -254,6 +265,7 @@ function pintarTarjetaContable() {
       '<div class="ad-acciones"><button type="button" class="btn2" id="cx-fac-albor">' +
         (t.recibido ? 'Cargar la factura en Albor' : 'Cargar la factura en Albor anticipadamente') + '</button></div></div>' +
       '<h3 class="cx-sub">' + (r.pedidos.length === 1 ? 'Pedido' : 'Pedidos') + '</h3>' + r.pedidos.map(function (p) { return htmlPedidoCt(p, true); }).join('') +
+      htmlOrdenesCt(r.ordenes) +
       '<div class="caja"><h3>Presupuestos</h3>' + htmlPresupuestosCt(r.presupuestos) + '</div>';
   }
   $('cx-cuerpo').innerHTML = h;

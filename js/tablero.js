@@ -976,7 +976,7 @@ async function precargarMisTarjetas() {
       guardarDetalle(t.ref, { pedido: r.pedido, lineas: r.lineas, comentarios: r.comentarios || [], adjuntos: r.adjuntos || [],
                               trabajo: r.trabajo || null, tarjetas: r.tarjetas || [], partesViejas: r.partesViejas || {},
                               solicitudes: r.solicitudes || [], presupuestos: r.presupuestos || [], compra: r.compra || null,
-                              cargarPresupuesto: !!r.cargarPresupuesto, imputacion: r.imputacion || null });
+                              cargarPresupuesto: !!r.cargarPresupuesto, imputacion: r.imputacion || null, ordenes: r.ordenes || null });
     }
   } finally { precargando = false; }
 }
@@ -1045,6 +1045,7 @@ async function traerTarjeta(ref) {
                    presupuestos: r.presupuestos || [], compra: r.compra || null,          // Fase 4, Pasos 3 y 5
                    cargarPresupuesto: !!r.cargarPresupuesto,                               // "📎 Cargar presupuesto" (Feli, 19/10)
                    imputacion: r.imputacion || null,                                       // Fase 6: la cuenta o el bien de uso (Feli, 29/10)
+                   ordenes: r.ordenes || null,                                             // Feli (31/10): las órdenes de compra, también en el pedido
                    historia: conHistoria ? r.historia : (antes ? antes.historia : undefined) };
     TB.sinDetalle = '';
     guardarDetalle(ref, TB.detalle);
@@ -1228,6 +1229,7 @@ function pintarTarjeta() {
   pintarPresupuestos();                                                    // Fase 4, Paso 3 (presupuestos.js)
   pintarCompra();                                                         // Fase 4, Paso 5 (presupuestos.js)
   if (typeof pintarImputacion === 'function') pintarImputacion();         // Fase 6 (cuentas.js)
+  if (typeof pintarOrdenesPedido === 'function') pintarOrdenesPedido();   // Feli (31/10): las órdenes de compra, también en el pedido
   pintarActividad();
 
   prods.querySelectorAll('.tilde').forEach(function (b) {
