@@ -767,8 +767,9 @@ function htmlOrdenCompra(o) {
       '<button type="button" class="btn-chico" id="tj-oc-sin">Mandar sin orden</button></div></div>';
   }
   if (o.estado === 'Sin orden') return '<div class="pr-orden pendiente"><b>Sin orden de compra</b><div class="pr-nota">' + esc(o.motivo || '') + '</div></div>';
-  const ver = (o.pdfProveedor ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdfProveedor) + '">Ver la orden enviada al proveedor</button>' : '') +
-              (o.pdf ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdf) + '">Ver la orden de Albor</button>' : '');
+  // Feli (30/10): "Orden de compra" (la que se le mandó al proveedor) y a su derecha, sin globito, en gris y más chica, la de Albor
+  const ver = (o.pdfProveedor ? ' <button type="button" class="btn-chico" data-ver-archivo="' + esc(o.pdfProveedor) + '">Orden de compra</button>' : '') +
+              (o.pdf ? ' <button type="button" class="link-gris" data-ver-archivo="' + esc(o.pdf) + '">Orden de compra de Albor</button>' : '');
   if (o.estado === 'Mandada') return '<div class="pr-orden"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +
     (o.prueba ? '<div class="pr-nota">🧪 Es una prueba: no se le mandó nada al proveedor.</div>' : '') + ver + '</div>';
   return '<div class="pr-orden pendiente"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +

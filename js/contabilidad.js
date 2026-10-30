@@ -85,7 +85,9 @@ function pasaFiltrosContables(t) {
   if (sitio && (t.trabajo ? t.sitios.indexOf(sitio) === -1 : t.sitio !== sitio)) return false;
   if (cuenta === '-' && !cuentas.some(function (c) { return c === 'Sin cuenta contable'; })) return false;
   if (cuenta && cuenta !== '-' && !cuentas.some(function (c) { return c.indexOf(cuenta) === 0; })) return false;
-  return !q || sinTildes([t.titulo, t.proveedor || '', t.cuit || '', cuentas.join(' '), t.ref || t.id, t.solicitante || ''].join(' ')).indexOf(q) !== -1;
+  // Feli (30/10): también por el número de la orden de compra y por la factura (el nombre del archivo)
+  return !q || sinTildes([t.titulo, t.proveedor || '', t.cuit || '', cuentas.join(' '), t.ref || t.id, t.solicitante || '',
+                          t.numeroOrden || '', (t.factura && t.factura.nombre) || '', (t.factura && t.factura.numero) || ''].join(' ')).indexOf(q) !== -1;
 }
 
 function htmlCuentaCt(texto) {
@@ -111,7 +113,7 @@ function htmlTarjetaCt(t) {
     '<div class="t">' + esc(t.titulo) + '</div>' +
     '<div class="sub-t">🏪 ' + esc(t.proveedor || 'Sin proveedor') + (t.cuit ? ' · CUIT ' + esc(t.cuit) : '') + '</div>' +
     '<div class="pie"><span>' + esc(t.sitios.join(', ')) + '</span>' + (t.total !== null ? '<span><b>' + esc(dinero(t.total, t.moneda)) + '</b></span>' : '') + '</div>' +
-    (t.factura ? '<div class="ct-fac">🧾 ' + esc(t.factura.nombre) + '</div>' : '') +
+    (t.factura ? '<div class="ct-fac">🧾 ' + esc(t.factura.numero ? 'Factura ' + t.factura.numero : t.factura.nombre) + '</div>' : '') +
     '<div class="ct-recep">' + esc(recep) + '</div></div>';
 }
 
@@ -225,8 +227,9 @@ function pintarTarjetaContable() {
     h += '<h2 class="cx-titulo">' + esc(t.titulo) + '</h2>' + (t.prueba ? '<p class="nota">🧪 Compra de un pedido de prueba</p>' : '') +
       (r.orden && r.orden.numero
         ? '<div class="caja cx-oc"><h3>📄 Orden de compra N° ' + esc(r.orden.numero) + '</h3>' +
-          '<div class="ad-acciones">' + (r.orden.pdf ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdf) + '">Ver la orden de Albor</button>' : '') +
-          (r.orden.pdfProveedor ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdfProveedor) + '">Ver la orden enviada al proveedor</button>' : '') + '</div></div>'
+          // Feli (30/10): "Orden de compra" (la del proveedor) y a su derecha, sin globito, en gris y más chica, la de Albor
+          '<div class="ad-acciones">' + (r.orden.pdfProveedor ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdfProveedor) + '">Orden de compra</button>' : '') +
+          (r.orden.pdf ? '<button type="button" class="link-gris" data-ver="' + esc(r.orden.pdf) + '">Orden de compra de Albor</button>' : '') + '</div></div>'
         : t.sinOrden ? '<div class="caja cx-sinorden"><b>Este pedido no tiene orden de compra</b>' + (t.motivo ? '<small>' + esc(t.motivo) + '</small>' : '') + '</div>' : '') +
       '<div class="caja"><h3>Compra</h3><dl class="ad-datos">' +
         '<dt>Proveedor</dt><dd>' + esc(t.proveedor || '—') + '</dd><dt>CUIT</dt><dd>' + esc(t.cuit || 'No está cargado') + '</dd>' +
@@ -241,7 +244,7 @@ function pintarTarjetaContable() {
       '</div>' +
       // La factura (PDF): desde Comprado o Recibido; con ella la tarjeta pasa a Factura cargada
       '<div class="caja"><h3>Factura</h3>' + (t.factura
-        ? '<p>🧾 <b>' + esc(t.factura.nombre) + '</b></p><div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
+        ? '<p>🧾 <b>' + esc(t.factura.numero ? 'Factura N° ' + t.factura.numero : t.factura.nombre) + '</b>' + (t.factura.numero ? ' <small class="nota">' + esc(t.factura.nombre) + '</small>' : '') + '</p><div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
           '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button><button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button></div>'
         : '<p class="nota">Adjuntá el PDF de la factura: la tarjeta pasa a "Factura cargada".</p><button type="button" class="btn" id="cx-fac-cargar">🧾 Cargar factura</button>') +
       '<p class="nota">"Cargar en Albor" llega con el Paso 7: se va a poder usar con la compra recibida y la factura cargada.</p></div>' +
@@ -302,6 +305,17 @@ $('cx-factura').addEventListener('change', async function (e) {
   if (!f || !r || !r.tarjeta) return;
   if (!(f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) return aviso('La factura tiene que ser un PDF.', 'bad');
   if (f.size > 10 * 1024 * 1024) return aviso('El PDF pesa más de 10 MB.', 'bad');
+  // El número de la factura, para buscarla después (Feli, 30/10). Viene propuesto si el nombre del archivo lo trae.
+  const prop = (f.name.match(/\d{4,5}\s*-\s*\d{6,8}/) || f.name.match(/\d{5,}/) || [''])[0].replace(/\s+/g, '');
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<div class="campo"><label for="cx-fac-nro">Número de la factura <small>(opcional)</small></label>' +
+    '<input type="text" id="cx-fac-nro" maxlength="40" autocomplete="off" placeholder="Ej: 0003-00012345">' +
+    '<p class="nota">Sirve para encontrarla después en Buscar y en este tablero.</p></div>';
+  const numero = await dialogo({ titulo: 'Cargar la factura', cuerpo: cuerpo,
+    botones: [{ texto: 'Subir la factura', clase: 'btn', valor: function () { return $('cx-fac-nro').value.trim() || '-'; } }, { texto: 'Volver', valor: null }],
+    alAbrir: function () { $('cx-fac-nro').value = prop; $('cx-fac-nro').focus(); } });
+  if (numero === null || numero === undefined) return;
   aviso('Subiendo la factura…');
   const base64 = await new Promise(function (ok, mal) {
     const fr = new FileReader();
@@ -309,7 +323,7 @@ $('cx-factura').addEventListener('change', async function (e) {
     fr.onerror = mal;
     fr.readAsDataURL(f);
   });
-  const x = await apiLenta('cargarFactura', r.tarjeta.id, { id: 'J' + nuevoId(), nombre: f.name.replace(/\.pdf$/i, ''), base64: base64 });
+  const x = await apiLenta('cargarFactura', r.tarjeta.id, { id: 'J' + nuevoId(), nombre: f.name.replace(/\.pdf$/i, ''), base64: base64, numero: numero === '-' ? '' : numero });
   if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: la factura se sube con señal. Probá de nuevo en un rato.' : x.error, 'bad');
   aviso('Listo: la factura quedó cargada.');
   cargarTarjetaContable(); cargarContable();

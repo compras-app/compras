@@ -287,11 +287,23 @@ function tablasPlata(r) {
       cab: ['Pedido', 'Producto', 'Proveedor', 'Elegido', 'Promedio', 'Presupuestos', 'Ahorro'], abrir: 0,
       filas: r.ahorro.detalle.map(function (a) { return [a.ref, a.producto, a.proveedor, plata(a.elegido, a.moneda), plata(a.promedio, a.moneda), nro(a.ofertas), plata(a.ahorrado, a.moneda)]; }),
       vacio: 'Ninguna compra tuvo 2 o más presupuestos del mismo producto.' },
-    { titulo: 'Historial de precios', nota: 'Por producto, lo que se pagó por nuestra unidad, sin IVA, en la moneda en que vino y convertido con el dólar oficial del Banco Nación, venta, de ese día.',
+    // Feli (30/10): el último precio pagado de cada producto, con su especificación (sale del historial de abajo)
+    { titulo: 'Último precio', nota: 'Por producto y su especificación, lo último que se pagó por nuestra unidad, sin IVA.',
+      cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'En pesos'],
+      filas: ultimosPrecios(r.precios).map(function (p) { return [p.producto, fechaCorta(p.fecha), p.proveedor, plata(p.unitario, p.moneda), plata(p.enPesos, 'ARS')]; }),
+      vacio: 'Sin precios todavía.' },
+    { titulo: 'Historial de precios', nota: 'Por producto y su especificación (Feli, 30/10: así no se mezclan, por ejemplo, las mangueras de media con las gruesas), lo que se pagó por nuestra unidad, sin IVA, en la moneda en que vino y convertido con el dólar oficial del Banco Nación, venta, de ese día.',
       cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'Dólar del día', 'En pesos', 'En dólares'],
       filas: r.precios.map(function (p) { return [p.producto, fechaCorta(p.fecha), p.proveedor, plata(p.unitario, p.moneda), p.dolar ? '$ ' + nro(p.dolar, 0) : '—', plata(p.enPesos, 'ARS'), p.enDolares === null ? '—' : 'US$ ' + nro(p.enDolares, 2)]; }),
       vacio: 'Sin precios todavía.' }
   ];
+}
+
+/** De cada producto (con su especificación), el precio más nuevo del historial. */
+function ultimosPrecios(precios) {
+  const ult = {};
+  (precios || []).forEach(function (p) { if (!ult[p.producto] || new Date(p.fecha) >= new Date(ult[p.producto].fecha)) ult[p.producto] = p; });
+  return Object.keys(ult).sort(function (a, b) { return a.localeCompare(b, 'es'); }).map(function (k) { return ult[k]; });
 }
 
 function tablasProveedores(r) {

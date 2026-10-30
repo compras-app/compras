@@ -5796,6 +5796,13 @@
              'Bajalas de nuevo antes de cargar otra: si no, se transfiere dos veces lo mismo.');
       return;
     }
+    // Feli (30/10): con existencias de hace 3 horas o más, preguntar antes
+    if(DATA && DATA.archivoFecha && Date.now() - new Date(DATA.archivoFecha).getTime() >= 3 * 3600 * 1000){
+      var vieja = new Date(DATA.archivoFecha);
+      if(!confirm('Estás intentando transferir con una existencia vieja (bajada el ' + vieja.toLocaleDateString('es-AR') +
+                  ' a las ' + String(vieja.getHours()).padStart(2,'0') + ':' + String(vieja.getMinutes()).padStart(2,'0') +
+                  '). ¿Estás seguro?\n\nSi no, bajá las existencias de nuevo antes de transferir.')) return;
+    }
     var dest = ANALISIS.dest, bloques = bloquesTransferencia();
     var renglones = bloques.reduce(function(s, b){ return s + b.items.length; }, 0);
     if(!confirm('Cargar en Albor la transferencia a ' + dest.nombre + '\n\n' +

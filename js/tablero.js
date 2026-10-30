@@ -197,6 +197,11 @@ function seVe(t) {
   return true;
 }
 /** "Mis pedidos": los que pidió, los masivos que le compartieron (Paso 6) y las tarjetas de trabajo que salieron de los suyos (Fase 3). */
+/** Encargados y empleados cambian el título de sus pedidos y de los compartidos con ellos (Feli, 30/10). */
+function puedeCambiarTitulo(p) {
+  const yo = APP.yo.nombre;
+  return !!p && (p.solicitante === yo || (p.compartido || []).indexOf(yo) !== -1);
+}
 function esMio(t) {
   const yo = APP.yo.nombre;
   return t.solicitante === yo || (t.solicitantes || []).indexOf(yo) !== -1 || (t.compartido || []).indexOf(yo) !== -1;
@@ -1184,7 +1189,8 @@ function pintarTarjeta() {
   const pv = p ? pedidoConCambios(ref, p) : null;
   $('tj-razon').textContent = pv ? (pv.razon || '—') : (TB.sinDetalle || 'Cargando…');
   $('tj-razon-b').hidden = trabajo || !!(pv && !pv.razon && pv.descripcion);   // masivo libre sin razón: con la descripción alcanza
-  $('tj-editar').hidden = !(admin && p) || trabajo;
+  // Encargados y empleados: el título de sus pedidos y de los compartidos con ellos (Feli, 30/10)
+  $('tj-editar').hidden = !(p && (admin || puedeCambiarTitulo(p))) || trabajo;
   // Descripción: la del pedido masivo libre (Paso 6), o la de una tarjeta de trabajo
   $('tj-desc-b').hidden = !(pv && pv.descripcion);
   if (pv && pv.descripcion) {
@@ -2170,7 +2176,8 @@ async function editarProducto(ref, id, pre) {
 $('tj-editar').addEventListener('click', async function () {
   if (TB.tipo === 'tarea') return editarTareaUI(TB.abierta);
   const ref = TB.abierta, d = TB.detalle;
-  if (!ref || !d || !d.pedido || !APP.yo.admin) return;
+  if (!ref || !d || !d.pedido || !(APP.yo.admin || puedeCambiarTitulo(d.pedido))) return;
+  const soloTitulo = !APP.yo.admin;
   const t = buscarEnVista(ref);
   const p = pedidoConCambios(ref, Object.assign({}, d.pedido, t ? { titulo: t.titulo, urgencia: t.urgencia } : {}));
   let urgencia = p.urgencia;
@@ -2178,18 +2185,20 @@ $('tj-editar').addEventListener('click', async function () {
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = '<div class="campo"><label for="eq-titulo">Título</label><input type="text" id="eq-titulo" maxlength="200" autocomplete="off">' +
     '<p class="nota">Cambia solo el título: los productos quedan como están. Si después se cambia un producto, el título se vuelve a armar con los productos.</p></div>' +
-    '<div class="campo"><label>Urgencia</label><div class="urgencias-el" id="eq-urg"></div></div>' +
-    '<div class="campo"><label for="eq-razon">Razón del pedido</label><textarea id="eq-razon" maxlength="2000"></textarea></div>' +
-    (p.origen === 'masivo' ? '<div class="campo"><label>Compartir con</label><p class="nota">Los encargados que elijas lo ven. Sin nadie: solo los admins.</p>' +
+    (soloTitulo ? '' : '<div class="campo"><label>Urgencia</label><div class="urgencias-el" id="eq-urg"></div></div>' +
+    '<div class="campo"><label for="eq-razon">Razón del pedido</label><textarea id="eq-razon" maxlength="2000"></textarea></div>') +
+    (!soloTitulo && p.origen === 'masivo' ? '<div class="campo"><label>Compartir con</label><p class="nota">Los encargados que elijas lo ven. Sin nadie: solo los admins.</p>' +
       '<div class="pr-rubros" id="eq-compartir"></div></div>' : '');
   const antesComp = (p.compartido || []).slice().sort().join('|');
   const elegidos = {};
   (p.compartido || []).forEach(function (n) { elegidos[n] = true; });
   const c = await dialogo({
-    titulo: 'Editar pedido', cuerpo: cuerpo,
+    titulo: soloTitulo ? 'Cambiar el título' : 'Editar pedido', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
-      const c = {}, ti = $('eq-titulo').value.trim(), ra = $('eq-razon').value.trim();
+      const c = {}, ti = $('eq-titulo').value.trim();
       if (ti !== p.titulo) c.titulo = ti;
+      if (soloTitulo) return c;
+      const ra = $('eq-razon').value.trim();
       if (urgencia !== p.urgencia) c.urgencia = urgencia;
       if (ra !== (p.razon || '')) c.razon = ra;
       if (p.origen === 'masivo') {
@@ -2200,6 +2209,11 @@ $('tj-editar').addEventListener('click', async function () {
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       $('eq-titulo').value = p.titulo || '';
+      if (soloTitulo) {
+        const revisarT = function () { $('dg-ok').disabled = !$('eq-titulo').value.trim(); };
+        $('eq-titulo').addEventListener('input', revisarT);
+        return revisarT();
+      }
       $('eq-razon').value = p.razon || '';
       const urg = $('eq-urg');
       const pintarUrg = function () {
