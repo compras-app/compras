@@ -2967,6 +2967,7 @@ async function armarOrden(pg, o, charla){
   await esperar(pg, 40000);
   var prov = await proveedorDeOrden(pg, o.proveedor, charla);
   charla.revisar();
+  var moneda = await monedaDeOrden(pg, o.moneda, charla);
   var sol = await codigoConNombre(pg, 'ID_Personal_Solicitante', o.solicitante);
   var res = await codigoConNombre(pg, 'ID_Personal_Responsable', o.responsable);
   charla.decir('Solicitante: ' + (sol || '¿' + o.solicitante + '?') + ' · Responsable: ' + (res || '¿' + o.responsable + '?'));
@@ -2992,7 +2993,27 @@ async function armarOrden(pg, o, charla){
     }
     if(ok) cargados++; else fallados.push(it);
   }
-  return { prov: prov, sol: sol, res: res, cargados: cargados, fallados: fallados };
+  return { prov: prov, sol: sol, res: res, cargados: cargados, fallados: fallados, moneda: moneda };
+}
+
+// La cotización que pone Albor al elegir Dólares (el campo de al lado de "Moneda de origen").
+var JS_COTIZACION = String(function(){
+  var e = [].slice.call(document.querySelectorAll('input')).filter(function(x){ return /cotiz/i.test(x.id + ' ' + (x.name || '')) && x.offsetParent !== null; })[0];
+  return e ? String(e.value || '').trim() : '';
+});
+
+/* Contador (Feli, 30/10): en dólares, "Moneda de origen" = Dólares y la cotización que pone Albor. Los precios van como vienen
+   del presupuesto (en dólares). En pesos no se toca (viene elegida). "Precio con IVA incluido" siempre sin tildar. Devuelve
+   lo que se ve, para la pausa de control. */
+async function monedaDeOrden(pg, moneda, charla){
+  try{ if((await pg.evaluar(AYUDANTE, { sel: '#Precio_Con_IVA', modo: 'marcado' })) === true) await tildar(pg, '#Precio_Con_IVA', false); }
+  catch(e){ if(e instanceof Cortado) throw e; }
+  if(moneda !== 'USD') return 'Pesos';
+  charla.decir('La compra es en dólares: elijo Dólares en «Moneda de origen» (la cotización la pone Albor).');
+  if(!(await elegirOpcion(pg, '#ID_Moneda_Origen', '2', 'Moneda de origen', charla))) return 'SIN ELEGIR: elegí Dólares a mano';
+  var fin = Date.now() + 15000, cot = '';
+  while(Date.now() < fin && !cot){ await esperar(pg, 10000, 150); cot = await pg.evaluar(JS_COTIZACION); if(!cot) await pg.esperar(500); }
+  return 'Dólares' + (cot ? ' (cotización de Albor: ' + cot + ')' : '');
 }
 
 /* Guarda una sola vez y espera a que Albor vuelva a la lista. */
@@ -3120,7 +3141,8 @@ function cargar_orden_compra(o){
         if(en.length > o.items.length) aviso += '\n\n⚠️ La grilla tiene ' + en.length + ' renglones y son ' + o.items.length + ': borrá los de más antes de guardar.';
         await charla.pausa('Revisá la orden en Albor antes de guardarla:\n' +
                            '• Proveedor: ' + prov.nombre + '\n• Solicitante: ' + (r.sol || '—') + ' · Responsable: ' + (r.res || '—') + '\n' +
-                           '• ' + r.cargados + ' de ' + o.items.length + ' ítems · total $ ' + unidadesAlbor(o.total) + (o.prueba ? '\n\n🧪 Es una prueba: después borrala en Albor.' : '') +
+                           '• Moneda: ' + (r.moneda || 'Pesos') + '\n' +
+                           '• ' + r.cargados + ' de ' + o.items.length + ' ítems · total ' + (o.moneda === 'USD' ? 'US$ ' : '$ ') + unidadesAlbor(o.total) + (o.prueba ? '\n\n🧪 Es una prueba: después borrala en Albor.' : '') +
                            aviso + '\n\nTocá Guardar y la guardo (una sola vez).', 'Guardar');
         await guardarOrden(pg, charla);
         fila = await filaDeOrden(pg, o.clave, 4);

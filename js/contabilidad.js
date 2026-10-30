@@ -246,8 +246,11 @@ function pintarTarjetaContable() {
       '<div class="caja"><h3>Factura</h3>' + (t.factura
         ? '<p>🧾 <b>' + esc(t.factura.numero ? 'Factura N° ' + t.factura.numero : t.factura.nombre) + '</b>' + (t.factura.numero ? ' <small class="nota">' + esc(t.factura.nombre) + '</small>' : '') + '</p><div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
           '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button><button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button></div>'
-        : '<p class="nota">Adjuntá el PDF de la factura: la tarjeta pasa a "Factura cargada".</p><button type="button" class="btn" id="cx-fac-cargar">🧾 Cargar factura</button>') +
-      '<p class="nota">"Cargar en Albor" llega con el Paso 7: se va a poder usar con la compra recibida y la factura cargada.</p></div>' +
+        : '<p class="nota">Adjuntá el PDF de la factura: la tarjeta pasa a "Factura cargada".</p><button type="button" class="btn" id="cx-fac-cargar">🧾 Adjuntar factura</button>') +
+      // Feli (30/10): cargarla en Albor; en Comprado, "anticipadamente". Por ahora abre Albor en un comprobante de compra nuevo
+      // (la carga sola llega con la Fase 6-bis)
+      '<div class="ad-acciones"><button type="button" class="btn2" id="cx-fac-albor">' +
+        (t.recibido ? 'Cargar la factura en Albor' : 'Cargar la factura en Albor anticipadamente') + '</button></div></div>' +
       '<h3 class="cx-sub">' + (r.pedidos.length === 1 ? 'Pedido' : 'Pedidos') + '</h3>' + r.pedidos.map(function (p) { return htmlPedidoCt(p, true); }).join('') +
       '<div class="caja"><h3>Presupuestos</h3>' + htmlPresupuestosCt(r.presupuestos) + '</div>';
   }
@@ -256,6 +259,9 @@ function pintarTarjetaContable() {
   $('cx-cuerpo').querySelectorAll('[data-cambiar]').forEach(function (b) { b.addEventListener('click', function () { cambiarCuentaUI(b.dataset.cambiar); }); });
   ['cx-fac-cargar', 'cx-fac-otra'].forEach(function (id) { if ($(id)) $(id).addEventListener('click', function () { $('cx-factura').click(); }); });
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
+  if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () {
+    window.open('https://laquimerasa.alboragro.com/1/Comprobantes_Compras/Create', '_blank', 'noopener');
+  });
 }
 
 /** ✏️ Cambiar la cuenta y el centro de costos del pedido entero (el sitio sale del centro). */
@@ -297,7 +303,7 @@ async function cambiarCuentaUI(ref) {
   cargarTarjetaContable(); cargarContable();
 }
 
-/** 🧾 Cargar factura: solo PDF, hasta 10 MB. */
+/** 🧾 Adjuntar factura: solo PDF, hasta 10 MB. */
 $('cx-factura').addEventListener('change', async function (e) {
   const f = e.target.files[0];
   e.target.value = '';
