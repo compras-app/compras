@@ -1242,6 +1242,15 @@ async function formularioVacio(pg){
   catch(e){ if(e instanceof Cortado) throw e; return false; }
 }
 
+/* El comprobante sigue en pantalla sin guardar: el formulario está y tiene su número o sus renglones (uno en blanco,
+   el que deja "Guardar y crear otro", no cuenta). */
+async function sigueEnPantalla(pg){
+  var hay = false;
+  try{ hay = !!(await pg.evaluar("() => { const t = document.querySelector('#ID_Tipo_Comprobante'); return !!t && t.offsetParent !== null; }")); }
+  catch(e){ if(e instanceof Cortado) throw e; }
+  return hay && !(await formularioVacio(pg));
+}
+
 /* Deja un comprobante en blanco de esa empresa: el que ya está abierto si sirve (misma empresa, Comprobantes
    de Stock y en blanco), o la página de nuevo y "Nuevo", como siempre. deNuevo: después de que Albor cerró la
    sesión, siempre uno nuevo. Devuelve la empresa activa. */
@@ -1758,6 +1767,9 @@ async function guardarComprobante(pg, charla, aplicar){
     if(r.advertencia){
       charla.decir('   [!] Albor no dejó ' + que + ': hay una advertencia arriba de la cabecera.');
       await charla.pausa(textoAdvertencia(r.advertencia, que), 'Seguir');
+      // Para resolverlo, la persona pudo cambiar la cabecera (Feli, 30/10: el número repetido, cambiado a mano, se
+      // tomaba como "guardado"). Si el comprobante sigue en pantalla con sus renglones, esa es su huella de ahora.
+      if(await sigueEnPantalla(pg)){ var h2 = await huella(pg); if(h2) antes = h2; }
     }else{
       // No se pudo tocar el botón, o Albor no contestó: no se vuelve a tocar
       // (podría guardarlo dos veces). Lo termina la persona.
@@ -1773,6 +1785,190 @@ async function guardarComprobante(pg, charla, aplicar){
   await charla.pausa('No puedo confirmar que Albor haya guardado este comprobante.\nGuardalo a mano en Albor ' +
                      'y tocá «Ya está guardado».', 'Ya está guardado');
   return numero;
+}
+
+/* ---------- Se fija en Albor que el comprobante quedó (Feli, 30/10) ----------
+   El 30/10 tres egresos con un número ya usado se dieron por guardados sin estarlo (el número cambiado a mano
+   parecía un comprobante nuevo) y la extensión se colgó a mitad de otra carga. Ahora, después de guardar cada
+   comprobante, se lo busca en la lista de Comprobantes de Stock, pidiéndosela a Albor con las fechas (como las
+   órdenes de compra: la lista en pantalla recuerda un filtro viejo), y se miran sus renglones y, en los egresos,
+   el centro de costos. Si no está: "Intentar de nuevo" o "Cancelar la carga". */
+
+// El comprobante no se guardó y ya no está en pantalla: se arma de nuevo desde el principio.
+class Rehacer extends Error {}
+
+function fechaDeTexto(t){
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(t || '').trim()) || null;
+  if(m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(t || '').trim());
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+function diaParaAlbor(d){ return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+
+// "1111-00000065" y "1111-65" son el mismo: ['1111-', 65]. null si no tiene esa forma.
+function partesNumero(t){
+  var m = /^(.*-)\s*0*(\d+)$/.exec(String(t || '').replace(/\s+/g, ''));
+  return m ? [m[1], +m[2]] : null;
+}
+function numeroCorto(t){ var p = partesNumero(t); return p ? p[0] + p[1] : String(t || '').trim(); }
+
+// Los comprobantes de Stock de una empresa entre dos fechas (yyyy-mm-dd), sin los anulados. null si Albor no contesta.
+var JS_LISTA_STOCK = String(function(o){
+  var q = { jqGridID: 'DetalleGrid', _search: false, rows: o.filas || 500, page: 1, sidx: 'Fecha', sord: 'desc', nd: Date.now(),
+            filtro_FechaDesde: o.desde, filtro_FechaHasta: o.hasta };
+  return fetch('/' + o.empresa + '/Comprobantes_Stock/ObtenerLista?' + new URLSearchParams(q).toString(), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      if(!j || !Array.isArray(j.rows)) return null;
+      return j.rows.filter(function(r){ return String(r.Anulada) !== 'True'; }).map(function(r){
+        return { id: String(r.ID_Comprobante), nro: String(r.Numero_Comprobante || '').trim(),
+                 ref: String(r.Referencia || '').replace(/\s+/g, ''), destino: String(r.Punto_Stock_Destino || '').trim() };
+      });
+    })
+    .catch(function(){ return null; });
+});
+
+// Los renglones ([código, unidades]) y el centro de costos (su número; solo egresos) de un comprobante guardado.
+var JS_DETALLE_STOCK = String(function(o){
+  var base = '/' + o.empresa + '/Comprobantes_Stock/';
+  var items = fetch(base + 'ListaItems?' + new URLSearchParams({ parentRowId: o.id, idTipoComprobante: o.tipo, jqGridID: 'DetalleGrid',
+                                                                rows: 2000, page: 1 }).toString(), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){ return j && Array.isArray(j.rows) ? j.rows.map(function(r){ return [String(r.Codigo_Insumo || '').trim(), Number(r.Unidades)]; }) : null; })
+    .catch(function(){ return null; });
+  var centro = !o.centro ? Promise.resolve('') : fetch(base + 'Edit/' + o.id, { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.text() : ''; })
+    .then(function(h){
+      var m = /evalJSON\('(\[\{"ID_Dimension[^']+)'\)/.exec(h || '');
+      if(!m) return '';
+      var d = JSON.parse(m[1]).filter(function(x){ return String(x.ID_Dimension) === '2'; })[0];
+      return d ? String(d.ID_IT_Dimension) : '';
+    })
+    .catch(function(){ return ''; });
+  return Promise.all([items, centro]).then(function(v){ return { items: v[0], centro: v[1] }; });
+});
+
+async function listaStock(pg, empresa, desde, hasta, filas){
+  try{ return await pg.evaluar(JS_LISTA_STOCK, { empresa: String(empresa).trim(), desde: diaParaAlbor(desde), hasta: diaParaAlbor(hasta), filas: filas }); }
+  catch(e){ if(e instanceof Cortado) throw e; return null; }
+}
+
+// La lista alrededor de la fecha del comprobante (y de hoy).
+async function listaDelDia(pg, empresa, fecha){
+  var d = fechaDeTexto(fecha) || new Date(), hoy = new Date(), DIA = 86400000;
+  return listaStock(pg, empresa, new Date(Math.min(d, hoy) - 3 * DIA), new Date(Math.max(d, hoy) + 3 * DIA));
+}
+
+/* Lo que hay en Albor antes de guardar (sus números internos), para reconocer después el comprobante nuevo. */
+async function antesDeGuardar(pg, empresa, fecha){
+  var l = await listaDelDia(pg, empresa, fecha);
+  return l ? l.map(function(r){ return r.id; }) : null;
+}
+
+/* El comprobante recién guardado: uno que no estaba antes, con ese número (egreso: "1111-65"; transferencia:
+   "2026-STK-3028") o, si no, el único nuevo de su tipo (la persona pudo cambiarle el número a mano). Nunca uno
+   viejo con el mismo número: el 30/10, el 1111-66 de La Colorada "estaba" porque era el de Candelaria. */
+function buscarGuardado(lista, o){
+  var nuevos = lista.filter(function(r){ return !o.antes || o.antes.indexOf(r.id) < 0; })
+                    .filter(function(r){ return o.egreso ? !!r.nro : !!r.destino; });
+  var mismo = nuevos.filter(function(r){
+    return o.egreso ? numeroCorto(r.nro) === numeroCorto(o.numero) : !!o.numero && r.ref === String(o.numero).replace(/\s+/g, '');
+  });
+  if(mismo.length) return mismo[0];
+  return o.antes && nuevos.length === 1 ? nuevos[0] : null;
+}
+
+// Lo que no coincide entre lo que se cargó y lo que quedó guardado.
+function diferenciasGuardado(det, o){
+  var dif = [];
+  if(det.items){
+    var quedo = {}, cargo = {};
+    det.items.forEach(function(x){ quedo[x[0].toUpperCase()] = (quedo[x[0].toUpperCase()] || 0) + x[1]; });
+    o.renglones.forEach(function(i){ var k = String(i.codigo).toUpperCase(); cargo[k] = (cargo[k] || 0) + (parseFloat(String(i.unidad).replace(',', '.')) || 0); });
+    var faltan = Object.keys(cargo).filter(function(k){ return !(k in quedo); });
+    var sobran = Object.keys(quedo).filter(function(k){ return !(k in cargo); });
+    var otra = Object.keys(cargo).filter(function(k){ return k in quedo && Math.abs(quedo[k] - cargo[k]) > 0.0001; });
+    if(det.items.length !== Object.keys(quedo).length) dif.push('tiene insumos repetidos');
+    if(faltan.length) dif.push('no tiene ' + faltan.join(', '));
+    if(sobran.length) dif.push('tiene de más ' + sobran.join(', '));
+    if(otra.length) dif.push('con otra cantidad: ' + otra.map(function(k){ return k + ' (' + quedo[k] + ' en vez de ' + cargo[k] + ')'; }).join(', '));
+  }
+  if(o.centro && det.centro && det.centro !== String(o.centro))
+    dif.push('quedó con otro centro de costos (tiene que ser ' + (o.centroTexto || o.centro) + ')');
+  return dif;
+}
+
+/* Después de guardar: {fila} si está en Albor; {otraVez: 'guardar'} si no está y sigue en pantalla; {otraVez: 'armar'}
+   si no está ni en pantalla; {sinControl: true} si no se pudo mirar la lista (se sigue como antes, avisando). */
+async function confirmarEnAlbor(pg, charla, o){
+  var nombre = o.egreso ? 'el egreso N° ' + o.numero + ' de ' + o.punto : 'la transferencia ' + o.punto + (o.numero ? ' (' + o.numero + ')' : '');
+  for(var vuelta = 1; vuelta <= 2; vuelta++){
+    var lista = await listaDelDia(pg, o.empresa, o.fecha);
+    if(!lista){
+      charla.decir('   [!] No pude mirar la lista de Albor para confirmar que quedó guardado: fijate en Comprobantes de Stock.');
+      return { sinControl: true };
+    }
+    var fila = buscarGuardado(lista, o);
+    if(fila){
+      charla.decir('   confirmado en Albor' + (o.egreso ? ': N° ' + numeroCorto(fila.nro) : fila.ref ? ': ' + fila.ref : '') + '.');
+      var det = null;
+      try{ det = await pg.evaluar(JS_DETALLE_STOCK, { empresa: String(o.empresa).trim(), id: fila.id, tipo: o.egreso ? TIPO_EGRESO : TIPO_TRANSFERENCIA, centro: !!o.centro }); }
+      catch(e){ if(e instanceof Cortado) throw e; }
+      var dif = det ? diferenciasGuardado(det, o) : [];
+      if(dif.length){
+        charla.decir('   [!] Quedó guardado, pero ' + dif.join('; ') + '.');
+        await charla.pausa('Albor guardó ' + nombre + ', pero:\n   ' + dif.join('\n   ') +
+                           '\n\nCorregilo a mano en Albor (Comprobantes de Stock) y tocá Seguir.', 'Seguir');
+      }
+      return { fila: fila };
+    }
+    if(vuelta === 1){ await pg.esperar(2500); continue; }       // Albor puede tardar un poco en mostrarlo
+    charla.decir('   [!] No está en la lista de Albor: no se guardó.');
+    await charla.pausa('Albor no guardó ' + nombre + ': no está en la lista de Comprobantes de Stock.\n\n' +
+                       'Si en Albor hay un recuadro rojo, resolvelo (sin salir de esa pantalla). «Intentar de nuevo» lo vuelve a ' +
+                       'guardar, o lo armo de nuevo si ya no está en pantalla. «Cancelar la carga» corta acá: lo que ya se guardó queda.',
+                       'Intentar de nuevo');
+  }
+  // ¿Lo guardó la persona mientras tanto?
+  lista = await listaDelDia(pg, o.empresa, o.fecha);
+  fila = lista && buscarGuardado(lista, o);
+  if(fila){ charla.decir('   confirmado en Albor.'); return { fila: fila }; }
+  return { otraVez: (await sigueEnPantalla(pg)) ? 'guardar' : 'armar' };
+}
+
+/* Guarda y confirma en Albor; si no quedó, lo vuelve a guardar o lo manda a armar de nuevo (Rehacer). */
+async function guardarYConfirmar(pg, charla, aplicar, o){
+  for(;;){
+    var numero = await guardarComprobante(pg, charla, aplicar);
+    if(!o.egreso) o.numero = numero;
+    var c = await confirmarEnAlbor(pg, charla, o);
+    if(c.otraVez === 'armar'){ charla.decir('   Lo armo de nuevo desde el principio.'); throw new Rehacer(); }
+    if(c.otraVez === 'guardar'){ charla.decir('   Lo guardo de nuevo.'); continue; }
+    return { numero: numero, fila: c.fila || null };
+  }
+}
+
+/* El próximo número de egreso sale de Albor (Feli, 30/10: la app quedó atrasada y repetía números ya usados). Mira los
+   egresos de las dos empresas de los últimos cuatro meses con el mismo prefijo ("1111-"); si el primero de la carga ya
+   está usado, avisa y numera desde el siguiente al último. */
+async function numeroLibre(pg, comprobantes, charla){
+  var p = partesNumero(comprobantes[0].numero);
+  if(!p) return;
+  var hoy = new Date(), DIA = 86400000, mayor = 0, leidas = 0;
+  var empresas = EMPRESAS.concat(comprobantes.map(function(c){ return String(c.empresa_id).trim(); }))
+                         .filter(function(e, i, a){ return e && a.indexOf(e) === i; });
+  for(var i = 0; i < empresas.length; i++){
+    var l = await listaStock(pg, empresas[i], new Date(hoy - 120 * DIA), new Date(+hoy + 3 * DIA), 3000);
+    if(!l) continue;
+    leidas++;
+    l.forEach(function(r){ var x = partesNumero(r.nro); if(x && x[0] === p[0]) mayor = Math.max(mayor, x[1]); });
+  }
+  if(!leidas){ charla.decir('   [!] No pude mirar en Albor el último número de egreso: sigo con el ' + comprobantes[0].numero + '.'); return; }
+  if(p[1] > mayor){ charla.decir('Número de egreso: el ' + comprobantes[0].numero + ' está libre en Albor.'); return; }
+  var desde = mayor + 1;
+  await charla.pausa('El N° ' + comprobantes[0].numero + ' ya está usado en Albor (el último egreso es el ' + p[0] + mayor + ').\n\n' +
+                     'Cargo estos ' + comprobantes.length + ' egresos desde el ' + p[0] + desde + '.', 'Seguir desde el ' + p[0] + desde);
+  comprobantes.forEach(function(c, k){ c.numero = p[0] + (desde + k); });
 }
 
 function textoFallados(fallados){
@@ -1834,7 +2030,10 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total, deNuevo)
   await charla.pausa(aviso + '\n\nRevisá en Albor la cabecera y la grilla:\n' + cabecera +
                      '\n\nCon este botón aplico y guardo solo.', 'Aplicar y guardar');
 
-  var numero = await guardarComprobante(pg, charla, true);
+  var antes = await antesDeGuardar(pg, b.empresa_id, b.fecha);
+  var numero = (await guardarYConfirmar(pg, charla, true, {
+    egreso: false, empresa: b.empresa_id, fecha: b.fecha, punto: b.origen_nombre + ' → ' + b.destino_nombre, antes: antes,
+    renglones: r.cargados })).numero;
 
   return { empresa: empresaActual, hecho: {
     origen: b.origen_nombre, destino: b.destino_nombre, bloque: b._i,      // bloque: su lugar en la lista de la pantalla (el orden puede cambiar)
@@ -1845,14 +2044,14 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total, deNuevo)
 
 /* `hechos` se va llenando comprobante por comprobante, así si se cancela a
    la mitad el que llama sabe qué quedó hecho. */
-async function transferir(pg, bloques, charla, hechos){
+async function transferir(pg, bloques, charla, hechos, alHacer){
   var empresa = await empresaEnUrl(pg), rehechos = 0, rehacer = false;
   for(var n = 1; n <= bloques.length; n++){
     var r;
     try{ r = await transferirBloque(pg, bloques[n - 1], empresa, charla, n, bloques.length, rehacer); }
     catch(e){
-      if(!(e instanceof SesionPerdida) || ++rehechos > 2) throw e;
-      await volverAEntrar(pg, charla);
+      if(!(e instanceof SesionPerdida || e instanceof Rehacer) || ++rehechos > 2) throw e;
+      if(e instanceof SesionPerdida) await volverAEntrar(pg, charla);
       empresa = await empresaEnUrl(pg);
       rehacer = true;
       n--;
@@ -1861,8 +2060,16 @@ async function transferir(pg, bloques, charla, hechos){
     rehacer = false;
     empresa = r.empresa;
     hechos.push(r.hecho);
+    avisarHecho(alHacer, r.hecho);
   }
   return hechos;
+}
+
+/* Cada comprobante confirmado va enseguida a la pantalla, que lo anota en el historial (Feli, 30/10: la extensión se
+   colgó al final de los egresos y no quedó anotado ninguno). */
+function avisarHecho(alHacer, hecho){
+  if(typeof alHacer !== 'function') return;
+  try{ alHacer(hecho); }catch(e){ anotar('No se pudo avisar a la pantalla: ' + primeraLinea(e)); }
 }
 
 /* Albor llevó a la pantalla de ingreso a mitad de un comprobante (no estaba
@@ -2097,10 +2304,14 @@ async function egresarComprobante(pg, c, empresaActual, charla, n, total, deNuev
   await charla.pausa(aviso + '\n\nRevisá en Albor la cabecera y la grilla:\n' + cabecera() +
                      '\n\nCon este botón guardo solo.', 'Guardar');
 
-  await guardarComprobante(pg, charla, false);
+  var antes = await antesDeGuardar(pg, c.empresa_id, c.fecha);
+  var g = await guardarYConfirmar(pg, charla, false, {
+    egreso: true, empresa: c.empresa_id, fecha: c.fecha, numero: c.numero, punto: c.punto_nombre, antes: antes,
+    renglones: r.cargados, centro: centro, centroTexto: textoCentro });
 
   return { empresa: empresaActual, hecho: {
-    punto: c.punto_nombre, cuenta: c.cuenta, numero: c.numero,
+    punto: c.punto_nombre, cuenta: c.cuenta, bloque: c._i,
+    numero: g.fila ? numeroCorto(g.fila.nro) : c.numero,      // el que quedó en Albor, aunque lo hayan cambiado a mano
     cuenta_nombre: cuentas[String(c.cuenta)] || '',
     centro: textoCentro || quedo,
     cargados: r.cargados.length, total: c.items.length, fallados: r.fallados
@@ -2109,14 +2320,14 @@ async function egresarComprobante(pg, c, empresaActual, charla, n, total, deNuev
 
 /* `hechos` se va llenando a medida que se guarda cada comprobante: si se
    cancela a la mitad, el que llama sabe cuáles números ya se usaron. */
-async function egresar(pg, comprobantes, charla, hechos, cuentas){
+async function egresar(pg, comprobantes, charla, hechos, cuentas, alHacer){
   var empresa = await empresaEnUrl(pg), rehechos = 0, rehacer = false;
   for(var n = 1; n <= comprobantes.length; n++){
     var r;
     try{ r = await egresarComprobante(pg, comprobantes[n - 1], empresa, charla, n, comprobantes.length, rehacer, cuentas); }
     catch(e){
-      if(!(e instanceof SesionPerdida) || ++rehechos > 2) throw e;
-      await volverAEntrar(pg, charla);
+      if(!(e instanceof SesionPerdida || e instanceof Rehacer) || ++rehechos > 2) throw e;
+      if(e instanceof SesionPerdida) await volverAEntrar(pg, charla);
       empresa = await empresaEnUrl(pg);
       rehacer = true;
       n--;
@@ -2125,6 +2336,7 @@ async function egresar(pg, comprobantes, charla, hechos, cuentas){
     rehacer = false;
     empresa = r.empresa;
     hechos.push(r.hecho);
+    avisarHecho(alHacer, r.hecho);
   }
   return hechos;
 }
@@ -2570,6 +2782,8 @@ function tituloDePausa(boton, texto){
   if(/^Cargar los/.test(boton)) return 'Completá la cabecera en Albor';
   if(/^(Aplicar y guardar|Guardar)$/.test(boton)) return 'Terminó de cargar: revisá antes de guardar';
   if(boton === 'Ya está guardado') return 'Guardá el comprobante en Albor';
+  if(boton === 'Intentar de nuevo') return 'Albor no guardó el comprobante';
+  if(/^Seguir desde el /.test(boton)) return 'El número de egreso ya estaba usado en Albor';
   return 'Falta que revises algo en Albor';
 }
 
@@ -2689,7 +2903,7 @@ function items(lista){
   });
 }
 
-function cargar_transferencia(bloques, archivos, etiqueta){
+function cargar_transferencia(bloques, archivos, etiqueta, alHacer){
   bloques = (bloques || []).map(function(b, i){ return Object.assign({}, b, { items: items(b.items), _i: i }); });
   if(!bloques.length) return Promise.resolve({ ok: false, motivo: 'No hay nada para transferir.' });
   return cargar(async function(pg, charla, hechos){
@@ -2699,13 +2913,13 @@ function cargar_transferencia(bloques, archivos, etiqueta){
     if(donde) bloques = bloques.filter(function(b){ return String(b.empresa_id).trim() === donde; })
                                .concat(bloques.filter(function(b){ return String(b.empresa_id).trim() !== donde; }));
     // El resumen, en el orden de la pantalla
-    try{ return await transferir(pg, bloques, charla, hechos); }
+    try{ return await transferir(pg, bloques, charla, hechos, alHacer); }
     finally{ hechos.sort(function(a, b){ return a.bloque - b.bloque; }); }
   }, 'Transferencias', etiqueta, archivos, true);
 }
 
-function cargar_egresos(comprobantes, archivos, etiqueta){
-  comprobantes = (comprobantes || []).map(function(c){ return Object.assign({}, c, { items: items(c.items) }); });
+function cargar_egresos(comprobantes, archivos, etiqueta, alHacer){
+  comprobantes = (comprobantes || []).map(function(c, i){ return Object.assign({}, c, { items: items(c.items), _i: i }); });
   if(!comprobantes.length) return Promise.resolve({ ok: false, motivo: 'No hay nada para egresar.' });
   // Los puntos de oficina no se egresan nunca, venga lo que venga de la
   // lista de granjas ("NO tocar los puntos de stock de oficina").
@@ -2720,7 +2934,8 @@ function cargar_egresos(comprobantes, archivos, etiqueta){
   try{ Object.assign(cuentas, JSON.parse(localStorage.getItem(CLAVE_CUENTAS) || '{}') || {}); }catch(e){}
   return cargar(async function(pg, charla, hechos){
     await revisarAntes(pg, comprobantes, true, charla);
-    return egresar(pg, comprobantes, charla, hechos, cuentas);
+    await numeroLibre(pg, comprobantes, charla);
+    return egresar(pg, comprobantes, charla, hechos, cuentas, alHacer);
   }, 'Egresos', etiqueta, archivos).then(function(r){
     try{ localStorage.setItem(CLAVE_CUENTAS, JSON.stringify(cuentas)); }catch(e){}
     return r;

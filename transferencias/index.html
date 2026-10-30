@@ -5817,8 +5817,9 @@
   /* Lo que quedó guardado en Albor va a la planilla, para el Historial (Feli,
      2026-10-02). Cada comprobante guardado ("hechos", en orden) con sus
      insumos, menos los que no entraron. Va por la bandeja: sin señal, se manda
-     solo después; el número de lote evita que se anote dos veces. */
-  function anotarMovimientos(tipo, lista, hechos, pedido, extra){
+     solo después; el número de lote evita que se anote dos veces. Desde el 30/10 se anota cada comprobante apenas
+     Albor lo confirma (`lote`: el de toda la transferencia; el servidor no repite un comprobante del mismo lote). */
+  function anotarMovimientos(tipo, lista, hechos, pedido, extra, lote){
     if(!hechos.length) return;
     var comps = hechos.map(function(x, i){
       var c = lista[x.bloque != null ? x.bloque : i] || {}, fuera = {};     // la transferencia puede empezar por otra empresa (Feli, 29/10)
@@ -5833,7 +5834,7 @@
         : { numero: x.comprobante, fecha: c.fecha, empresa: c.empresa_id, origen: c.origen_nombre,
             destino: c.destino_nombre, granja: c.destino_nombre, pedido: pedido ? pedido.id : '', items: items };
     });
-    bandeja.agregar('registrarMovimientos', [Object.assign({ lote: 'V' + nuevoId().slice(1), tipo: tipo, comprobantes: comps }, extra || {})],
+    bandeja.agregar('registrarMovimientos', [Object.assign({ lote: lote || 'V' + nuevoId().slice(1), tipo: tipo, comprobantes: comps }, extra || {})],
                     'anotar en el historial ' + (tipo === 'Egreso' ? 'los egresos' : 'la transferencia'));
   }
 
@@ -5871,10 +5872,21 @@
     archivos.forEach(function(a){ anotarBajada(a.base64, a.nombre); });
     alborLog('Abriendo Albor…');
 
+    // Feli (2026-10-07): el envío, la fecha contable y los pendientes, para bajar sus planillas desde el historial
+    var arm = datosArmadoActual(), lote = 'V' + nuevoId().slice(1), anotados = {};
+    var extraHist = { envio: arm.envio, fechaContable: arm.fechaContable, columnas: arm.columnas, pendientes: pendientesActuales() };
+    /* Cada comprobante que Albor confirma queda anotado enseguida (Feli, 30/10: si la carga se cuelga, lo hecho no se
+       pierde). La transferencia manual se anota al final, cuando ya es un pedido de la granja. */
+    function alHacer(x){
+      TRANSFERIDO_CON = { data: DATA, envio: dest.nombre }; recordarExistencias({ transferido: dest.nombre });
+      if(manual) return;
+      anotarMovimientos('Transferencia', bloques, [x], pedido, extraHist, lote);
+      anotados[x.bloque] = true;
+    }
     var r;
     try{
       r = await motor().cargar_transferencia(bloques, archivos,
-            ($('pfecha').value || 'sin-fecha') + ' ' + dest.nombre);
+            ($('pfecha').value || 'sin-fecha') + ' ' + dest.nombre, alHacer);
     }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
 
     var hechos = (r && r.hechos) || [];
@@ -5891,10 +5903,7 @@
       else avisoManualAlbor = '<li style="color:#b3261e">No se pudo anotar la transferencia manual como pedido de ' + esc(pm.granja) + ': ' +
                               esc(cm.error || (cm.sinConexion ? 'sin señal' : '')) + '. Los pendientes quedan solo en la planilla. La transferencia en Albor quedó hecha.</li>';
     }
-    // Feli (2026-10-07): el envío, la fecha contable y los pendientes, para bajar sus planillas desde el historial
-    var arm = datosArmadoActual();
-    anotarMovimientos('Transferencia', bloques, hechos, pedido,
-                      { envio: arm.envio, fechaContable: arm.fechaContable, columnas: arm.columnas, pendientes: pendientesActuales() });
+    anotarMovimientos('Transferencia', bloques, hechos.filter(function(x){ return !anotados[x.bloque]; }), pedido, extraHist, lote);
     var lineas = hechos.map(function(x){
       return '<li>' + esc(x.origen) + ' → ' + esc(x.destino) + ': comprobante <b>' +
              esc(x.comprobante || 'sin número') + '</b> · ' + x.cargados + ' de ' + x.total +
@@ -6002,14 +6011,28 @@
     planillas.forEach(function(a){ anotarBajada(a.base64, a.nombre); });
     alborLog('Abriendo Albor…');
 
+    /* Cada egreso que Albor confirma queda anotado enseguida, con el número que quedó en Albor, y el próximo número
+       avanza (Feli, 30/10: la extensión se colgó al final y no quedó anotado ninguno, ni avanzó el número). */
+    var anotados = {};
+    function alHacer(x){
+      anotarMovimientos('Egreso', comps, [x], null);
+      anotados[x.bloque] = true;
+      if(!EGRESADAS || EGRESADAS.data !== DATA) EGRESADAS = { data: DATA, granjas: {} };
+      EGRESADAS.granjas[x.punto] = true;
+      GRANJAS_FUERA[x.punto] = true;   // se destilda sola: ya está hecha
+      recordarExistencias({ egresadas: EGRESADAS.granjas });
+      var prox = siguienteNumero(x.numero);
+      escribirGuardado(CLAVE_NROEGR, prox);
+      $('gnumero').value = prox;
+    }
     var r;
     try{
       r = await motor().cargar_egresos(comps, planillas,
-            'Cierre ' + ($('gfecha').value || 'sin-fecha'));
+            'Cierre ' + ($('gfecha').value || 'sin-fecha'), alHacer);
     }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
 
     var hechos = (r && r.hechos) || [];
-    anotarMovimientos('Egreso', comps, hechos, null);
+    anotarMovimientos('Egreso', comps, hechos.filter(function(x){ return !anotados[x.bloque]; }), null);
     var lineas = hechos.map(function(x){
       return '<li>N° <b>' + esc(x.numero) + '</b> · ' + esc(x.punto) + ' · ' + esc(x.cuenta_nombre || x.cuenta) +
              (x.centro ? ' · centro ' + esc(x.centro) : ' · <span style="color:#b3261e">sin centro de costo</span>') +
