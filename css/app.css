@@ -1055,6 +1055,22 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .ct-cuenta.sin{color:var(--muted);font-weight:400}
 .ct-orden{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--danger);border-radius:6px;padding:2px 8px;margin-bottom:6px}
 .ct-fac{font-size:13px;font-weight:600;margin-top:6px}
+.ct-fac-e{font-size:11px;font-weight:700;border-radius:9px;padding:1px 7px;margin-left:4px;color:var(--muted);border:1px solid var(--line)}
+.ct-fac-e.grave{color:#fff;background:var(--danger);border-color:var(--danger)}
+.ct-fac-e.aviso{color:var(--warn);border-color:var(--warn)}
+.ct-fac-e.ok{border:0;padding:0}
+.cx-fac-r{border-left:4px solid var(--line);border-radius:6px;padding:8px 10px;margin:8px 0;font-size:14px}
+.cx-fac-r ul{margin:4px 0 0;padding-left:18px}
+.cx-fac-r.grave{border-left-color:var(--danger);background:var(--danger-soft)}
+.cx-fac-r.grave b{color:var(--danger)}
+.cx-fac-r.aviso{border-left-color:var(--warn);background:var(--warn-soft)}
+.cx-fac-r.aviso b{color:var(--warn)}
+.cx-fac-r.ok{border-left-color:var(--accent)}
+.cx-tabla tr.cx-mal td{color:var(--warn)}
+.cx-totales{margin-top:8px}
+.cx-corregir .fila-campos{display:flex;gap:8px;flex-wrap:wrap}
+.cx-corregir .fila-campos .campo{min-width:90px}
+.cx-corregir .cx-tabla input{width:100%;min-width:60px;box-sizing:border-box}
 .ct-recep{font-size:12px;color:var(--muted);margin-top:4px}
 .ct-col-c{color:var(--muted);font-size:12px}
 .cx-titulo{margin:4px 0 10px}

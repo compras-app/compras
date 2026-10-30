@@ -111,9 +111,14 @@ function htmlTarjetaCt(t) {
     (t.numeroOrden ? '<div class="ct-oc">OC ' + esc(t.numeroOrden) + '</div>'
                    : t.sinOrden ? '<div class="ct-orden">' + (t.motivo === 'Orden de compra pendiente' ? '⚠️ Orden de compra pendiente' : 'Sin orden de compra') + '</div>' : '') +
     '<div class="t">' + esc(t.titulo) + '</div>' +
-    '<div class="sub-t">🏪 ' + esc(t.proveedor || 'Sin proveedor') + (t.cuit ? ' · CUIT ' + esc(t.cuit) : '') + '</div>' +
+    // Feli (31/10): un pedido que pasó entero a Entregas (sin comprar en la app) no tiene proveedor: quién lo pidió
+    (t.entero ? '<div class="sub-t">' + esc(['Pasó entero a Entregas', t.solicitante].filter(Boolean).join(' · ')) + '</div>'
+              : '<div class="sub-t">🏪 ' + esc(t.proveedor || 'Sin proveedor') + (t.cuit ? ' · CUIT ' + esc(t.cuit) : '') + '</div>') +
     '<div class="pie"><span>' + esc(t.sitios.join(', ')) + '</span>' + (t.total !== null ? '<span><b>' + esc(dinero(t.total, t.moneda)) + '</b></span>' : '') + '</div>' +
-    (t.factura ? '<div class="ct-fac">🧾 ' + esc(t.factura.numero ? 'Factura ' + t.factura.numero : t.factura.nombre) + '</div>' : '') +
+    (t.factura ? '<div class="ct-fac">🧾 ' + esc(t.factura.numero ? 'Factura ' + (t.factura.letra ? t.factura.letra + ' ' : '') + t.factura.numero : t.factura.nombre) +
+                 // Fase 6-bis (Feli, 30/10): cómo dio la lectura de la IA
+                 ({ grave: ' <span class="ct-fac-e grave">⛔ No coincide</span>', aviso: ' <span class="ct-fac-e aviso">⚠️ Revisar</span>',
+                    ok: ' <span class="ct-fac-e ok">✅</span>', sinLeer: ' <span class="ct-fac-e">Sin leer</span>' }[t.factura.estado] || '') + '</div>' : '') +
     '<div class="ct-recep">' + esc(recep) + '</div></div>';
 }
 
@@ -231,8 +236,8 @@ function pintarTarjetaContable() {
           '<div class="ad-acciones">' + (r.orden.pdfProveedor ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdfProveedor) + '">Orden de compra</button>' : '') +
           (r.orden.pdf ? '<button type="button" class="link-gris" data-ver="' + esc(r.orden.pdf) + '">Orden de compra de Albor</button>' : '') + '</div></div>'
         : t.sinOrden ? '<div class="caja cx-sinorden"><b>Este pedido no tiene orden de compra</b>' + (t.motivo ? '<small>' + esc(t.motivo) + '</small>' : '') + '</div>' : '') +
-      '<div class="caja"><h3>Compra</h3><dl class="ad-datos">' +
-        '<dt>Proveedor</dt><dd>' + esc(t.proveedor || '—') + '</dd><dt>CUIT</dt><dd>' + esc(t.cuit || 'No está cargado') + '</dd>' +
+      '<div class="caja"><h3>Compra</h3>' + (t.entero ? '<p class="nota">Este pedido pasó entero a Entregas, sin una compra hecha en la app: no tiene proveedor ni precios.</p>' : '') +
+        '<dl class="ad-datos">' + (t.entero ? '' : '<dt>Proveedor</dt><dd>' + esc(t.proveedor || '—') + '</dd><dt>CUIT</dt><dd>' + esc(t.cuit || 'No está cargado') + '</dd>') +
         (t.total !== null ? '<dt>Total</dt><dd><b>' + esc(dinero(t.total, t.moneda)) + '</b></dd>' : '') +
         (c && c.quien ? '<dt>Compró</dt><dd>' + esc(c.quien) + (c.fecha ? ' · ' + esc(fechaCorta(c.fecha)) : '') + '</dd>' : '') +
         (c && c.condiciones && c.condiciones.pago ? '<dt>Forma de pago</dt><dd>' + esc(c.condiciones.pago) + '</dd>' : '') +
@@ -243,10 +248,7 @@ function pintarTarjetaContable() {
           '</tbody></table>' : htmlProductosCt(r.productos)) +
       '</div>' +
       // La factura (PDF): desde Comprado o Recibido; con ella la tarjeta pasa a Factura cargada
-      '<div class="caja"><h3>Factura</h3>' + (t.factura
-        ? '<p>🧾 <b>' + esc(t.factura.numero ? 'Factura N° ' + t.factura.numero : t.factura.nombre) + '</b>' + (t.factura.numero ? ' <small class="nota">' + esc(t.factura.nombre) + '</small>' : '') + '</p><div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
-          '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button><button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button></div>'
-        : '<p class="nota">Adjuntá el PDF de la factura: la tarjeta pasa a "Factura cargada".</p><button type="button" class="btn" id="cx-fac-cargar">🧾 Adjuntar factura</button>') +
+      '<div class="caja"><h3>Factura</h3>' + htmlFacturaCt(t, r.lectura) +
       // Feli (30/10): cargarla en Albor; en Comprado, "anticipadamente". Por ahora abre Albor en un comprobante de compra nuevo
       // (la carga sola llega con la Fase 6-bis)
       '<div class="ad-acciones"><button type="button" class="btn2" id="cx-fac-albor">' +
@@ -259,9 +261,102 @@ function pintarTarjetaContable() {
   $('cx-cuerpo').querySelectorAll('[data-cambiar]').forEach(function (b) { b.addEventListener('click', function () { cambiarCuentaUI(b.dataset.cambiar); }); });
   ['cx-fac-cargar', 'cx-fac-otra'].forEach(function (id) { if ($(id)) $(id).addEventListener('click', function () { $('cx-factura').click(); }); });
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
+  if ($('cx-fac-leer')) $('cx-fac-leer').addEventListener('click', function () { leerFacturaUI(r.tarjeta.id); });
+  if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', corregirFacturaUI);
   if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () {
     window.open('https://laquimerasa.alboragro.com/1/Comprobantes_Compra/Create', '_blank', 'noopener');
   });
+}
+
+/* ---------- Fase 6-bis, Paso 1 (Feli, 30/10): la factura leída por la IA ----------
+   La IA la copia; el servidor hace las cuentas y la compara con la compra. Acá se ve lo leído, lo que no
+   cierra o no coincide (⛔ no coincide con esta compra / ⚠️ para revisar) y se corrige a mano. */
+function htmlFacturaCt(t, l) {
+  if (!t.factura) return '<p class="nota">Adjuntá el PDF de la factura: la IA la lee y la compara con la compra, y la tarjeta pasa a "Factura cargada".</p>' +
+    '<button type="button" class="btn" id="cx-fac-cargar">🧾 Adjuntar factura</button>';
+  const f = l && l.datos, c = l && l.comparacion, m = f ? f.moneda : 'ARS';
+  const li = function (x) { return '<li>' + esc(x) + '</li>'; };
+  let h = '<p>🧾 <b>' + esc(f && f.numero ? 'Factura ' + (f.letra ? f.letra + ' ' : '') + 'N° ' + f.numero : t.factura.nombre) + '</b>' +
+          (f && f.numero ? ' <small class="nota">' + esc(t.factura.nombre) + '</small>' : '') + '</p>';
+  if (!f) h += '<p class="nota">Todavía no se leyó. «Leer la factura» la lee con la IA y la compara con la compra (tarda unos segundos).</p>';
+  else {
+    if (c.graves.length) h += '<div class="cx-fac-r grave"><b>⛔ No coincide con esta compra</b><ul>' + c.graves.map(li).join('') + '</ul></div>';
+    if (f.problemas.length || c.avisos.length) h += '<div class="cx-fac-r aviso"><b>⚠️ Para revisar</b><ul>' + f.problemas.concat(c.avisos).map(li).join('') + '</ul></div>';
+    if (!c.graves.length && !c.avisos.length && !f.problemas.length) h += '<div class="cx-fac-r ok"><b>✅ Las cuentas cierran y coincide con la compra.</b></div>';
+    h += '<dl class="ad-datos"><dt>Proveedor</dt><dd>' + esc([f.emisor, f.cuit ? 'CUIT ' + f.cuit : ''].filter(Boolean).join(' · ') || '—') + '</dd>' +
+      '<dt>Fecha</dt><dd>' + esc(f.fecha || '—') + (f.vencimiento ? ' · vence ' + esc(f.vencimiento) : '') + '</dd>' +
+      (f.cae ? '<dt>CAE</dt><dd>' + esc(f.cae) + (f.vtoCae ? ' · vence ' + esc(f.vtoCae) : '') + '</dd>' : '') +
+      (f.ordenCompra ? '<dt>Orden que dice</dt><dd>' + esc(f.ordenCompra) + '</dd>' : '') + '</dl>' +
+      '<table class="cx-tabla"><thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>IVA</th><th>Importe</th></tr></thead><tbody>' +
+      f.renglones.map(function (x) {
+        return '<tr' + (x.cierra === false ? ' class="cx-mal"' : '') + '><td>' + (x.cierra === false ? '⚠️ ' : '') + esc(x.texto) + '</td><td>' + esc(x.cant === null ? '' : String(x.cant)) +
+          '</td><td>' + esc(dinero(x.precio, m)) + '</td><td>' + esc(x.iva === null || x.iva === undefined ? '' : x.iva + ' %') + '</td><td>' + esc(dinero(x.importe, m)) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<dl class="ad-datos cx-totales">' + (f.neto !== null ? '<dt>Neto gravado</dt><dd>' + esc(dinero(f.neto, m)) + '</dd>' : '<dt>Suma</dt><dd>' + esc(dinero(f.suma, m)) + '</dd>') +
+        (f.noGravado ? '<dt>No gravado</dt><dd>' + esc(dinero(f.noGravado, m)) + '</dd>' : '') + (f.exento ? '<dt>Exento</dt><dd>' + esc(dinero(f.exento, m)) + '</dd>' : '') +
+        f.iva.map(function (x) { return '<dt>IVA ' + esc(x.tasa === null ? '' : x.tasa + ' %') + '</dt><dd>' + esc(dinero(x.importe, m)) + '</dd>'; }).join('') +
+        f.percepciones.map(function (x) { return '<dt>' + esc(x.nombre || 'Percepción') + '</dt><dd>' + esc(dinero(x.importe, m)) + '</dd>'; }).join('') +
+        '<dt>Total</dt><dd><b>' + esc(dinero(f.total, m)) + '</b></dd></dl>' +
+      '<p class="nota">Leída por la IA el ' + esc(new Date(l.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) +
+        (l.corregida && l.corregida.length ? ' · corregida a mano por ' + esc(l.corregida[l.corregida.length - 1].quien) : '') + '</p>';
+  }
+  return h + '<div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
+    (f ? '<button type="button" class="btn2" id="cx-fac-corregir">✏️ Corregir</button>' : '') +
+    '<button type="button" class="btn2" id="cx-fac-leer">' + (f ? '🔁 Leer de nuevo' : '🤖 Leer la factura') + '</button>' +
+    '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button><button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button></div>';
+}
+
+/** La IA lee la factura (hasta 150 s) y el servidor la compara con la compra. */
+async function leerFacturaUI(id) {
+  aviso('🤖 Leyendo la factura… (tarda unos segundos)');
+  const x = await apiLenta('leerFactura', id);
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: probá «Leer la factura» en un rato.' : x.error, 'bad');
+  const c = x.lectura && x.lectura.comparacion, f = x.lectura && x.lectura.datos;
+  aviso(!x.lectura ? 'La factura cambió mientras se leía: probá de nuevo.' : c.graves.length ? '⛔ Leída: no coincide con esta compra. Mirá el detalle.'
+        : c.avisos.length || f.problemas.length ? '⚠️ Leída: hay cosas para revisar.' : '✅ Leída: las cuentas cierran y coincide con la compra.', c && c.graves.length ? 'bad' : '');
+  cargarTarjetaContable(); cargarContable();
+}
+
+/** ✏️ Corregir lo leído: cabecera, cada renglón y los totales. El servidor rehace las cuentas y la comparación. */
+async function corregirFacturaUI() {
+  const r = CT.tarjeta, f = r && r.lectura && r.lectura.datos;
+  if (!f) return;
+  const num = function (n) { return n === null || n === undefined ? '' : String(n).replace('.', ','); };
+  const campo = function (id, rotulo, valor, ancho) {
+    return '<div class="campo"' + (ancho ? ' style="flex:' + ancho + '"' : '') + '><label for="' + id + '">' + rotulo + '</label><input type="text" id="' + id + '" value="' + esc(valor) + '" autocomplete="off"></div>';
+  };
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo cx-corregir';
+  cuerpo.innerHTML = '<div class="fila-campos">' + campo('cf-letra', 'Letra', f.letra, 1) + campo('cf-numero', 'Número', f.numero, 3) + campo('cf-fecha', 'Fecha', f.fecha, 2) + '</div>' +
+    '<div class="fila-campos">' + campo('cf-emisor', 'Proveedor', f.emisor, 3) + campo('cf-cuit', 'CUIT', f.cuit, 2) + '</div>' +
+    '<table class="cx-tabla"><thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>IVA %</th><th>Importe</th></tr></thead><tbody>' +
+    f.renglones.map(function (x) {
+      return '<tr data-n="' + x.n + '"><td>' + esc(x.texto) + '</td>' + ['cant', 'precio', 'iva', 'importe'].map(function (k) {
+        return '<td><input type="text" inputmode="decimal" data-k="' + k + '" value="' + esc(num(x[k])) + '"></td>'; }).join('') + '</tr>';
+    }).join('') + '</tbody></table>' +
+    '<div class="fila-campos">' + campo('cf-neto', 'Neto gravado', num(f.neto), 2) + campo('cf-total', 'Total', num(f.total), 2) + '</div>' +
+    '<div class="fila-campos">' + campo('cf-iva-t', 'IVA %', num((f.iva[0] || {}).tasa), 1) + campo('cf-iva', 'IVA', num((f.iva[0] || {}).importe), 2) + '</div>' +
+    (f.iva.length > 1 ? '<p class="nota">Tiene más de una tasa de IVA: acá se corrige la primera.</p>' : '') +
+    '<p class="nota">Con coma para los decimales (1234,56). Al guardar, la app rehace las cuentas y la compara de nuevo con la compra.</p>';
+  const ok = await dialogo({ titulo: 'Corregir la factura', cuerpo: cuerpo,
+    botones: [{ texto: 'Guardar', clase: 'btn', valor: function () {
+      const v = function (id) { return $(id).value.trim(); };
+      const c = { letra: v('cf-letra'), numero: v('cf-numero'), fecha: v('cf-fecha'), emisor: v('cf-emisor'), cuit: v('cf-cuit'), neto: v('cf-neto'), total: v('cf-total'),
+                  renglones: [].map.call(cuerpo.querySelectorAll('tr[data-n]'), function (tr) {
+                    const o = { n: Number(tr.dataset.n) };
+                    tr.querySelectorAll('input').forEach(function (i) { o[i.dataset.k] = i.value.trim(); });
+                    return o;
+                  }) };
+      const iva = [{ tasa: v('cf-iva-t'), importe: v('cf-iva') }].concat(f.iva.slice(1).map(function (x) { return { tasa: num(x.tasa), importe: num(x.importe) }; }));
+      c.iva = iva;
+      return c;
+    } }, { texto: 'Volver', valor: null }] });
+  if (!ok) return;
+  aviso('Guardando…');
+  const x = await api('corregirFactura', r.tarjeta.id, ok);
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: esto se hace con señal. Probá de nuevo en un rato.' : x.error, 'bad');
+  aviso('Listo: se corrigió y se volvió a comparar.');
+  cargarTarjetaContable(); cargarContable();
 }
 
 /** ✏️ Cambiar la cuenta y el centro de costos del pedido entero (el sitio sale del centro). */
@@ -311,17 +406,7 @@ $('cx-factura').addEventListener('change', async function (e) {
   if (!f || !r || !r.tarjeta) return;
   if (!(f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) return aviso('La factura tiene que ser un PDF.', 'bad');
   if (f.size > 10 * 1024 * 1024) return aviso('El PDF pesa más de 10 MB.', 'bad');
-  // El número de la factura, para buscarla después (Feli, 30/10). Viene propuesto si el nombre del archivo lo trae.
-  const prop = (f.name.match(/\d{4,5}\s*-\s*\d{6,8}/) || f.name.match(/\d{5,}/) || [''])[0].replace(/\s+/g, '');
-  const cuerpo = document.createElement('div');
-  cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<div class="campo"><label for="cx-fac-nro">Número de la factura <small>(opcional)</small></label>' +
-    '<input type="text" id="cx-fac-nro" maxlength="40" autocomplete="off" placeholder="Ej: 0003-00012345">' +
-    '<p class="nota">Sirve para encontrarla después en Buscar y en este tablero.</p></div>';
-  const numero = await dialogo({ titulo: 'Cargar la factura', cuerpo: cuerpo,
-    botones: [{ texto: 'Subir la factura', clase: 'btn', valor: function () { return $('cx-fac-nro').value.trim() || '-'; } }, { texto: 'Volver', valor: null }],
-    alAbrir: function () { $('cx-fac-nro').value = prop; $('cx-fac-nro').focus(); } });
-  if (numero === null || numero === undefined) return;
+  // Fase 6-bis (Feli, 30/10): el número ya no se escribe: lo lee la IA, junto con todo lo demás
   aviso('Subiendo la factura…');
   const base64 = await new Promise(function (ok, mal) {
     const fr = new FileReader();
@@ -329,14 +414,15 @@ $('cx-factura').addEventListener('change', async function (e) {
     fr.onerror = mal;
     fr.readAsDataURL(f);
   });
-  const x = await apiLenta('cargarFactura', r.tarjeta.id, { id: 'J' + nuevoId(), nombre: f.name.replace(/\.pdf$/i, ''), base64: base64, numero: numero === '-' ? '' : numero });
+  const id = r.tarjeta.id;
+  const x = await apiLenta('cargarFactura', id, { id: 'J' + nuevoId(), nombre: f.name.replace(/\.pdf$/i, ''), base64: base64 });
   if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: la factura se sube con señal. Probá de nuevo en un rato.' : x.error, 'bad');
-  aviso('Listo: la factura quedó cargada.');
   cargarTarjetaContable(); cargarContable();
+  await leerFacturaUI(id);
 });
 
 async function sacarFactura() {
-  const si = await dialogo({ titulo: '¿Sacar la factura?', texto: 'La compra vuelve a su columna (Comprado o Recibido). El PDF queda en los adjuntos de la compra.',
+  const si = await dialogo({ titulo: '¿Sacar la factura?', texto: 'La compra vuelve a su columna (Comprado o Recibido). El PDF queda en sus adjuntos.',
     botones: [{ texto: 'Sí, sacarla', clase: 'btn peligro-btn', valor: true }, { texto: 'Volver', valor: null }] });
   if (!si) return;
   const x = await api('cargarFactura', CT.tarjeta.tarjeta.id, null);
