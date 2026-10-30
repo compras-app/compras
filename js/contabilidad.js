@@ -101,7 +101,7 @@ function htmlTarjetaCt(t) {
       '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
       '<div class="sub-t">' + esc([t.sitio, t.solicitante].filter(Boolean).join(' · ')) + '</div>' +
       '<div class="pie"><span>' + esc(emojiUrgencia(t.urgencia)) + '</span><span class="ct-col-c">' + esc(t.columna) + '</span>' +
-      '<span>' + t.productos + (t.productos === 1 ? ' producto' : ' productos') + ' sin comprar</span></div></div>';
+      '<span>' + (t.masivo ? 'Pedido masivo: se compra del presupuesto' : t.productos + (t.productos === 1 ? ' producto' : ' productos') + ' sin comprar') + '</span></div></div>';
   }
   const recep = t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCorta(t.fechaRetiro) : '') : ' · ' + t.columna)
                            : '⏳ ' + t.columna;

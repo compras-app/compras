@@ -275,7 +275,21 @@ async function cambiarImputacionUI(ref) {
   aviso('Un momento…');
   const op = await api('opcionesImputacion');
   if (!op.ok) return aviso(op.sinConexion ? '📶 Hace falta señal para cambiar la cuenta.' : op.error, 'bad');
-  let modo = x.bien ? 'bien' : 'cuenta', cuenta = (x.cuenta && x.cuenta.cuenta) || '', centro = (x.cuenta && x.cuenta.centro) || '', bien = x.bien || '';
+  const ok = await elegirImputacion(op, { bien: x.bien, cuenta: x.cuenta && x.cuenta.cuenta, centro: x.cuenta && x.cuenta.centro },
+                                    'Cambiar la cuenta de ' + (x.prueba || x.titulo || x.ref), 'El sitio queda como está (' + (x.sitio || '—') + ').');
+  if (!ok) return;
+  aviso('Guardando…');
+  const r = await api('cambiarImputacion', ref, ok);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para cambiar la cuenta.' : r.error, 'bad');
+  aviso(r.aviso ? 'Listo. ' + r.aviso : 'Listo: se cambió la cuenta.', r.aviso ? 'bad' : '');
+  if (TB.abierta === abierta) traerTarjeta(abierta);
+}
+
+/** La ventanita para elegir la cuenta y el centro de costos, o un bien de uso. op = opcionesImputacion; ini = {cuenta, centro, bien}.
+ *  Devuelve {cuenta, centro, sitio} o {bienUso}, o null. La usan la tarjeta abierta y el pedido masivo (Fase 6, 30/10). */
+function elegirImputacion(op, ini, titulo, notaSitio) {
+  ini = ini || {};
+  let modo = ini.bien ? 'bien' : 'cuenta', cuenta = ini.cuenta || '', centro = ini.centro || '', bien = ini.bien || '', sitio = '';
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = '<div class="seg-imp"><label><input type="radio" name="imp-modo" value="cuenta"> Cuenta contable</label>' +
@@ -283,10 +297,10 @@ async function cambiarImputacionUI(ref) {
     '<div id="imp-c"><div class="campo"><label for="imp-cuenta">Cuenta contable</label><select id="imp-cuenta"></select></div>' +
     '<div class="campo"><label for="imp-centro">Centro de costos</label><select id="imp-centro"></select><p class="nota" id="imp-sitio"></p></div></div>' +
     '<div id="imp-b"><div class="campo"><label for="imp-bien">Bien de uso</label><select id="imp-bien"></select>' +
-    '<p class="nota">Un pedido para un bien de uso no lleva cuenta ni orden de compra. El sitio queda como está (' + esc(x.sitio || '—') + ').</p></div></div>';
-  const ok = await dialogo({ titulo: 'Cambiar la cuenta de ' + (x.prueba || x.titulo || x.ref), cuerpo: cuerpo,
+    '<p class="nota">Un pedido para un bien de uso no lleva cuenta ni orden de compra.' + (notaSitio ? ' ' + esc(notaSitio) : '') + '</p></div></div>';
+  return dialogo({ titulo: titulo, cuerpo: cuerpo,
     botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
-      return modo === 'bien' ? { bienUso: bien } : { cuenta: cuenta, centro: centro };
+      return modo === 'bien' ? { bienUso: bien } : { cuenta: cuenta, centro: centro, sitio: sitio };
     } }],
     alAbrir: function () {
       const pintar = function () {
@@ -303,6 +317,7 @@ async function cambiarImputacionUI(ref) {
           cs.map(function (c) { return '<option value="' + esc(c.centro) + '">' + esc(c.centro) + '</option>'; }).join('');
         $('imp-centro').value = centro;
         const cc = cs.filter(function (c) { return c.centro === centro; })[0];
+        sitio = cc ? cc.sitio : '';
         $('imp-sitio').textContent = cc ? 'El pedido queda en ' + cc.sitio + '.' : '';
         $('imp-bien').innerHTML = (bien ? '' : '<option value="">Elegí el bien de uso</option>') +
           op.bienes.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.nombre + (b.patente ? ' · ' + b.patente : '')) + '</option>'; }).join('');
@@ -315,10 +330,4 @@ async function cambiarImputacionUI(ref) {
       $('imp-bien').addEventListener('change', function () { bien = this.value; pintar(); });
       pintar();
     } });
-  if (!ok) return;
-  aviso('Guardando…');
-  const r = await api('cambiarImputacion', ref, ok);
-  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para cambiar la cuenta.' : r.error, 'bad');
-  aviso(r.aviso ? 'Listo. ' + r.aviso : 'Listo: se cambió la cuenta.', r.aviso ? 'bad' : '');
-  if (TB.abierta === abierta) traerTarjeta(abierta);
 }

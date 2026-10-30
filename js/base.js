@@ -45,7 +45,7 @@ aplicarZoomApp();
 window.addEventListener('resize', aplicarZoomApp);           // el zoom del navegador cambia la escala y avisa con un resize
 
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'b80ce63e74';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '28e1d3ad09';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las

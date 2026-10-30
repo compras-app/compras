@@ -305,6 +305,7 @@ function pintarCotizaciones() {
   if (b.hidden) return;
   $('tj-cotizar').hidden = !puede;
   $('tj-cargar-presup').hidden = !cargar;
+  $('tj-presup-mano').hidden = !cargar;            // Fase 6 (30/10): sin archivo, los renglones se escriben a mano
   const reintento = {};
   esperan.forEach(function (m) { if (m.fn === 'reintentarCotizacion') reintento[m.args[1]] = true; });
   $('tj-cot').innerHTML =
@@ -333,6 +334,7 @@ function pintarCotizaciones() {
 }
 $('tj-cotizar').addEventListener('click', function () { if (TB.abierta) abrirPedirCotizacion(TB.abierta); });
 $('tj-cargar-presup').addEventListener('click', function () { cargarPresupuestoDesdeCompu(); });
+$('tj-presup-mano').addEventListener('click', function () { presupuestoAManoUI(); });
 
 // Cuando sale de la bandeja: el bloque Cotizaciones y la marca del tablero se actualizan (las dos llevan la ref adelante)
 (function () {

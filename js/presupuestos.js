@@ -262,6 +262,35 @@ async function cargarPresupuestoDesdeCompu() {
   else aviso(l.sinConexion ? '📶 Poca señal: se termina de leer solo y aparece en la tarjeta.' : l.error, l.sinConexion ? '' : 'bad');
 }
 
+/** ✍️ Presupuesto a mano (Fase 6, 30/10): sin archivo ni IA. Se elige el proveedor y la moneda, y los renglones se escriben en el
+ *  editor de siempre (✏️ Corregir: "＋ Agregar un renglón"). Sirve, por ejemplo, para un pedido masivo sin presupuesto en PDF. */
+async function presupuestoAManoUI() {
+  const ref = TB.abierta;
+  if (!ref) return;
+  if (!APP.enLinea) return aviso('📶 Poca señal: hace falta señal.', 'bad');
+  const prov = await elegirProveedorPresupuesto(ref);
+  if (!prov) return;
+  const moneda = await dialogo({ titulo: '✍️ Presupuesto a mano', texto: '¿En qué moneda son los precios? (sin IVA)',
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Dólares', clase: 'btn2', valor: 'USD' }, { texto: 'Pesos', clase: 'btn', valor: 'ARS' }] });
+  if (!moneda) return;
+  const datos = { id: 'B' + nuevoId(), ref: ref, proveedor: prov, moneda: moneda };
+  aviso('Un momento…');
+  let r = await api('presupuestoAMano', datos);
+  if (r.ok && r.pregunta) {
+    const modo = await preguntarParteOReemplazo(r);
+    if (!modo) return;
+    datos.modo = modo;
+    r = await api('presupuestoAMano', datos);
+  }
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: no se creó. Probá de nuevo cuando vuelva.' : r.error, 'bad');
+  await traerTarjeta(ref);
+  const b = presupuestoAbierto(datos.id);
+  if (!b) return aviso('Listo: el presupuesto está en la tarjeta. Tocá ✏️ Corregir para escribir sus renglones.');
+  aviso('Escribí los renglones del presupuesto (＋ Agregar un renglón).');
+  setTimeout(function () { if ($('pr-ed-mas')) $('pr-ed-mas').click(); }, 200);      // arranca con un renglón vacío
+  corregirPresupuestoUI(b);
+}
+
 /** Las tarjetas en las que está cargado un mensaje ("W0001, W0002"). */
 function refsDe(v) { return String(v || '').split(',').map(function (x) { return x.trim(); }).filter(String); }
 

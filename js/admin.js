@@ -552,6 +552,25 @@ function mostrarMasivo() {
   pintarMasivo();
 }
 
+/* Fase 6 (contador, 30/10): la cuenta contable del pedido masivo (o un bien de uso). Con la cuenta, el sitio sale del centro */
+$('ma-cuenta-b').addEventListener('click', async function () {
+  const m = AD.masivo;
+  aviso('Un momento…');
+  const op = await api('opcionesImputacion');
+  if (!op.ok) return aviso(op.sinConexion ? '📶 Hace falta señal para elegir la cuenta.' : op.error, 'bad');
+  const f = await elegirImputacion(op, m.f6 ? { cuenta: m.f6.cuenta, centro: m.f6.centro, bien: m.f6.bienUso } : {}, 'Cuenta del pedido masivo', 'El sitio se elige abajo.');
+  if (!f) return;
+  m.f6 = f;
+  m.f6Texto = f.bienUso ? '🚜 ' + ((op.bienes.filter(function (b) { return b.id === f.bienUso; })[0] || {}).nombre || f.bienUso) + ' (sin orden de compra)'
+                        : '📒 ' + ((op.cuentas.filter(function (c) { return c.codigo === f.cuenta; })[0] || {}).nombre || f.cuenta) + ' · ' + f.centro;
+  if (f.sitio) {
+    if (![].some.call($('ma-sitio').options, function (o) { return o.value === f.sitio; })) $('ma-sitio').insertAdjacentHTML('beforeend', '<option>' + esc(f.sitio) + '</option>');
+    $('ma-sitio').value = f.sitio;
+  }
+  pintarMasivo();
+});
+$('ma-prueba').addEventListener('change', function () { AD.masivo.prueba = this.checked; revisarMasivo(); });
+
 function pintarMasivo() {
   const m = AD.masivo;
   $('ma-urg').innerHTML = (APP.config.urgencias || []).map(function (u) {
@@ -560,6 +579,12 @@ function pintarMasivo() {
   $('ma-urg').querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { m.urgencia = b.dataset.u; pintarMasivo(); }); });
   // Paso 6: pedido o servicio masivo
   $('ma-tipo').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.tipo === (m.tipo || 'pedido'))); });
+  // Fase 6: la cuenta, solo para los de "Ven lo de la Fase 6" y en un pedido (los servicios todavía no llevan cuenta)
+  $('ma-f6').hidden = !APP.yo.fase6 || m.tipo === 'servicio';
+  $('ma-cuenta-t').textContent = m.f6 ? m.f6Texto : 'Sin cuenta: se compra como siempre, sin orden de compra.';
+  $('ma-cuenta-b').textContent = m.f6 ? '✏️ Cambiar' : '📒 Elegir la cuenta';
+  $('ma-prueba').checked = !!m.prueba;
+  $('ma-sitio').disabled = !!(m.f6 && m.f6.sitio) && !$('ma-f6').hidden;
   pintarArchivos();
   revisarMasivo();
 }
@@ -569,7 +594,9 @@ $('ma-tipo').querySelectorAll('button').forEach(function (b) {
 
 function revisarMasivo() {
   const m = AD.masivo;
-  $('ma-crear').disabled = !$('ma-sitio').value || !m.urgencia || m.creando || $('ma-titulo').value.trim().length < 3;
+  const f6 = APP.yo.fase6 && m.tipo !== 'servicio';
+  $('ma-crear').disabled = !$('ma-sitio').value || !m.urgencia || m.creando || $('ma-titulo').value.trim().length < 3 ||
+                           (f6 && m.prueba && !m.f6);              // uno de prueba necesita su cuenta (para la orden)
   $('ma-crear').textContent = (m.tipo === 'servicio' ? 'Crear servicio masivo' : 'Crear pedido masivo') + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
 }
 ['ma-sitio', 'ma-titulo'].forEach(function (id) { $(id).addEventListener('input', revisarMasivo); $(id).addEventListener('change', revisarMasivo); });
@@ -603,16 +630,22 @@ $('ma-crear').addEventListener('click', async function () {
   const m = AD.masivo;
   const d = { id: m.id, sitio: $('ma-sitio').value, urgencia: m.urgencia, razon: $('ma-razon').value.trim(),
               titulo: $('ma-titulo').value.trim(), descripcion: $('ma-desc').value.trim(), compartido: elegidosLista(m.compartir), tipo: m.tipo || 'pedido' };
+  // Fase 6 (30/10): la cuenta (o el bien de uso) y, si es de prueba, la Ref "PRUEBA-M…"
+  if (APP.yo.fase6 && d.tipo !== 'servicio') {
+    if (m.f6) d.fase6 = m.f6.bienUso ? { bienUso: m.f6.bienUso } : { cuenta: m.f6.cuenta, centro: m.f6.centro };
+    if (m.prueba) d.id = 'PRUEBA-' + m.id;
+  }
   m.creando = true;
   revisarMasivo();
   notaAd('ma-estado', 'Creando el pedido…');
   const r = await api('crearMasivo', d);
   m.creando = false;
   if (!r.ok) { notaAd('ma-estado', textoDeError(r)); return revisarMasivo(); }
-  const ref = r.ref || m.id;
+  const ref = r.ref || d.id;
   const archivos = m.archivos.slice();
   // Todo de nuevo para el próximo (con otro número)
   AD.masivo = { id: nuevoIdMasivo(), urgencia: m.urgencia, archivos: [], compartir: {}, sitiosArmados: true, tipo: m.tipo };
+  $('ma-sitio').disabled = false;
   ['ma-titulo', 'ma-desc', 'ma-razon'].forEach(function (id) { $(id).value = ''; });
   notaAd('ma-estado', '');
   pintarChipsEncargados($('ma-compartir'), AD.masivo.compartir);

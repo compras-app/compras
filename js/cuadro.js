@@ -190,7 +190,7 @@ function pintarCuadro() {
       return ((c.casilleros[p.linea] || {}).renglones || []).map(function (r) { return r.texto; });
     }))).join(' ');
     h += '<tr class="cq-fila" data-cq-buscar="' + esc(sinTildes(texto)) + '"><th class="cq-fija"><span class="cq-cant">' + esc(p.cantidad) + '</span> ' + esc(p.nombre) + (p.nota ? '<div class="cq-gris">' + esc(p.nota) + '</div>' : '') +
-      (p.noPedido ? '<div class="cq-np">No pedido · lo cotizó ' + esc(p.noPedido) + '</div>' : '') +          // Feli (2026-10-07)
+      (p.noPedido ? '<div class="cq-np">' + (q.masivo ? 'Del presupuesto de ' : 'No pedido · lo cotizó ') + esc(p.noPedido) + '</div>' : '') +          // Feli (2026-10-07); un masivo, 30/10
       (p.duda ? '<div class="cq-np">🤖 ¿Es «' + esc(p.duda) + '»? Contestalo en el presupuesto</div>' : '') +     // Paso 8
       (p.comprado ? '<div class="cq-comprado">🛒 Comprado en ' + esc(p.comprado) + '</div>' : '') + '</th>' +
       cols.map(function (c) { return htmlCasillero(c, p); }).join('') + '</tr>';
@@ -334,7 +334,7 @@ function elegirTodo(pid) {
   let np = 0;
   CQ.datos.productos.forEach(function (p) {
     if (p.duda || !sePuedeElegir(col, p.linea)) return;
-    if (p.noPedido) { np++; return; }
+    if (p.noPedido && !CQ.datos.masivo) { np++; return; }          // un masivo: sus renglones son todo lo que hay (30/10)
     CQ.sel[p.linea] = pid; n++;
   });
   pintarCuadro();
