@@ -280,8 +280,9 @@ function tablasPlata(r) {
   };
   return [
     { titulo: 'Compras', nota: (tot || 'Ninguna compra en estas fechas.') + ' Las confirmadas a mano en el chat no se cuentan.',
-      cab: ['Fecha', 'Proveedor', 'Total', 'Productos', 'Pedidos', 'Granjas', 'Compró'],
-      filas: r.compras.map(function (c) { return [fechaCorta(c.fecha), c.proveedor, plata(c.total, c.moneda), nro(c.productos), c.pedidos, c.granjas || '', c.quien || '']; }), vacio: '' },
+      // Feli (30/10): primero el proveedor y después la fecha
+      cab: ['Proveedor', 'Fecha', 'Total', 'Productos', 'Pedidos', 'Granjas', 'Compró'],
+      filas: r.compras.map(function (c) { return [c.proveedor, fechaCorta(c.fecha), plata(c.total, c.moneda), nro(c.productos), c.pedidos, c.granjas || '', c.quien || '']; }), vacio: '' },
     grupo('Por granja', r.porGranja), grupo('Por rubro', r.porRubro), grupo('Por mes', r.porMes),
     { titulo: 'Ahorro', nota: (ah ? 'Ahorrado: ' + ah + '. ' : '') + 'El precio elegido contra el promedio de los presupuestos, solo cuando hubo 2 o más del mismo producto. Precios sin IVA, por nuestra unidad.',
       cab: ['Pedido', 'Producto', 'Proveedor', 'Elegido', 'Promedio', 'Presupuestos', 'Ahorro'], abrir: 0,

@@ -459,6 +459,13 @@
     box-shadow:0 10px 32px rgba(0,0,0,.22);
   }
   .albor.on{display:flex}
+  /* Feli (30/10): el recuadro de la carga se minimiza, como el cartel en Albor */
+  .albor.chico{width:auto;max-width:calc(100vw - 32px)}
+  .albor.chico .log, .albor.chico .pausa, .albor.chico .fin{display:none !important}
+  /* Feli (30/10): "A transferir" se puede bajar a mano */
+  input.ajuste{width:72px;text-align:right;font:inherit;padding:2px 6px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:inherit}
+  @media print{ input.ajuste{border:0;background:none;width:auto;padding:0} }
+  .btn-gris{background:none;border:0;padding:4px 6px;font-size:12px;color:var(--ink-soft);cursor:pointer;text-decoration:underline}
   .albor .cab{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
   .albor .cab b{flex:1;font-size:14px}
   .albor .log{
@@ -902,6 +909,7 @@
         <button class="btn" id="pcarga">Archivo para Albor</button>
         <button class="btn" id="ppend">Planilla de pendientes</button>
         <button class="btn" id="pprint">Planilla de armado</button>
+        <button class="btn-gris" id="parmado" title="Para armar el pedido antes de transferirlo (por ejemplo, el viernes para el lunes)">Planilla de armado</button>
       </span>
     </div>
 
@@ -1242,6 +1250,7 @@
 <div class="albor" id="albor" role="dialog" aria-label="Carga en Albor">
   <div class="cab">
     <b id="albortitulo">Cargando en Albor</b>
+    <button class="linkbtn" id="alborminimizar" title="Achicar el recuadro para ver la pantalla">Minimizar ▾</button>
     <button class="linkbtn" id="alborcancelar">cancelar la carga</button>
     <button class="linkbtn" id="alborcerrar">cerrar</button>
   </div>
@@ -2603,8 +2612,12 @@
     return n % 2 ? n - 1 : n;
   }
 
+  /* Feli (30/10): lo que se transfiere se puede bajar a mano (pidieron 10, hay 5: transferir 3 y quedan 7 pendientes).
+     Por insumo; vale para este pedido con estas existencias (si cambia alguno, se olvida). */
+  var AJUSTE_TRANSF = { pedido: null, data: null, por: {} };
   function analizar(){
     if(!DATA || !PEDIDO){ ANALISIS = null; pintarPedido(); return; }
+    if(AJUSTE_TRANSF.pedido !== PEDIDO || AJUSTE_TRANSF.data !== DATA) AJUSTE_TRANSF = { pedido: PEDIDO, data: DATA, por: {} };
     var dest = destinoActual();
     var idx = indiceExistencias();
     var faltaPunto = dest.bloques.filter(function(b){
@@ -2628,22 +2641,26 @@
         }
         var tope = Math.min(objetivo / 2, stocks[0], stocks[1]);
         var cada = Math.max(0, Math.floor(tope));
+        var maximo = cada;
+        if(AJUSTE_TRANSF.por[it.k] != null && AJUSTE_TRANSF.por[it.k] < cada){ cada = AJUSTE_TRANSF.por[it.k]; notas.push('cambiado a mano'); }
         porBloque = [cada, cada];
         total = cada * 2;
       }else{
         var manda = Math.max(0, Math.min(it.pedido, stocks[0]));
+        var maximo = manda;
+        if(AJUSTE_TRANSF.por[it.k] != null && AJUSTE_TRANSF.por[it.k] < manda){ manda = AJUSTE_TRANSF.por[it.k]; notas.push('cambiado a mano'); }
         porBloque = [manda];
         total = manda;
       }
 
       var pendiente = Math.max(0, objetivo - total);
-      if(pendiente > 0 && total > 0) notas.push('stock parcial');
+      if(pendiente > 0 && total > 0 && notas.indexOf('cambiado a mano') === -1) notas.push('stock parcial');
 
       return {
         cod: it.cod, k: it.k, cuenta: it.cuenta,
         nombre: it.nombre || (reg ? reg.nombre : it.cod),
         pedido: it.pedido, objetivo: objetivo,
-        stocks: stocks, porBloque: porBloque, total: total,
+        stocks: stocks, porBloque: porBloque, total: total, maximo: maximo,
         pendiente: pendiente, notas: notas
       };
     });
@@ -2768,11 +2785,16 @@
       it.stocks.forEach(function(s){
         h.push('<td' + (s ? '' : ' class="zero"') + '>' + fmt(s) + '</td>');
       });
+      // Feli (30/10): se puede transferir menos de lo que hay (en La Colorada, lo de cada oficina)
+      var celdaVa = it.maximo > 0
+        ? '<input class="ajuste" type="number" inputmode="decimal" min="0" max="' + it.maximo + '" step="any" value="' + it.porBloque[0] + '" data-k="' +
+          esc(it.k) + '" title="Podés transferir menos: hasta ' + fmt(it.maximo) + '">'
+        : fmt(it.porBloque[0]);
       if(doble){
-        h.push('<td class="va">' + fmt(it.porBloque[0]) + '</td>');
+        h.push('<td class="va">' + celdaVa + '</td>');
         h.push('<td class="total">' + fmt(it.total) + '</td>');
       }else{
-        h.push('<td class="va">' + fmt(it.total) + '</td>');
+        h.push('<td class="va">' + celdaVa + '</td>');
       }
       h.push('<td' + (it.pendiente ? ' class="falta"' : ' class="zero"') + '>' + fmt(it.pendiente) + '</td>');
       h.push('<td class="tick"></td><td class="tick"></td>');
@@ -2799,6 +2821,14 @@
     h.push('</tr></tfoot></table>');
 
     $('ptablehost').innerHTML = h.join('');
+    $('ptablehost').querySelectorAll('input.ajuste').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var max = Number(inp.max), v = Number(String(inp.value).replace(',', '.'));
+        if(!isFinite(v) || v < 0) v = 0;
+        if(v >= max) delete AJUSTE_TRANSF.por[inp.dataset.k]; else AJUSTE_TRANSF.por[inp.dataset.k] = v;
+        analizar();
+      });
+    });
     $('ptoolbar').classList.add('on');
     $('ptablewrap').classList.add('on');
   }
@@ -3042,11 +3072,11 @@
      contado) y después las de recibido, iguales pero con la columna "Recibió". Cada parte termina con
      "Firma" y abajo "Aclaración". En La Colorada (envío doble), una columna por granja.
      d = datosArmadoActual() o lo mismo armado desde el historial. */
-  async function libroArmado(d){
+  async function libroArmado(d, sinTransferencia){
     var columnas = d.columnas || [];
     var total = Math.round(d.items.reduce(function(s, i){ return s + (Number(i.total) || 0); }, 0) * 1000) / 1000;
     function parte(titulo, columna){
-      var cab = ['Código', 'Insumo'].concat(columnas).concat(['Transferido', columna]);
+      var cab = ['Código', 'Insumo'].concat(columnas).concat([sinTransferencia ? 'A transferir' : 'Transferido', columna]);
       var numeros = [], anchos = {};
       for(var i = 2; i < cab.length - 1; i++){ numeros.push(i); anchos[i] = 22; }
       anchos[0] = 24; anchos[cab.length - 1] = 26;
@@ -3064,6 +3094,11 @@
         firma: true
       };
     }
+    // Feli (30/10): para armar antes de transferir (el viernes para el lunes): solo la hoja de armado, con el título bien a la vista
+    if(sinTransferencia) return {
+      nombre: limpiarNombre('Armado sin transferencia ' + fechaAlborDe(new Date()).split('/').reverse().join('-') + ' ' + d.envio) + '.pdf',
+      datos: await armarPDF([parte('ARMADO SIN TRANSFERENCIA', 'Armado')])
+    };
     return {
       nombre: limpiarNombre('Planilla de armado ' + (d.fechaContable || '').split('/').reverse().join('-') + ' ' + d.envio) + '.pdf',
       datos: await armarPDF([parte('Planilla de armado', 'Armado'), parte('Planilla de armado · recibido', 'Recibió')])
@@ -3208,6 +3243,11 @@
   $('psolova').addEventListener('change', pintarPedido);
   $('pcarga').addEventListener('click', function(){ motor() ? cargarTransferenciaEnAlbor() : exportarCarga(); });
   $('ppend').addEventListener('click', exportarPendientes);
+  $('parmado').addEventListener('click', async function(){
+    if(!ANALISIS || !ANALISIS.hay){ errorP('No hay nada para armar todavía.'); return; }
+    try{ var l = await libroArmado(datosArmadoActual(), true); await descargar(l.nombre, l.datos, 'application/pdf'); }
+    catch(e){ errorP(e.message || String(e)); }
+  });
   $('pprint').addEventListener('click', async function(){
     if(!ANALISIS || !ANALISIS.hay){ errorP('No hay nada para transferir todavía.'); return; }
     try{ await planillaTransferencia(); }catch(e){ errorP(e.message || String(e)); }
@@ -5697,7 +5737,14 @@
   }
   window.__alborLog = alborLog;
 
+  /* Minimizar (Feli, 30/10): queda la barrita de arriba; una pausa nueva o el final lo vuelven a abrir */
+  function achicarAlbor(si){
+    $('albor').classList.toggle('chico', !!si);
+    $('alborminimizar').textContent = si ? 'Abrir ▴' : 'Minimizar ▾';
+  }
+  $('alborminimizar').addEventListener('click', function(){ achicarAlbor(!$('albor').classList.contains('chico')); });
   window.__alborPausa = function(texto, boton){
+    achicarAlbor(false);
     $('alborpausatxt').textContent = texto;
     $('alborseguir').textContent = boton || 'Seguir';
     $('alborpausa').classList.add('on');
@@ -5706,6 +5753,7 @@
 
   function abrirAlbor(titulo){
     CARGANDO = true;
+    achicarAlbor(false);
     $('albortitulo').textContent = titulo;
     $('alborlog').textContent = '';
     $('alborpausa').classList.remove('on');
@@ -5718,6 +5766,7 @@
 
   function terminarAlbor(r, lineas){
     CARGANDO = false;
+    achicarAlbor(false);
     $('alborpausa').classList.remove('on');
     $('alborcancelar').style.display = 'none';
     $('alborcerrar').style.display = '';
