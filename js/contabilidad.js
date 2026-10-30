@@ -296,7 +296,9 @@ function htmlFacturaCt(t, l) {
         (f.noGravado ? '<dt>No gravado</dt><dd>' + esc(dinero(f.noGravado, m)) + '</dd>' : '') + (f.exento ? '<dt>Exento</dt><dd>' + esc(dinero(f.exento, m)) + '</dd>' : '') +
         f.iva.map(function (x) { return '<dt>IVA ' + esc(x.tasa === null ? '' : x.tasa + ' %') + '</dt><dd>' + esc(dinero(x.importe, m)) + '</dd>'; }).join('') +
         f.percepciones.map(function (x) { return '<dt>' + esc(x.nombre || 'Percepción') + '</dt><dd>' + esc(dinero(x.importe, m)) + '</dd>'; }).join('') +
-        '<dt>Total</dt><dd><b>' + esc(dinero(f.total, m)) + '</b></dd></dl>' +
+        '<dt>Total</dt><dd><b>' + esc(dinero(f.total, m)) + '</b></dd>' +
+        // Para controlar el IVA (Feli, 31/10): el que se esperaba según el presupuesto de la compra
+        (c.iva ? '<dt>IVA según la compra</dt><dd>' + esc(dinero(c.iva.compra, m)) + ' (' + esc(String(c.iva.tasa).replace('.', ',')) + ' %)</dd>' : '') + '</dl>' +
       '<p class="nota">Leída por la IA el ' + esc(new Date(l.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) +
         (l.corregida && l.corregida.length ? ' · corregida a mano por ' + esc(l.corregida[l.corregida.length - 1].quien) : '') + '</p>';
   }
