@@ -3572,27 +3572,71 @@ var JS_TOTALES_COMPRA = String(function(){
            tipoCompra: tc && tc.selectedIndex > 0 ? tc.options[tc.selectedIndex].text.trim() : '' };
 });
 
-/* El IVA de cada renglón vinculado: Modificar → IVA → Aceptar. items = los de la orden (texto → iva). */
+/* La ventanita del renglón que está a la vista (Feli, 31/10: el "Aceptar" no la cerró; Albor tiene varios botones con el mismo
+   id y, al abrirla, el centro de costos dice "Cargando…"). o.iva: elige ese IVA; o.aceptar: toca su Aceptar (si ya cargó). */
+var JS_RENGLON_ABIERTO = String(function(o){
+  o = o || {};
+  var dlg = [].slice.call(document.querySelectorAll('.ui-dialog')).filter(function(d){ return d.offsetParent !== null && d.querySelector('select#IVA'); })[0];
+  if(!dlg) return { abierta: false };
+  var sel = dlg.querySelector('select#IVA'), centro = dlg.querySelector('#ID_IT_Dimension_2');
+  var txtCentro = centro ? (centro.value + ' ' + (centro.selectedIndex >= 0 ? centro.options[centro.selectedIndex].text : '')) : '';
+  var cargando = /cargando/i.test(txtCentro);
+  if(o.iva && sel.value !== o.iva){
+    var $ = window.jQuery;
+    if($) $(sel).val(o.iva).trigger('change'); else { sel.value = o.iva; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+  }
+  var r = { abierta: true, iva: sel.value, cargando: cargando, desc: String((dlg.querySelector('#Descripcion') || {}).value || '').trim() };
+  if(o.aceptar && !cargando){
+    var b = dlg.querySelector('#btAceptar_dialog') || [].slice.call(dlg.querySelectorAll('button')).filter(function(x){ return /^\s*aceptar\s*$/i.test(x.textContent); })[0];
+    if(b){ b.click(); r.toco = true; }
+  }
+  r.error = [].slice.call(dlg.querySelectorAll('.field-validation-error, .validation-summary-errors, .ui-state-error, .error'))
+    .filter(function(e){ return e.offsetParent !== null && e.textContent.trim(); }).map(function(e){ return e.textContent.trim(); }).join(' · ').slice(0, 300);
+  return r;
+});
+
+async function renglonAbierto(pg, o){
+  try{ return (await pg.evaluar(JS_RENGLON_ABIERTO, o || {})) || { abierta: false }; }
+  catch(e){ if(e instanceof Cortado) throw e; return { abierta: false }; }
+}
+// Espera hasta que pase algo (cond(estado) true) o se acabe el tiempo; devuelve el último estado.
+async function esperarRenglon(pg, cond, limite){
+  var fin = Date.now() + limite, x = await renglonAbierto(pg);
+  while(!cond(x) && Date.now() < fin){ await pg.esperar(500); x = await renglonAbierto(pg); }
+  return x;
+}
+
+/* El IVA de cada renglón vinculado: Modificar → IVA → Aceptar (cuando Albor terminó de cargar la ventanita; hasta 3 veces, y si no
+   se cierra, frena para que la persona la acepte). */
 async function ivaDeRenglones(pg, ids, d, charla){
   var hechos = 0, sinTasa = [];
   for(var i = 0; i < ids.length; i++){
+    charla.revisar();
     await pg.evaluar(JS_ELEGIR_RENGLON, ids[i]);
     await pg.esperar(400);
     await pg.loc('#btEdit_DetalleGrid').click({ timeout: 15000 });
-    await pg.loc('#IVA').waitFor('visible', 20000);
-    await esperar(pg, 15000);
-    var desc = await pg.evaluar(JS_VALOR, '#Descripcion');
-    var it = d.items.filter(function(x){ return soloLetras(x.texto) === soloLetras(desc); })[0] || d.items[i] || {};
+    var x = await esperarRenglon(pg, function(e){ return e.abierta && !e.cargando; }, 25000);
+    if(!x.abierta) throw new Error('No se abrió la ventanita del renglón ' + (i + 1) + '.');
+    var it = d.items.filter(function(y){ return soloLetras(y.texto) === soloLetras(x.desc); })[0] || d.items[i] || {};
     var tasa = it.iva || (d.items.length === 1 ? d.items[0].iva : null);
+    var nombre = x.desc || 'renglón ' + (i + 1);
     if(tasa && IVA_ALBOR[tasa]){
-      await elegirOpcion(pg, '#IVA', IVA_ALBOR[tasa], 'IVA', charla);
-      await pg.esperar(800);
-      charla.decir('   ' + (desc || 'renglón ' + (i + 1)) + ': IVA ' + String(tasa).replace('.', ',') + ' %');
-      hechos++;
-    } else sinTasa.push(desc || 'renglón ' + (i + 1));
-    await pg.loc('#btAceptar_dialog').click({ timeout: 15000 });
-    var fin = Date.now() + 15000;
-    while(Date.now() < fin && await pg.loc('#IVA').isVisible()) await pg.esperar(400);
+      x = await renglonAbierto(pg, { iva: IVA_ALBOR[tasa] });
+      await pg.esperar(1200);
+      x = await esperarRenglon(pg, function(e){ return !e.cargando; }, 15000);
+      if(x.iva !== IVA_ALBOR[tasa]) charla.decir('   [!] ' + nombre + ': no quedó elegido el IVA ' + tasa + ' %.');
+      else { charla.decir('   ' + nombre + ': IVA ' + String(tasa).replace('.', ',') + ' %'); hechos++; }
+    } else sinTasa.push(nombre);
+    for(var intento = 1; intento <= 3; intento++){
+      await renglonAbierto(pg, { aceptar: true });
+      x = await esperarRenglon(pg, function(e){ return !e.abierta; }, 6000);
+      if(!x.abierta) break;
+    }
+    if(x.abierta){
+      await charla.pausa('No pude aceptar el renglón «' + nombre + '» en Albor' + (x.error ? ' (Albor dice: ' + x.error + ')' : '') + '.\n\n' +
+                         'Tocá «Aceptar» en esa ventanita (si pide algo, completalo) y después tocá Seguir.', 'Seguir');
+      if((await renglonAbierto(pg)).abierta) throw new Error('La ventanita del renglón «' + nombre + '» sigue abierta en Albor.');
+    }
     await esperar(pg, 10000);
   }
   return { hechos: hechos, sinTasa: sinTasa };
@@ -3685,12 +3729,14 @@ function cargar_factura(d){
       // 6. Control y Guardar
       var t = await pg.evaluar(JS_TOTALES_COMPRA);
       var tot = numAlbor(t.total);
+      var ivaAlbor = (numAlbor(t.iva21) || 0) + (numAlbor(t.iva105) || 0) + (numAlbor(t.iva27) || 0);
+      if(d.iva && !ivaAlbor) avisos.unshift('En Albor quedó sin IVA (la factura tiene ' + plataAlbor(d.iva) + '): elegí el IVA de cada renglón con ✏️ antes de guardar.');
       if(tot != null && d.total != null && Math.abs(tot - d.total) > 0.009)
         avisos.push('Albor da total ' + plataAlbor(tot) + ' y la factura dice ' + plataAlbor(d.total) + ' (diferencia de $ ' + plataAlbor(Math.abs(tot - d.total)) + ').');
       var resumen = 'Revisá la factura en Albor antes de guardarla:\n' +
         '• Factura ' + d.letra + ' ' + d.numeroAlbor + ' · ' + (cab.ID_Tercero_Proveedor_nombre || d.proveedor.nombre) + '\n' +
         '• Orden ' + d.orden.numero + ': ' + ids.length + ' renglón(es) vinculados\n' +
-        '• Neto ' + t.neto + ' · IVA ' + [t.iva105 && numAlbor(t.iva105) ? '10,5 %: ' + t.iva105 : '', t.iva21 && numAlbor(t.iva21) ? '21 %: ' + t.iva21 : '', t.iva27 && numAlbor(t.iva27) ? '27 %: ' + t.iva27 : ''].filter(String).join(' · ') +
+        '• Neto ' + t.neto + ' · IVA ' + ([t.iva105 && numAlbor(t.iva105) ? '10,5 %: ' + t.iva105 : '', t.iva21 && numAlbor(t.iva21) ? '21 %: ' + t.iva21 : '', t.iva27 && numAlbor(t.iva27) ? '27 %: ' + t.iva27 : ''].filter(String).join(' · ') || '0,00') +
         ' · Total ' + t.total + '\n' +
         '• Tipo de compra: ' + (t.tipoCompra || 'sin elegir') + ' (revisalo)' +
         (avisos.length ? '\n\n⚠️ ' + avisos.join('\n⚠️ ') : '');

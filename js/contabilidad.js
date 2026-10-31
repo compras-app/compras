@@ -18,7 +18,7 @@ const K_CONTABLE = 'compras_contable';      // el último tablero, para abrir si
 const CT = { datos: null, abierta: null, tarjeta: null, cargando: false };
 const COLUMNAS_CT = [
   { k: 'precompra', t: 'Pre-compra' }, { k: 'comprado', t: 'Comprado' },
-  { k: 'recibido', t: 'Recibido' }, { k: 'factura', t: 'Factura cargada' }, { k: 'albor', t: 'Cargada en Albor' }     // Fase 6-bis, Paso 2
+  { k: 'recibido', t: 'Recibido' }, { k: 'factura', t: 'Factura cargada' }     // Feli (31/10): recibido y con la factura cargada en Albor
 ];
 
 pantalla('contabilidad', { titulo: 'Contabilidad', tab: 'contabilidad', alMostrar: mostrarContable });
@@ -118,7 +118,8 @@ function htmlTarjetaCt(t) {
     (t.factura ? '<div class="ct-fac">🧾 ' + esc(t.factura.numero ? 'Factura ' + (t.factura.letra ? t.factura.letra + ' ' : '') + t.factura.numero : t.factura.nombre) +
                  // Fase 6-bis (Feli, 30/10): cómo dio la lectura de la IA
                  ({ grave: ' <span class="ct-fac-e grave">⛔ No coincide</span>', aviso: ' <span class="ct-fac-e aviso">⚠️ Revisar</span>',
-                    ok: ' <span class="ct-fac-e ok">✅</span>', sinLeer: ' <span class="ct-fac-e">Sin leer</span>' }[t.factura.estado] || '') + '</div>' : '') +
+                    ok: ' <span class="ct-fac-e ok">✅</span>', sinLeer: ' <span class="ct-fac-e">Sin leer</span>' }[t.factura.estado] || '') +
+                 (t.factura.albor && t.factura.albor.estado === 'Cargada' ? ' <span class="ct-fac-e ok">en Albor</span>' : '') + '</div>' : '') +
     '<div class="ct-recep">' + esc(recep) + '</div></div>';
 }
 
@@ -275,6 +276,7 @@ function pintarTarjetaContable() {
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
   if ($('cx-fac-leer')) $('cx-fac-leer').addEventListener('click', function () { leerFacturaUI(r.tarjeta.id); });
   if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', corregirFacturaUI);
+  if ($('cx-fac-amano')) $('cx-fac-amano').addEventListener('click', marcarFacturaEnAlbor);
   if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () { cargarFacturaEnAlbor(r); });
 }
 
@@ -282,7 +284,7 @@ function pintarTarjetaContable() {
    La IA la copia; el servidor hace las cuentas y la compara con la compra. Acá se ve lo leído, lo que no
    cierra o no coincide (⛔ no coincide con esta compra / ⚠️ para revisar) y se corrige a mano. */
 function htmlFacturaCt(t, l) {
-  if (!t.factura) return '<p class="nota">Adjuntá el PDF de la factura: la IA la lee y la compara con la compra, y la tarjeta pasa a "Factura cargada".</p>' +
+  if (!t.factura) return '<p class="nota">Adjuntá el PDF de la factura: la IA la lee y la compara con la compra. Con la compra recibida y la factura cargada en Albor, la tarjeta pasa a "Factura cargada".</p>' +
     '<button type="button" class="btn" id="cx-fac-cargar">🧾 Adjuntar factura</button>';
   const f = l && l.datos, c = l && l.comparacion, m = f ? f.moneda : 'ARS';
   const li = function (x) { return '<li>' + esc(x) + '</li>'; };
@@ -314,12 +316,14 @@ function htmlFacturaCt(t, l) {
   }
   const al = t.factura.albor;
   if (al) h += '<div class="cx-fac-r ' + (al.estado === 'Cargada' ? 'ok' : al.estado === 'Probada' ? '' : 'aviso') + '"><b>' +
-    (al.estado === 'Cargada' ? '✅ Cargada en Albor' + (al.referencia ? ': ' + esc(al.referencia) : '')
+    (al.estado === 'Cargada' ? '✅ Cargada en Albor' + (al.aMano ? ' (a mano)' : '') + (al.referencia ? ': ' + esc(al.referencia) : '')
      : al.estado === 'Probada' ? '🧪 Se probó en Albor (no se guardó)' : '⚠️ No quedó cargada en Albor') + '</b>' +
     (al.motivo && al.estado !== 'Cargada' ? '<div>' + esc(al.motivo) + '</div>' : '') +
     '<small class="nota">' + esc(al.quien || '') + ' · ' + esc(new Date(al.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</small></div>';
   return h + '<div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
     (f ? '<button type="button" class="btn2" id="cx-fac-corregir">✏️ Corregir</button>' : '') +
+    // La que se cargó a mano en Albor (sin orden de compra, o si la extensión no pudo): la marca la persona
+    (!al || al.estado !== 'Cargada' ? '<button type="button" class="btn2" id="cx-fac-amano">Ya la cargué en Albor</button>' : '') +
     '<button type="button" class="btn2" id="cx-fac-leer">' + (f ? '🔁 Leer de nuevo' : '🤖 Leer la factura') + '</button>' +
     '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button><button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button></div>';
 }
@@ -421,6 +425,22 @@ async function cargarFacturaEnAlbor(r) {
   cargarTarjetaContable(); cargarContable();
 }
 
+/** "Ya la cargué en Albor": la persona la cargó a mano; con la compra recibida, pasa a "Factura cargada". */
+async function marcarFacturaEnAlbor() {
+  const r = CT.tarjeta;
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<div class="campo"><label for="cx-fac-ref">Referencia en Albor <small>(opcional)</small></label>' +
+    '<input type="text" id="cx-fac-ref" maxlength="40" autocomplete="off" placeholder="Ej: 2026-COM-6150"></div>';
+  const ok = await dialogo({ titulo: '¿Ya está cargada en Albor?', texto: 'Marcala si la cargaste a mano en Albor. Con la compra recibida, pasa a "Factura cargada".', cuerpo: cuerpo,
+    botones: [{ texto: 'Sí, ya está cargada', clase: 'btn', valor: function () { return { ref: $('cx-fac-ref').value.trim() }; } }, { texto: 'Volver', valor: null }] });
+  if (!ok) return;
+  const x = await api('facturaEnAlbor', r.tarjeta.id, { ok: true, aMano: true, referencia: ok.ref, motivo: 'Cargada a mano' });
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
+  aviso('Listo: quedó marcada como cargada en Albor.');
+  cargarTarjetaContable(); cargarContable();
+}
+
 /** ✏️ Cambiar la cuenta y el centro de costos del pedido entero (el sitio sale del centro). */
 async function cambiarCuentaUI(ref) {
   const r = CT.tarjeta;
@@ -484,7 +504,7 @@ $('cx-factura').addEventListener('change', async function (e) {
 });
 
 async function sacarFactura() {
-  const si = await dialogo({ titulo: '¿Sacar la factura?', texto: 'La compra vuelve a su columna (Comprado o Recibido). El PDF queda en sus adjuntos.',
+  const si = await dialogo({ titulo: '¿Sacar la factura?', texto: 'Se saca de la compra (y lo que se anotó de Albor). El PDF queda en sus adjuntos.',
     botones: [{ texto: 'Sí, sacarla', clase: 'btn peligro-btn', valor: true }, { texto: 'Volver', valor: null }] });
   if (!si) return;
   const x = await api('cargarFactura', CT.tarjeta.tarjeta.id, null);
