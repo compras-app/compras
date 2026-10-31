@@ -346,28 +346,28 @@ function pintarCotizaciones() {
   const puede = APP.yo.admin && sePuedeCotizarAbierta(t);
   const deTanda = (t && t.tanda) || (d && d.trabajo && d.trabajo.tanda);
   const cargar = APP.yo.admin && !!(d && d.cargarPresupuesto);       // "📎 Cargar presupuesto" desde la compu (Feli, 19/10)
-  b.hidden = TB.tipo === 'tarea' || (esTrabajo(ref) && !deTanda && !cargar) || (!lista.length && !esperan.length && !puede && !cargar);
+  const presups = APP.yo.admin && d && d.pedido ? (d.presupuestos || []) : [];
+  // Feli (31/10): Cotizaciones y Presupuestos son un solo bloque, sin los recuadros largos de cada pedido de cotización
+  b.hidden = TB.tipo === 'tarea' || (!presups.length && ((esTrabajo(ref) && !deTanda && !cargar) || (!lista.length && !esperan.length && !puede && !cargar)));
   if (b.hidden) return;
   $('tj-cotizar').hidden = !puede;
   $('tj-cargar-presup').hidden = !cargar;
-  $('tj-presup-mano').hidden = !cargar;            // Fase 6 (30/10): sin archivo, los renglones se escriben a mano
   const reintento = {};
   esperan.forEach(function (m) { if (m.fn === 'reintentarCotizacion') reintento[m.args[1]] = true; });
+  // Solo queda a la vista lo que hay que hacer: lo que se está mandando y lo que no salió (con "Reintentar")
+  const malas = lista.filter(function (s) { return s.estado === 'No salió' || reintento[s.id]; });
+  const pedidos = lista.map(function (s) { return s.nombre; }).filter(function (n, i, a) { return a.indexOf(n) === i; });
   $('tj-cot').innerHTML =
     esperan.filter(function (m) { return m.fn === 'pedirCotizacion'; }).map(function () {
       return '<div class="cot-fila espera">' + (APP.enLinea ? '⏳ Mandando el pedido de cotización…' : '⏳ El pedido de cotización se manda solo cuando vuelva la señal.') + '</div>';
     }).join('') +
-    (lista.length ? lista.map(function (s) {
-      const e = reintento[s.id] ? '⏳ Reintentando…' : (ESTADO_COT[s.estado] || s.estado);
-      return '<div class="cot-fila' + (s.estado === 'No salió' ? ' mal' : '') + '"><div><b>' + esc(s.nombre) + '</b> <small>· ' + esc(s.codigo) + ' · ' + esc(fechaCorta(s.fecha)) +
-        '</small></div>' +
-        (s.pidio ? '<div class="sub">Cotización pedida por ' + esc(s.pidio) + (s.desde && s.desde !== 'WhatsApp de ' + s.pidio && s.desde !== 'WhatsApp de la app' ? ' (desde el ' + esc(s.desde) + ')' : '') + '</div>' : '') +   // Paso 7
-        '<div class="sub">' + esc(s.productos.join(', ')) + '</div>' +
-        '<div class="sub">' + esc(e) + (s.notas ? ' · ' + esc(s.notas) : '') + '</div>' +
-        htmlRecordatorio(s.recordatorio) +                                         // Fase 4, Paso 6
-        (APP.yo.admin && s.estado === 'No salió' && !reintento[s.id] ? '<button type="button" class="btn-chico" data-reintentar="' + esc(s.id) + '">Reintentar</button>' : '') +
-        (chatEsMio(s.chat) ? '<button type="button" class="btn-chico" data-ir-chat="' + esc(s.chat) + '">💬 Chat' + (s.prueba ? ' (número de prueba)' : '') + '</button>' : '') + '</div>';   // Fase 4, Paso 2
-    }).join('') : (esperan.length ? '' : '<p class="nota" style="margin:0">Todavía no se pidió cotización.</p>'));
+    malas.map(function (s) {
+      return '<div class="cot-linea mal">⚠️ <b>' + esc(s.nombre) + '</b>: ' + esc(reintento[s.id] ? 'reintentando…' : 'el pedido de cotización no salió' + (s.notas ? ' (' + s.notas + ')' : '')) +
+        (APP.yo.admin && !reintento[s.id] ? ' <button type="button" class="btn-chico" data-reintentar="' + esc(s.id) + '">Reintentar</button>' : '') + '</div>';
+    }).join('') +
+    (presups.length || esperan.length ? '' : lista.length
+      ? '<p class="nota" style="margin:0">Se pidió cotización a ' + esc(pedidos.join(', ')) + '. Todavía no se cargó ningún presupuesto.</p>'
+      : '<p class="nota" style="margin:0">Todavía no se pidió cotización.</p>');
   $('tj-cot').querySelectorAll('[data-ir-chat]').forEach(function (btn) { btn.addEventListener('click', function () { irAlChat(btn.dataset.irChat); }); });
   $('tj-cot').querySelectorAll('[data-reintentar]').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -378,8 +378,13 @@ function pintarCotizaciones() {
   });
 }
 $('tj-cotizar').addEventListener('click', function () { if (TB.abierta) abrirPedirCotizacion(TB.abierta); });
-$('tj-cargar-presup').addEventListener('click', function () { cargarPresupuestoDesdeCompu(); });
-$('tj-presup-mano').addEventListener('click', function () { presupuestoAManoUI(); });
+// Feli (31/10): un solo botón; la ventanita pregunta si se adjunta el archivo o se escribe a mano
+$('tj-cargar-presup').addEventListener('click', async function () {
+  const como = await dialogo({ titulo: '📎 Cargar presupuesto', texto: '¿Cómo lo cargás?',
+    botones: [{ texto: '📎 Adjuntar el archivo (PDF o foto)', clase: 'btn', valor: 'archivo' }, { texto: '✍️ Escribirlo a mano', clase: 'btn2', valor: 'mano' }, { texto: 'Volver', valor: null }] });
+  if (como === 'archivo') cargarPresupuestoDesdeCompu();
+  else if (como === 'mano') presupuestoAManoUI();
+});
 
 // Cuando sale de la bandeja: el bloque Cotizaciones y la marca del tablero se actualizan (las dos llevan la ref adelante)
 (function () {

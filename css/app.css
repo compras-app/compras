@@ -1131,3 +1131,9 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .ma-cuenta span{font-weight:600}
 .ma-prueba{display:flex;gap:8px;align-items:center;margin-top:8px;font-weight:400}
 .ma-prueba input[type=checkbox]{width:18px;height:18px;min-height:0;flex:none;margin:0;padding:0;accent-color:var(--accent)}
+
+/* Feli (31/10): Cotizaciones y Presupuestos en un solo bloque */
+#tj-presup-b{margin-top:8px}
+.pr-abajo{margin-top:10px}
+.cot-linea{font-size:13px;margin:4px 0}
+.cot-linea.mal{color:var(--warn)}

@@ -18,7 +18,7 @@ const K_CONTABLE = 'compras_contable';      // el último tablero, para abrir si
 const CT = { datos: null, abierta: null, tarjeta: null, cargando: false };
 const COLUMNAS_CT = [
   { k: 'precompra', t: 'Pre-compra' }, { k: 'comprado', t: 'Comprado' },
-  { k: 'recibido', t: 'Recibido' }, { k: 'factura', t: 'Factura cargada' }
+  { k: 'recibido', t: 'Recibido' }, { k: 'factura', t: 'Factura cargada' }, { k: 'albor', t: 'Cargada en Albor' }     // Fase 6-bis, Paso 2
 ];
 
 pantalla('contabilidad', { titulo: 'Contabilidad', tab: 'contabilidad', alMostrar: mostrarContable });
@@ -275,9 +275,7 @@ function pintarTarjetaContable() {
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
   if ($('cx-fac-leer')) $('cx-fac-leer').addEventListener('click', function () { leerFacturaUI(r.tarjeta.id); });
   if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', corregirFacturaUI);
-  if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () {
-    window.open('https://laquimerasa.alboragro.com/1/Comprobantes_Compra/Create', '_blank', 'noopener');
-  });
+  if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () { cargarFacturaEnAlbor(r); });
 }
 
 /* ---------- Fase 6-bis, Paso 1 (Feli, 30/10): la factura leída por la IA ----------
@@ -314,6 +312,12 @@ function htmlFacturaCt(t, l) {
       '<p class="nota">Leída por la IA el ' + esc(new Date(l.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) +
         (l.corregida && l.corregida.length ? ' · corregida a mano por ' + esc(l.corregida[l.corregida.length - 1].quien) : '') + '</p>';
   }
+  const al = t.factura.albor;
+  if (al) h += '<div class="cx-fac-r ' + (al.estado === 'Cargada' ? 'ok' : al.estado === 'Probada' ? '' : 'aviso') + '"><b>' +
+    (al.estado === 'Cargada' ? '✅ Cargada en Albor' + (al.referencia ? ': ' + esc(al.referencia) : '')
+     : al.estado === 'Probada' ? '🧪 Se probó en Albor (no se guardó)' : '⚠️ No quedó cargada en Albor') + '</b>' +
+    (al.motivo && al.estado !== 'Cargada' ? '<div>' + esc(al.motivo) + '</div>' : '') +
+    '<small class="nota">' + esc(al.quien || '') + ' · ' + esc(new Date(al.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</small></div>';
   return h + '<div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
     (f ? '<button type="button" class="btn2" id="cx-fac-corregir">✏️ Corregir</button>' : '') +
     '<button type="button" class="btn2" id="cx-fac-leer">' + (f ? '🔁 Leer de nuevo' : '🤖 Leer la factura') + '</button>' +
@@ -370,6 +374,50 @@ async function corregirFacturaUI() {
   const x = await api('corregirFactura', r.tarjeta.id, ok);
   if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: esto se hace con señal. Probá de nuevo en un rato.' : x.error, 'bad');
   aviso('Listo: se corrigió y se volvió a comparar.');
+  cargarTarjetaContable(); cargarContable();
+}
+
+/**
+ * Fase 6-bis, Paso 2 (Feli, 31/10): "Cargar la factura en Albor" con la extensión, en una compra con su orden de compra y una
+ * factura leída que no dice "No coincide". Sin eso (o sin la extensión), abre Albor en un comprobante nuevo para cargarla a mano.
+ */
+async function cargarFacturaEnAlbor(r) {
+  const t = r.tarjeta, l = r.lectura, a = function () { window.open('https://laquimerasa.alboragro.com/1/Comprobantes_Compra/Create', '_blank', 'noopener'); };
+  const motivo = !t.factura ? 'Primero adjuntá la factura.'
+    : !l ? 'Primero dejá que la IA lea la factura («🤖 Leer la factura»).'
+    : l.comparacion && l.comparacion.graves.length ? 'La factura no coincide con esta compra: así no se carga en Albor.'
+    : t.entero || !t.numeroOrden ? 'Esta compra no tiene orden de compra en Albor: la factura se carga a mano.'
+    : !(await hayExtensionAlbor()) ? 'Para cargarla sola hace falta la compu con la extensión de Albor.' : '';
+  if (motivo) {
+    const ir = await dialogo({ titulo: 'Cargar la factura en Albor', texto: motivo,
+      botones: [{ texto: 'Abrir Albor para cargarla a mano', clase: 'btn2', valor: true }, { texto: 'Volver', valor: null }] });
+    if (ir) a();
+    return;
+  }
+  const d = await api('datosFacturaAlbor', t.id);
+  if (!d.ok) return aviso(d.sinConexion ? '📶 Hace falta señal para cargar la factura.' : d.error, 'bad');
+  OC_ALBOR.abrir('Cargando la factura en Albor');
+  const abandono = new Promise(function (ok) {
+    OC_ALBOR.abandonar = function () {
+      try { window.AlborExt.api.responder_carga('cancelar'); } catch (e) {}
+      ok({ ok: false, cancelado: true, abandonada: true, motivo: 'Cancelaste la carga de la factura. En Albor no se guardó nada.' });
+    };
+  });
+  let x;
+  try { x = await Promise.race([window.AlborExt.api.cargar_factura(d.factura), abandono]); }
+  catch (e) { x = { ok: false, motivo: String(e && e.message || e) }; }
+  const reg = x.ok ? '' : registroAlbor();
+  OC_ALBOR.cerrar();
+  if (!x.cancelado) await api('facturaEnAlbor', t.id, { ok: !!x.ok, prueba: !!x.prueba, referencia: x.referencia || '', motivo: x.motivo || '' });
+  if (x.ok) aviso(x.prueba ? '🧪 Listo: se armó en Albor y no se guardó (es una prueba). Cerrá la pestaña de Albor sin guardar.'
+                           : '✅ La factura quedó cargada en Albor' + (x.referencia ? ': ' + x.referencia : '') + (x.ya ? ' (ya estaba).' : '.'));
+  else {
+    const cuerpo = document.createElement('div');
+    cuerpo.className = 'cuerpo';
+    cuerpo.innerHTML = '<p>' + esc(x.motivo || 'La factura no quedó cargada.') + '</p>' +
+      (reg ? '<details><summary>Lo último que pasó (para mandárselo a Claude)</summary><pre class="oc-albor-reg">' + esc(reg) + '</pre></details>' : '');
+    await dialogo({ titulo: x.cancelado ? 'Se canceló la carga' : 'La factura no quedó cargada', cuerpo: cuerpo, botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
+  }
   cargarTarjetaContable(); cargarContable();
 }
 

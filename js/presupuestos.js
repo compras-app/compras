@@ -175,7 +175,7 @@ function preguntarParteOReemplazo(r) {
    (cualquiera del padrón; primero los que tienen pedido de cotización en esta tarjeta) y el archivo (PDF o foto). Queda
    como adjunto de la tarjeta y se carga como desde el chat: la IA lo lee y aparece en Presupuestos. El proveedor queda
    entre los que se les pidió cotización. Necesita señal. */
-async function elegirProveedorPresupuesto(ref) {
+async function elegirProveedorPresupuesto(ref, aMano) {
   const datos = await datosProductos();
   const todos = ((datos && datos.proveedores) || []).filter(function (p) { return p.nombre; })
     .slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); });
@@ -205,9 +205,10 @@ async function elegirProveedorPresupuesto(ref) {
     '<div id="pa-lista" style="max-height:45vh;overflow:auto;margin-top:6px"></div>';
   cuerpo.querySelector('#pa-buscar').addEventListener('input', function () { q = this.value; pintar(); });
   pintar();
-  return dialogo({ titulo: '📎 Cargar presupuesto', texto: 'Elegí el proveedor y después el archivo (PDF o foto) de tu compu. La IA lo lee y lo une con los productos de la tarjeta.',
+  return dialogo({ titulo: aMano ? '✍️ Presupuesto a mano' : '📎 Cargar presupuesto',
+                   texto: aMano ? 'Elegí el proveedor; después escribís los renglones.' : 'Elegí el proveedor y después el archivo (PDF o foto) de tu compu. La IA lo lee y lo une con los productos de la tarjeta.',
                    cuerpo: cuerpo,
-                   botones: [{ texto: 'Volver', valor: null }, { texto: 'Elegir el archivo', clase: 'btn', id: 'pa-ok', valor: function () { return prov || null; } }],
+                   botones: [{ texto: 'Volver', valor: null }, { texto: aMano ? 'Seguir' : 'Elegir el archivo', clase: 'btn', id: 'pa-ok', valor: function () { return prov || null; } }],
                    alAbrir: function () { $('pa-ok').disabled = !prov; } });
 }
 
@@ -268,7 +269,7 @@ async function presupuestoAManoUI() {
   const ref = TB.abierta;
   if (!ref) return;
   if (!APP.enLinea) return aviso('📶 Poca señal: hace falta señal.', 'bad');
-  const prov = await elegirProveedorPresupuesto(ref);
+  const prov = await elegirProveedorPresupuesto(ref, true);
   if (!prov) return;
   const moneda = await dialogo({ titulo: '✍️ Presupuesto a mano', texto: '¿En qué moneda son los precios? (sin IVA)',
     botones: [{ texto: 'Volver', valor: null }, { texto: 'Dólares', clase: 'btn2', valor: 'USD' }, { texto: 'Pesos', clase: 'btn', valor: 'ARS' }] });
@@ -549,13 +550,13 @@ function pintarPresupuestos() {
   const b = $('tj-presup-b');
   if (!b) return;
   const d = TB.detalle, l = (d && d.presupuestos) || [];
-  b.hidden = !APP.yo.admin || TB.tipo === 'tarea' || !d || !d.pedido || (!l.length && !(d.solicitudes || []).length);
+  // Feli (31/10): van dentro del bloque Cotizaciones, y el cuadro comparativo abajo de todos
+  b.hidden = !APP.yo.admin || TB.tipo === 'tarea' || !d || !d.pedido || !l.length;
   if (b.hidden) return;
   const leidos = l.filter(function (x) { return ['Revisar', 'Para confirmar', 'Confirmado'].indexOf(x.estado) !== -1; });
   // Paso 5 (Feli, 2026-10-06): un solo botón para comparar y comprar
-  $('tj-presup').innerHTML = (leidos.length ? '<div class="pr-arriba"><button type="button" class="btn-chico si pr-cuadro-b" id="pr-cuadro">📊 Cuadro comparativo de compra</button></div>' : '') +
-    (l.length ? presupuestosEnPartes(l).map(htmlPresupuesto).join('')
-      : '<p class="nota" style="margin:0">Cuando llegue un presupuesto, cargalo desde el chat: en el menú del mensaje, "📥 Cargar en una tarjeta".</p>');
+  $('tj-presup').innerHTML = presupuestosEnPartes(l).map(htmlPresupuesto).join('') +
+    (leidos.length ? '<div class="pr-abajo"><button type="button" class="btn-chico si pr-cuadro-b" id="pr-cuadro">📊 Cuadro comparativo</button></div>' : '');
   if ($('pr-cuadro')) $('pr-cuadro').addEventListener('click', function () { abrirCuadro(TB.abierta); });
   $('tj-presup').querySelectorAll('[data-pr-repartir]').forEach(function (x) { x.addEventListener('click', function () { repartirUI(x.dataset.id, Number(x.dataset.prRepartir)); }); });
   $('tj-presup').querySelectorAll('[data-pr-uno]').forEach(function (x) {

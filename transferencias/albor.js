@@ -3381,6 +3381,353 @@ function cargar_orden_compra(o){
   });
 }
 
+/* ==================================================================
+   Fase 6-bis, Paso 2 (Feli, 31/10): la factura en Albor
+   ------------------------------------------------------------------
+   Mapa: "Conexion con Albor - Orden de compra/Mapa de la factura en Albor.md". Solo una compra con su orden en Albor.
+     1. ¿Ya está cargada? (Comprobantes de Compra de los últimos meses, por número y proveedor): no se carga de nuevo.
+     2. Mis Comprobantes AFIP (Feli, 31/10: todo en la misma pantalla): se le pide a Albor la lista por CUIT y número. Si está,
+        se va directo a CreateMisComprobantesAfip (lo que hace "Siguiente": Albor completa fecha, número y proveedor) y se
+        comparan neto, IVA y total. Si no está (puede estar ya vinculada), Nuevo: la persona elige A, B o C y la extensión
+        pone la fecha, el número y el proveedor.
+     3. "¿Desea dar de alta automáticamente el ítem de concepto?": Cancelar (los renglones salen de la orden; Feli, 31/10).
+     4. OCNS: los renglones de nuestra orden, con "A vincular" = lo facturado (si no coincide con la orden, se cambia ahí).
+     5. El IVA de cada renglón (Modificar → IVA).
+     6. Frena con el resumen (el Tipo de compra lo trae Albor: lo revisa la persona). Una prueba nunca se guarda (Feli,
+        30/10); si no, Guardar una sola vez y se confirma en la lista.
+   ================================================================== */
+var URL_COMPRAS = '/1/Comprobantes_Compra';
+var IVA_ALBOR = { 21: 'IVA21', 10.5: 'IVA105', 27: 'IVA27' };
+
+// "11.325,80" o "11325.80" → 11325.8
+function numAlbor(t){
+  var s = String(t == null ? '' : t).trim();
+  if(!s) return null;
+  if(s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+  var n = parseFloat(s.replace(/[^\d.\-]/g, ''));
+  return isNaN(n) ? null : n;
+}
+function plataAlbor(n){ return n == null ? '—' : Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function soloLetras(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ''); }
+
+// Los comprobantes de compra entre dos fechas (yyyy-mm-dd), sin los anulados. null si Albor no contesta.
+var JS_COMPRAS_LISTA = String(function(o){
+  var q = { jqGridID: 'DetalleGrid', _search: false, rows: 1000, page: 1, sidx: 'Fecha', sord: 'desc', nd: Date.now(),
+            filtro_FechaDesde: o.desde, filtro_FechaHasta: o.hasta };
+  return fetch('/1/Comprobantes_Compra/ObtenerLista?' + new URLSearchParams(q).toString(), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      if(!j || !Array.isArray(j.rows)) return null;
+      return j.rows.filter(function(r){ return String(r.Anulada) !== 'True'; }).map(function(r){
+        return { id: String(r.ID_Comprobante), numero: String(r.Numero_Comprobante || ''), proveedor: String(r.Tercero_Proveedor || ''),
+                 ref: [r.Ej, r.Subd, r.Nro].filter(Boolean).join('-'), tipo: String(r.Tipo_Comprobante || '') };
+      });
+    })
+    .catch(function(){ return null; });
+});
+
+// La factura en Mis Comprobantes AFIP (por CUIT y número): [{id, tipo, pv, nro, neto, iva, total, tipos}] o null.
+var JS_AFIP = String(function(o){
+  var q = { desdeOP_FF: 'False', ID_Moneda_Origen: 0, jqGridID: 'DetalleGridMisComprobantesAfip', _search: true, page: 1, rows: 50,
+            nd: Date.now(), Nro_Doc_Emisor: o.cuit, Nro_Desde: o.numero };
+  return fetch('/1/Comprobantes_Compra/MisComprobantesAfipPendientesComprasLista?' + new URLSearchParams(q).toString(), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      if(!j || !Array.isArray(j.rows)) return null;
+      return j.rows.map(function(r){ return r.cell || r; })
+        .filter(function(r){ return Number(r.Nro_Desde) === o.numero && Number(r.Punto_Venta) === o.pv && String(r.Nro_Doc_Emisor).replace(/\D/g, '') === o.cuit; })
+        .map(function(r){
+          return { id: String(r.ID_Mi_Comprobante_Afip), tipo: String(r.Tipo || ''), neto: r.Importe_Neto_Gravado, iva: r.Iva, total: r.Importe_Total,
+                   tipos: String(r.TiposComprobanteCITI || '') };
+        });
+    })
+    .catch(function(){ return null; });
+});
+
+/* ¿Ya está en Albor? El comprobante de compra con ese número y de ese proveedor (o null). */
+async function facturaYaEnAlbor(pg, d){
+  var f = fechaDeTexto(d.fecha) || new Date(), DIA = 86400000;
+  var l = null;
+  try{ l = await pg.evaluar(JS_COMPRAS_LISTA, { desde: diaParaAlbor(new Date(f - 90 * DIA)), hasta: diaParaAlbor(new Date(Date.now() + 3 * DIA)) }); }
+  catch(e){ if(e instanceof Cortado) throw e; }
+  if(!l) return { sinLista: true };
+  var prov = soloLetras(d.proveedor.nombre);
+  return l.filter(function(c){
+    var n = numeroComprobante(c.numero);
+    if(!n || n[0] !== d.puntoVenta || n[1] !== d.numero) return false;
+    var p = soloLetras(c.proveedor);
+    return !prov || !p || p.indexOf(prov) >= 0 || prov.indexOf(p) >= 0;
+  })[0] || null;
+}
+function numeroComprobante(t){ var m = /(\d+)\s*-\s*(\d+)/.exec(String(t || '')); return m ? [Number(m[1]), Number(m[2])] : null; }
+
+// El valor (o el texto elegido) de varios campos de la cabecera.
+var JS_CAMPOS = String(function(ids){
+  var o = {};
+  ids.forEach(function(id){
+    var e = document.getElementById(id);
+    o[id] = !e ? null : e.tagName === 'SELECT' ? { valor: e.value, texto: e.selectedIndex >= 0 ? (e.options[e.selectedIndex].text || '').trim() : '' } : String(e.value || '').trim();
+  });
+  return o;
+});
+
+/* La cabecera sin AFIP: la persona eligió el tipo; la extensión pone la fecha, el número y el proveedor. */
+async function cabeceraAMano(pg, d, charla){
+  await pg.ir(C.BASE + URL_COMPRAS + '/Create');
+  await pg.loc('#ID_Tipo_Comprobante').waitFor('visible', 40000);
+  await esperar(pg, 40000);
+  for(var vuelta = 1; ; vuelta++){
+    await charla.pausa('La factura ' + d.letra + ' ' + d.numeroAlbor + ' de ' + (d.emisor || d.proveedor.nombre) + ' no está en «Mis Comprobantes AFIP» ' +
+                       '(puede que AFIP todavía no la tenga).\n\nEn Albor, elegí el «Tipo de comprobante»: Factura ' + d.letra + ' (o B o C, si no es ' + d.letra + '). ' +
+                       'Después tocá Seguir: pongo la fecha, el número y el proveedor.', 'Seguir');
+    var t = (await pg.evaluar(JS_CAMPOS, ['ID_Tipo_Comprobante']))['ID_Tipo_Comprobante'] || {};
+    if(t.valor && t.valor !== '2147483647') { charla.decir('Tipo de comprobante: ' + t.texto); break; }
+    if(vuelta >= 3) throw new Error('No se eligió el tipo de comprobante.');
+  }
+  await esperar(pg, 20000);
+  for(var i = 0; i < 2; i++){
+    for(var id of ['#Fecha', '#Fecha_Contable']){
+      try{ await escribirCampo(pg, id, d.fecha, { delay: 60 }); await pg.presionar('Tab'); await esperar(pg, 10000); }
+      catch(e){ if(e instanceof Cortado) throw e; charla.decir('[!] No pude poner ' + id.slice(1) + ': ponela a mano (' + d.fecha + ').'); }
+    }
+  }
+  try{ await escribirCampo(pg, '#Numero_Comprobante', d.numeroAlbor, { delay: 60 }); await pg.presionar('Tab'); await esperar(pg, 10000); }
+  catch(e){ if(e instanceof Cortado) throw e; charla.decir('[!] No pude poner el número: ponelo a mano (' + d.numeroAlbor + ').'); }
+  var prov = await proveedorDeOrden(pg, { codigo: d.proveedor.codigo, cuit: d.cuitGuiones, nombre: d.proveedor.nombre }, charla);
+  return prov;
+}
+
+/* "¿Desea dar de alta automáticamente el ítem de concepto?" → Cancelar (con orden, los renglones salen de la OCNS). */
+async function sinItemDeConcepto(pg, charla, limite){
+  var fin = Date.now() + (limite || 12000);
+  while(Date.now() < fin){
+    if(await pg.loc('#btCancelarDialogoConfirmacion').isVisible()){
+      await pg.loc('#btCancelarDialogoConfirmacion').click({ timeout: 5000 });
+      charla.decir('«Ítem de concepto»: no (los renglones salen de la orden).');
+      await pg.esperar(800);
+      // Si igual se abrió la ventanita del renglón, se cierra sin agregar nada
+      if(await pg.loc('#btCancelar_dialog').isVisible()) await pg.loc('#btCancelar_dialog').click({ timeout: 5000 });
+      return true;
+    }
+    if(await pg.loc('#btCancelar_dialog').isVisible() && await pg.loc('#ID_IT_Tipo_Comprobante').isVisible()){
+      await pg.loc('#btCancelar_dialog').click({ timeout: 5000 });       // ya lo aceptó Albor: se cierra el renglón de concepto
+      return true;
+    }
+    await pg.esperar(500);
+  }
+  return false;
+}
+
+// Marca las filas de nuestra orden en "Vinculaciones" y pone "A vincular" = lo facturado. o = {ej, nro, items: [{texto, facturada}]}.
+var JS_VINCULAR = String(function(o){
+  var grilla = document.getElementById('GridVinculacionesPosibles');
+  if(!grilla) return { error: 'No se abrió la ventanita de Vinculaciones.' };
+  var celda = function(tr, col){
+    var td = tr.querySelector('td[aria-describedby="GridVinculacionesPosibles_' + col + '"]');
+    return td ? String(td.getAttribute('title') || td.textContent || '').trim() : '';
+  };
+  var limpio = function(t){ return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ''); };
+  var num = function(t){ var s = String(t || '').trim(); if(s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.'); var n = parseFloat(s); return isNaN(n) ? 0 : n; };
+  var filas = [].slice.call(grilla.querySelectorAll('tr.jqgrow')).filter(function(tr){
+    return Number(celda(tr, 'Nro')) === Number(o.nro) && (!o.ej || celda(tr, 'Ej') === String(o.ej));
+  });
+  if(!filas.length) return { ninguna: true, hay: grilla.querySelectorAll('tr.jqgrow').length };
+  var usadas = {}, out = [];
+  o.items.forEach(function(it, k){
+    var tr = filas.filter(function(f){ return !usadas[f.id] && limpio(celda(f, 'Detalle_OC_Detalle')) === limpio(it.texto); })[0] ||
+             filas.filter(function(f){ return !usadas[f.id]; })[0];
+    if(!tr) { out.push({ texto: it.texto, falta: true }); return; }
+    usadas[tr.id] = true;
+    var cb = tr.querySelector('input[type=checkbox]');
+    if(cb && !cb.checked) cb.click();
+    var inp = document.getElementById(tr.id + '_aVincular');
+    var pend = num(celda(tr, 'Pendiente'));
+    var quiero = Math.min(it.facturada, pend || it.facturada);
+    if(inp){
+      var txt = String(quiero).replace('.', ',');
+      var $ = window.jQuery;
+      try{ if($ && $.fn.autoNumeric && $(inp).data('autoNumeric')) $(inp).autoNumeric('set', quiero); else inp.value = txt; }catch(e){ inp.value = txt; }
+      ['input', 'change', 'keyup', 'blur'].forEach(function(ev){ inp.dispatchEvent(new Event(ev, { bubbles: true })); });
+    }
+    out.push({ texto: it.texto, fila: tr.id, pendiente: pend, facturada: it.facturada, puesto: inp ? num(inp.value) : null, marcada: !!(cb && cb.checked) });
+  });
+  return { filas: out };
+});
+
+// Los renglones de la grilla de ítems: [id].
+var JS_IDS_DETALLE = String(function(){
+  return [].slice.call(document.querySelectorAll('#DetalleGrid tr.jqgrow')).map(function(r){ return r.id; });
+});
+// Elige un renglón de la grilla de ítems (jqGrid, o un clic en el Albor falso).
+var JS_ELEGIR_RENGLON = String(function(id){
+  var $ = window.jQuery;
+  if($ && $('#DetalleGrid').jqGrid){ $('#DetalleGrid').jqGrid('setSelection', id, true); return true; }
+  var r = document.getElementById(id); if(r) r.click(); return !!r;
+});
+// Los totales de abajo y el tipo de compra.
+var JS_TOTALES_COMPRA = String(function(){
+  var v = function(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  var tc = document.getElementById('ID_Tipo_Compra');
+  return { neto: v('Total_NG'), iva21: v('Total_IVA21'), iva105: v('Total_IVA105'), iva27: v('Total_IVA27'), total: v('Importe_Total'),
+           tipoCompra: tc && tc.selectedIndex > 0 ? tc.options[tc.selectedIndex].text.trim() : '' };
+});
+
+/* El IVA de cada renglón vinculado: Modificar → IVA → Aceptar. items = los de la orden (texto → iva). */
+async function ivaDeRenglones(pg, ids, d, charla){
+  var hechos = 0, sinTasa = [];
+  for(var i = 0; i < ids.length; i++){
+    await pg.evaluar(JS_ELEGIR_RENGLON, ids[i]);
+    await pg.esperar(400);
+    await pg.loc('#btEdit_DetalleGrid').click({ timeout: 15000 });
+    await pg.loc('#IVA').waitFor('visible', 20000);
+    await esperar(pg, 15000);
+    var desc = await pg.evaluar(JS_VALOR, '#Descripcion');
+    var it = d.items.filter(function(x){ return soloLetras(x.texto) === soloLetras(desc); })[0] || d.items[i] || {};
+    var tasa = it.iva || (d.items.length === 1 ? d.items[0].iva : null);
+    if(tasa && IVA_ALBOR[tasa]){
+      await elegirOpcion(pg, '#IVA', IVA_ALBOR[tasa], 'IVA', charla);
+      await pg.esperar(800);
+      charla.decir('   ' + (desc || 'renglón ' + (i + 1)) + ': IVA ' + String(tasa).replace('.', ',') + ' %');
+      hechos++;
+    } else sinTasa.push(desc || 'renglón ' + (i + 1));
+    await pg.loc('#btAceptar_dialog').click({ timeout: 15000 });
+    var fin = Date.now() + 15000;
+    while(Date.now() < fin && await pg.loc('#IVA').isVisible()) await pg.esperar(400);
+    await esperar(pg, 10000);
+  }
+  return { hechos: hechos, sinTasa: sinTasa };
+}
+
+/* La carga entera. d = lo que da datosFacturaAlbor. Devuelve {ok, prueba, referencia} o {ok: false, motivo, cancelado}. */
+function cargar_factura(d){
+  pedirPermisoAvisos();
+  d = d || {};
+  if(!d.numero || !d.cuit || !(d.items || []).length) return Promise.resolve({ ok: false, motivo: 'Faltan datos de la factura o de la orden.' });
+  return trabajo('__alborLog', async function(){
+    M.cancelar = false;
+    var charla = new Charla(function(t){ anotar(t); avisar(t); }, preguntar, function(){ return M.cancelar; });
+    try{
+      var a = await alborConSesion(), pg = a.pg;
+      await pg.ir(C.BASE + URL_COMPRAS);
+      await esperar(pg, 40000);
+      await cerrarAnuncios(pg);
+      charla.decir('Factura ' + d.letra + ' ' + d.numeroAlbor + ' · ' + (d.emisor || d.proveedor.nombre) + ' · orden ' + d.orden.numero);
+      // 1. ¿Ya está?
+      var ya = await facturaYaEnAlbor(pg, d);
+      if(ya && ya.id){
+        charla.decir('Ya está cargada en Albor: ' + ya.ref + '.');
+        await a.cerrar(); M.albor = null;
+        return { ok: true, ya: true, prueba: false, referencia: ya.ref };
+      }
+      if(ya && ya.sinLista) charla.decir('[!] No pude mirar si ya estaba cargada: fijate en Comprobantes de Compra antes de guardar.');
+      // 2. Mis Comprobantes AFIP
+      var afip = null, avisos = (d.avisos || []).slice();
+      try{ afip = await pg.evaluar(JS_AFIP, { cuit: d.cuit, numero: d.numero, pv: d.puntoVenta }); }catch(e){ if(e instanceof Cortado) throw e; }
+      var fila = afip && afip[0];
+      if(fila){
+        var opciones = fila.tipos.split(',').map(function(x){ var p = x.split('|'); return { id: p[0], texto: (p[1] || '').trim() }; }).filter(function(x){ return x.id !== '0'; });
+        var tipo = opciones.filter(function(x){ return x.texto.toLowerCase() === ('factura ' + d.letra).toLowerCase(); })[0] || opciones[0];
+        charla.decir('Está en Mis Comprobantes AFIP: la abro como «' + (tipo ? tipo.texto : '?') + '».');
+        var difs = [['neto', d.neto, fila.neto], ['IVA', d.iva, fila.iva], ['total', d.total, fila.total]].filter(function(x){
+          var n = numAlbor(x[2]); return x[1] != null && n != null && Math.abs(n - x[1]) > 0.009;
+        });
+        difs.forEach(function(x){ avisos.push('AFIP dice ' + x[0] + ' ' + plataAlbor(numAlbor(x[2])) + ' y la factura leída ' + plataAlbor(x[1]) + '.'); });
+        if(!tipo) throw new Error('Albor no ofrece ningún tipo para esta factura en Mis Comprobantes AFIP.');
+        await pg.ir(C.BASE + URL_COMPRAS + '/CreateMisComprobantesAfip?idMiComprobanteAfip=' + encodeURIComponent(fila.id) + '&idTipoComprobante=' + encodeURIComponent(tipo.id));
+        await pg.loc('#ID_Tercero_Proveedor_codigo').waitFor('attached', 40000);
+        await esperar(pg, 40000);
+      } else {
+        if(afip === null) charla.decir('[!] No pude mirar Mis Comprobantes AFIP.');
+        else charla.decir('No está en Mis Comprobantes AFIP.');
+        await cabeceraAMano(pg, d, charla);
+      }
+      // 3. Sin ítem de concepto
+      await sinItemDeConcepto(pg, charla, 15000);
+      var cab = await pg.evaluar(JS_CAMPOS, ['Numero_Comprobante', 'ID_Tercero_Proveedor_nombre', 'Fecha']);
+      charla.decir('Cabecera: N° ' + (cab.Numero_Comprobante || '?') + ' · ' + (cab.ID_Tercero_Proveedor_nombre || '¿proveedor?') + ' · ' + (cab.Fecha || ''));
+      // 4. OCNS
+      charla.revisar();
+      charla.decir('Vinculo la orden ' + d.orden.numero + '…');
+      await pg.loc('#btVinc_45').click({ timeout: 20000 });
+      await pg.loc('#GridVinculacionesPosibles').waitFor('visible', 30000);
+      await esperar(pg, 20000);
+      await pg.esperar(800);
+      var antes = (await pg.evaluar(JS_IDS_DETALLE)) || [];
+      var v = await pg.evaluar(JS_VINCULAR, { ej: d.orden.ej, nro: d.orden.nro, items: d.items.map(function(i){ return { texto: i.texto, facturada: i.facturada }; }) });
+      if(v.error) throw new Error(v.error);
+      if(v.ninguna){
+        await charla.pausa('La orden ' + d.orden.numero + ' no tiene nada pendiente para vincular' + (v.hay ? ' (hay renglones de otras órdenes)' : '') +
+                           ': ¿la factura ya está cargada en Albor?\n\nFijate en Albor. Si hay que vincularla igual, hacelo a mano en la ventanita y tocá Seguir; si no, «Cancelar la carga».', 'Seguir');
+      } else {
+        v.filas.forEach(function(x){
+          if(x.falta) avisos.push('No encontré en la orden el renglón «' + x.texto + '»: vinculalo a mano.');
+          else {
+            if(x.puesto !== null && Math.abs(x.puesto - x.facturada) > 0.0001) avisos.push('«' + x.texto + '»: la orden tiene pendiente ' + x.pendiente + ' y se facturó ' + x.facturada + ': quedó ' + x.puesto + ' para vincular. Revisalo.');
+            if(Math.abs(x.facturada - (d.items.filter(function(i){ return i.texto === x.texto; })[0] || {}).cantidad) > 0.0001)
+              avisos.push('«' + x.texto + '»: se facturó ' + x.facturada + ' (en la orden, ' + (d.items.filter(function(i){ return i.texto === x.texto; })[0] || {}).cantidad + '). Se vincula lo facturado.');
+          }
+        });
+        charla.decir('   ' + v.filas.filter(function(x){ return !x.falta; }).length + ' renglón(es) de la orden, con lo facturado.');
+        await pg.loc('#opciones-vinculacionesBtAceptar').click({ timeout: 15000 });
+      }
+      var fin = Date.now() + 30000, ids = [];
+      while(Date.now() < fin){
+        ids = ((await pg.evaluar(JS_IDS_DETALLE)) || []).filter(function(id){ return antes.indexOf(id) < 0; });
+        if(ids.length) break;
+        await pg.esperar(600);
+      }
+      if(!ids.length) throw new Error('Albor no agregó los renglones de la orden.');
+      await esperar(pg, 15000);
+      // 5. El IVA de cada renglón
+      charla.decir('El IVA de cada renglón…');
+      var iv = await ivaDeRenglones(pg, ids, d, charla);
+      if(iv.sinTasa.length) avisos.push('Sin IVA elegido (la factura no lo dice): ' + iv.sinTasa.join(', ') + '. Elegilo a mano en ✏️.');
+      // 6. Control y Guardar
+      var t = await pg.evaluar(JS_TOTALES_COMPRA);
+      var tot = numAlbor(t.total);
+      if(tot != null && d.total != null && Math.abs(tot - d.total) > 0.009)
+        avisos.push('Albor da total ' + plataAlbor(tot) + ' y la factura dice ' + plataAlbor(d.total) + ' (diferencia de $ ' + plataAlbor(Math.abs(tot - d.total)) + ').');
+      var resumen = 'Revisá la factura en Albor antes de guardarla:\n' +
+        '• Factura ' + d.letra + ' ' + d.numeroAlbor + ' · ' + (cab.ID_Tercero_Proveedor_nombre || d.proveedor.nombre) + '\n' +
+        '• Orden ' + d.orden.numero + ': ' + ids.length + ' renglón(es) vinculados\n' +
+        '• Neto ' + t.neto + ' · IVA ' + [t.iva105 && numAlbor(t.iva105) ? '10,5 %: ' + t.iva105 : '', t.iva21 && numAlbor(t.iva21) ? '21 %: ' + t.iva21 : '', t.iva27 && numAlbor(t.iva27) ? '27 %: ' + t.iva27 : ''].filter(String).join(' · ') +
+        ' · Total ' + t.total + '\n' +
+        '• Tipo de compra: ' + (t.tipoCompra || 'sin elegir') + ' (revisalo)' +
+        (avisos.length ? '\n\n⚠️ ' + avisos.join('\n⚠️ ') : '');
+      if(d.prueba){
+        await charla.pausa(resumen + '\n\n🧪 Es una prueba: NO la guardes. Cuando termines de mirar, tocá el botón y cerrá la pestaña de Albor sin guardar.', 'Terminar sin guardar');
+        return { ok: true, prueba: true, motivo: 'Prueba: se armó en Albor y no se guardó.' };
+      }
+      await charla.pausa(resumen + '\n\nTocá Guardar y la guardo (una sola vez).', 'Guardar');
+      charla.decir('Guardando…');
+      var hallada = null;
+      var r = await tocarYEsperar(pg, '#btGuardar', async function(){
+        var x = await facturaYaEnAlbor(pg, d);
+        if(x && x.id) hallada = x;
+        return !!hallada;
+      }, 90000);
+      if(!hallada){
+        if(r.advertencia) await charla.pausa(textoAdvertencia(r.advertencia, 'guardar').replace('Si todavía no está guardado, lo guardo yo.', 'Guardala a mano.'), 'Ya está guardada');
+        else await charla.pausa((r.sesion ? 'Albor cerró la sesión mientras guardaba.' : r.noToco ? 'No pude tocar Guardar.' : 'Albor no confirmó que la guardó.') +
+                                '\nFijate en Albor y, si hace falta, guardala a mano. Después tocá «Ya está guardada».', 'Ya está guardada');
+        hallada = await facturaYaEnAlbor(pg, d);
+      }
+      if(!hallada || !hallada.id) throw new Error('No encontré la factura en la lista de Comprobantes de Compra de Albor: fijate si quedó guardada.');
+      charla.decir('Guardada en Albor: ' + hallada.ref + '.');
+      await a.cerrar(); M.albor = null;
+      avisarCompu('Listo: la factura quedó en Albor', hallada.ref, false);
+      return { ok: true, prueba: false, referencia: hallada.ref };
+    }catch(e){
+      if(e instanceof Cancelado) return { ok: false, cancelado: true, motivo: 'Cancelaste la carga de la factura. En Albor no se guardó nada (salí de la pantalla sin guardar).' };
+      anotar('ERROR: ' + String((e && e.stack) || e).slice(0, 600));
+      avisarCompu('La factura no quedó cargada en Albor', motivoDe(e), false);
+      return { ok: false, motivo: motivoDe(e) };
+    }finally{
+      M.esperando = null;
+    }
+  });
+}
+
 window.AlborExt = {
   buscar: buscar,
   registro: function(){ return REGISTRO.slice(); },
@@ -3390,6 +3737,7 @@ window.AlborExt = {
     cargar_transferencia: cargar_transferencia,
     cargar_egresos: cargar_egresos,
     cargar_orden_compra: cargar_orden_compra,          // Fase 6, Paso 5
+    cargar_factura: cargar_factura,                    // Fase 6-bis, Paso 2
     responder_carga: responder_carga,
     cerrar_albor: cerrar_albor,
     abrir_carpeta: abrir_carpeta,

@@ -232,7 +232,7 @@ $('aj-f6-pruebas').addEventListener('click', async function () {
   if (!r.ok) return aviso(textoDeError(r), 'bad');
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<p class="nota">Están en Decisión de Compras, con su presupuesto revisado. Abrí cada uno → "📊 Cuadro comparativo de compra" → "🛒 Realizar la compra".</p><ul>' +
+  cuerpo.innerHTML = '<p class="nota">Están en Decisión de Compras, con su presupuesto revisado. Abrí cada uno → "📊 Cuadro comparativo" → "🛒 Realizar la compra".</p><ul>' +
     r.hechos.map(function (h) { return '<li>' + esc(h) + '</li>'; }).join('') + '</ul>';
   await dialogo({ titulo: 'Listo: pedidos de prueba armados', cuerpo: cuerpo, botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
   if (typeof cargarTablero === 'function') cargarTablero();

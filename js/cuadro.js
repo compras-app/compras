@@ -38,7 +38,7 @@ async function abrirCuadro(ref, modo) {
   CQ.datos = null;
   if (CQ.ref !== ref) CQ.buscar = '';
   CQ.ref = ref;
-  $('cuadro-titulo').textContent = '📊 Cuadro comparativo de compra';
+  $('cuadro-titulo').textContent = '📊 Cuadro comparativo';
   $('cuadro-sub').textContent = '';
   if ($('cuadro-herr')) $('cuadro-herr').innerHTML = '';
   $('cuadro-cuerpo').innerHTML = '<p class="nota cq-cargando">Armando el cuadro…</p>';
@@ -168,7 +168,7 @@ function pintarCuadro() {
   if (!q) return;
   // Feli (2026-10-06): comparar y comprar son el mismo cuadro; los seleccionadores, al tocar "Realizar la compra" (en Cotización)
   if (!q.puedeComprar) CQ.modo = 'ver';
-  $('cuadro-titulo').textContent = '📊 Cuadro comparativo de compra · ' + q.codigo + (q.titulo ? ' · ' + q.titulo : '');
+  $('cuadro-titulo').textContent = '📊 Cuadro comparativo · ' + q.codigo + (q.titulo ? ' · ' + q.titulo : '');
   $('cuadro-sub').textContent = 'Armado por ' + q.armo + ' el ' + fechaHoraCorta(q.fecha);
   if (!q.columnas.length) {
     if ($('cuadro-herr')) $('cuadro-herr').innerHTML = '';
