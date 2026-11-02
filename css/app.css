@@ -1043,8 +1043,11 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .ct-filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
 .ct-filtros input[type=search]{flex:1 1 220px;min-width:0}
 .ct-filtros select{flex:0 1 auto;max-width:100%}
-.ct-proc{margin:0 0 10px;border:1px solid var(--line);border-radius:10px;padding:6px 10px}
-.ct-proc summary{cursor:pointer;font-weight:600}
+/* Historial de Contabilidad (Feli, 2/11): las tarjetas en una grilla, la más reciente primero */
+.ct-hist-h{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin:0 0 10px}
+.ct-hist-h h3{margin:0;font-size:15px}
+.ct-hist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;align-items:start}
+.ct-hist-f{font-size:12px;color:var(--muted);margin-top:4px}
 .ct-cols{display:flex;gap:12px;overflow-x:auto;align-items:flex-start;padding-bottom:12px;-webkit-overflow-scrolling:touch}
 .ct-col{flex:0 0 290px;max-width:85vw;background:var(--col);border-radius:12px;padding:10px}
 .ct-col h3{margin:2px 4px 10px;font-size:15px}
@@ -1137,3 +1140,7 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .pr-abajo{margin-top:10px}
 .cot-linea{font-size:13px;margin:4px 0}
 .cot-linea.mal{color:var(--warn)}
+
+/* Feli (2/11): Aprobar compra y ¿Recibiste este pedido?, arriba de todo cuando a esa persona le toca contestar */
+#tj-arriba .bloque{border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:2px 12px 12px;margin:12px 0 4px}
+#tj-arriba .bloque h3{margin-top:10px}

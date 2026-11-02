@@ -431,6 +431,7 @@ function pintarAprobacion() {
   const puedeMandar = APP.yo.admin && p && !esTrabajo(ref) && columna === (p.servicio ? colDecisionServicio() : colDecision());
   const a = aprobacionVista(ref, p);
   b.hidden = TB.tipo === 'tarea' || esTrabajo(ref) || !p || (!a && !esperan.length && !puedeMandar);
+  bloqueArriba('tj-aprob-b', !b.hidden && !esperan.length && !!a && a.estado === 'Esperando' && a.aprueba === APP.yo.nombre);
   if (b.hidden) return;
   const fecha = function (iso) { return iso ? ' (' + fechaCorta(iso) + ')' : ''; };
   let html = '';

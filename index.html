@@ -390,10 +390,10 @@
         <select id="ct-sitio" aria-label="Sitio"><option value="">Todos los sitios</option></select>
         <select id="ct-cuenta" aria-label="Cuenta"><option value="">Todas las cuentas</option></select>
         <label class="pa-check"><input type="checkbox" id="ct-sinorden"> Sin orden de compra</label>
+        <button type="button" class="btn-chico" id="ct-hist-b" aria-pressed="false">📚 Historial</button>
         <button type="button" class="refrescar" id="ct-refrescar" aria-label="Actualizar"><span class="ic">↻</span></button>
       </div>
       <p class="nota ad-estado" id="ct-estado" role="status" aria-live="polite"></p>
-      <details class="ct-proc" id="ct-proc" hidden><summary id="ct-proc-t"></summary><div id="ct-proc-l"></div></details>
       <div class="ct-cols" id="ct-cols"></div>
     </section>
     <section id="s-ctarjeta" hidden>
@@ -561,6 +561,8 @@
           <div class="sub-t" id="tj-subtitulo" hidden></div>
           <div class="datos" id="tj-datos"></div>
           <div class="etiquetas" id="tj-etiquetas"></div>
+          <!-- Feli (2/11): lo que esa persona tiene que contestar (aprobar la compra, confirmar la recepción) sube acá -->
+          <div id="tj-arriba"></div>
           <!-- Fase 3: de qué pedido viene una tarjeta de trabajo, o las tarjetas que salieron de un pedido -->
           <div class="enlaces" id="tj-enlaces" hidden></div>
           <button type="button" class="btn2 tj-reabrir" id="tj-reabrir" hidden>↩️ Reabrir el pedido</button>

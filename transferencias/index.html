@@ -16,7 +16,8 @@
   compras-app.github.io/compras/transferencias/
     - Entra con la sesión de la app (../js/base.js): sin sesión, va a entrar.
     - Admins: Conteo de stock, Armar pedido, Transferir y Egresos.
-      Encargados de granja: solo Armar pedido, de sus granjas (anda en el celular).
+      Encargados de granja: Armar pedido y el Historial (sus pedidos y las transferencias a
+      sus granjas, Feli 2/11), de sus granjas (anda en el celular).
     - Sin carpeta compartida: el catálogo, los pedidos de las granjas y las
       listas (envíos, granjas, cuentas, excluidos, número de egreso) van a la
       planilla por Apps Script. El conteo real y los borradores quedan en el
@@ -718,6 +719,15 @@
     #atablehost td.cant{padding:4px}
     #atablehost td.cant input.ci{min-height:46px;font-size:20px}
     .sheethead .line{flex-wrap:wrap;gap:4px 14px}
+    /* El Historial en el celular (Feli, 2/11: lo ven los encargados): una tarjeta por renglón, cada dato con su nombre */
+    .hresultado > table, .hresultado > table > tbody, .hresultado > table > tbody > tr, .hresultado > table > tbody > tr > td{display:block;width:auto;min-width:0}
+    .hresultado > table > thead{display:none}
+    .hresultado > table > tbody > tr.uno{border-bottom:1px solid var(--line);padding:8px 12px}
+    .hresultado > table > tbody > tr.uno > td{border:0;padding:1px 0;text-align:left;white-space:normal}
+    .hresultado > table > tbody > tr.uno > td:first-child{font-weight:650}
+    .hresultado > table > tbody > tr.uno > td[data-l]:not(:first-child)::before{content:attr(data-l) ": ";color:var(--ink-soft);font-weight:400}
+    .hresultado > table > tbody > tr.det > td{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .hresultado .det table{min-width:0;width:100%}
   }
   /* Anulado en el historial (Feli, 13/10) */
   tr.uno.anulado td{text-decoration:line-through;color:var(--ink-faint)}
@@ -742,7 +752,7 @@
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-armar">Armar pedido</button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-pedido" data-admin>Transferir<span class="badge" id="badgepedidos"></span></button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-egresos" data-admin>Egresos</button>
-    <button class="tab" role="tab" aria-selected="false" data-panel="panel-historial" data-admin>Historial</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="panel-historial">Historial</button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-ajustes" data-admin>Ajustes</button>
   </div>
   <span class="sep"></span>
@@ -1087,10 +1097,10 @@
   <section id="panel-historial" class="panel">
     <div class="error" id="herror"></div>
     <div class="hbotones" role="tablist" aria-label="Qué historial">
-      <button type="button" class="hb on" data-hist="conteos">Conteos de stock</button>
+      <button type="button" class="hb on" data-hist="conteos" data-admin>Conteos de stock</button>
       <button type="button" class="hb" data-hist="pedidos">Armado de pedido</button>
       <button type="button" class="hb" data-hist="transferencias">Transferencias</button>
-      <button type="button" class="hb" data-hist="egresos">Egresos</button>
+      <button type="button" class="hb" data-hist="egresos" data-admin>Egresos</button>
     </div>
     <div class="paso hfiltros">
       <div class="fila">
@@ -3751,7 +3761,10 @@
      HISTORIAL (Feli, 2026-10-02)
      Conteos de stock, armado de pedido (los pedidos de las granjas),
      transferencias y egresos. Se busca por producto, fecha y granja; cada
-     uno se abre para ver el detalle. Solo admins.
+     uno se abre para ver el detalle.
+     Encargados (Feli, 2/11): solo Armado de pedido y Transferencias, de sus
+     granjas, para mirar: ven las notas pero no las escriben, no anulan ni
+     bajan las planillas.
      ================================================================== */
 
   var HIST = { cual: 'conteos', resultados: [], abierto: null, detalle: '' };
@@ -3762,9 +3775,10 @@
     var nombres = [];
     function sumar(n){ if(n && nombres.indexOf(n) < 0) nombres.push(n); }
     DESTINOS.forEach(function(d){ sumar(granjaDeEnvio(d)); });
-    GRANJAS.forEach(function(g){ sumar(g.nombre); });
+    if(ES_ADMIN) GRANJAS.forEach(function(g){ sumar(g.nombre); });
+    nombres = nombres.filter(puedoArmarPara);                // un encargado, solo las suyas
     var antes = $('hgranja').value;
-    $('hgranja').innerHTML = '<option value="">Todas</option>' + nombres.map(function(n){
+    $('hgranja').innerHTML = '<option value="">' + (ES_ADMIN ? 'Todas' : 'Todas mis granjas') + '</option>' + nombres.map(function(n){
       return '<option value="' + esc(n) + '">' + esc(n) + '</option>';
     }).join('');
     if(nombres.indexOf(antes) >= 0) $('hgranja').value = antes;
@@ -3780,7 +3794,10 @@
     errorH('');
     var conGranja = HIST.cual !== 'conteos';
     $('hgranjalbl').hidden = !conGranja;
-    $('hnota').textContent = {
+    $('hnota').textContent = !ES_ADMIN ? {
+      pedidos: 'Los pedidos de tus granjas, y en qué quedaron. Tocá uno para ver qué se pidió, qué se mandó y qué quedó pendiente.',
+      transferencias: 'Las transferencias que llegaron a tus granjas. Tocá una para ver qué se mandó.'
+    }[HIST.cual] : {
       conteos: 'Los conteos guardados con "Guardar en el historial", con sus comentarios y observaciones. Cada uno puede llevar una nota (abrilo); el buscador también encuentra palabras de las notas.',
       pedidos: 'Los pedidos que mandaron las granjas desde Armar pedido, y en qué quedaron.',
       transferencias: 'Las transferencias cargadas en Albor desde acá. Cada una puede llevar una nota (abrila); el buscador también encuentra palabras de las notas.',
@@ -3854,8 +3871,8 @@
     h.push('</tr></thead><tbody>');
     L.forEach(function(x, i){
       // Anulado (Feli, 13/10): tachado, se sigue viendo, y los reportes no lo cuentan
-      var celdas = filaHistorial(x);
-      if(x.anulado) celdas[0] = celdas[0].replace('<td>', '<td><span class="anulado-m">🚫 Anulado</span> ');
+      var celdas = filaHistorial(x).map(function(c, n){ return c.replace(/^<td/, '<td data-l="' + esc(cols[n]) + '"'); });   // en el celular, el nombre de cada dato
+      if(x.anulado) celdas[0] = celdas[0].replace(/^<td([^>]*)>/, '<td$1><span class="anulado-m">🚫 Anulado</span> ');
       h.push('<tr class="uno' + (HIST.abierto === i ? ' abierto' : '') + (x.anulado ? ' anulado' : '') + '" data-h="' + i + '">' + celdas.join('') + '</tr>');
       if(HIST.abierto === i) h.push('<tr class="det"><td colspan="' + cols.length + '" id="hdet">' + (HIST.detalle || 'Abriendo…') + '</td></tr>');
     });
@@ -3885,6 +3902,8 @@
 
   // Una nota, como recordatorio: en conteos (Feli, 2026-10-05), transferencias y egresos (2026-10-03)
   function editorNota(r, ejemplo){
+    // Un encargado (Feli, 2/11) la ve, pero no la escribe
+    if(!ES_ADMIN) return r.nota ? '<div class="obs"><b>📝 Nota de la oficina:</b> ' + esc(r.nota) + '</div>' : '';
     return '<div class="notaedit-h"><b>Nota</b>' + (r.notaDe ? ' <small style="color:var(--ink-faint)">· ' + esc(r.notaDe) + '</small>' : '') +
            '<textarea id="hnotatxt" rows="2" placeholder="Un recordatorio. Ej.: ' + esc(ejemplo) + '">' +
            esc(r.nota || '') + '</textarea>' +
@@ -3927,10 +3946,11 @@
             tablaSimple(['Insumo', 'Cantidad'], c.filas.map(function(f){ return [esc(f.nombre) + ' <small style="color:var(--ink-faint)">' + esc(f.cod) + '</small>', fmt(f.cant)]; }));
         }).join('') + '</details>');
       }
-      h.push('<div class="acciones"><button class="btn" data-hplanilla="armado">Planilla de armado</button>' +
-             (r.conPendientes ? (r.pendientes && r.pendientes.length ? '<button class="btn" data-hplanilla="pendientes">Planilla de pendientes</button>'
-                                                                    : '<span class="aviso">No quedaron pendientes.</span>')
-                              : '<span class="aviso">La de pendientes no está: esta transferencia es de antes de que se guardaran.</span>') + '</div>');
+      if(ES_ADMIN)
+        h.push('<div class="acciones"><button class="btn" data-hplanilla="armado">Planilla de armado</button>' +
+               (r.conPendientes ? (r.pendientes && r.pendientes.length ? '<button class="btn" data-hplanilla="pendientes">Planilla de pendientes</button>'
+                                                                      : '<span class="aviso">No quedaron pendientes.</span>')
+                                : '<span class="aviso">La de pendientes no está: esta transferencia es de antes de que se guardaran.</span>') + '</div>');
       h.push(editorNota(r, 'lleva los productos de la mitad del mes'));
     }else{
       h.push('<b>Comprobante ' + esc(x.comprobante || 'sin número') + '</b> · ' + esc(x.fechaComprobante) + ' · empresa ' + esc(x.empresa) +
@@ -3941,7 +3961,8 @@
       })));
       h.push(editorNota(r, 'lleva los productos de la mitad del mes'));
     }
-    h.push(bloqueAnular(x));
+    if(ES_ADMIN) h.push(bloqueAnular(x));
+    else if(x.anulado) h.push('<div class="anular-b"><b>🚫 Anulado</b>' + (x.anulado.motivo ? ': ' + esc(x.anulado.motivo) : '') + '</div>');
     h.push('<div class="acciones"><button class="btn" data-himprimir>Imprimir</button></div>');
     return h.join('');
   }
@@ -6150,7 +6171,7 @@
   }
 
   /* ============ Quién sos y qué ves ============
-     Admins: las cuatro pestañas. Encargados de granja: solo Armar pedido
+     Admins: las cuatro pestañas. Encargados de granja: Armar pedido y el Historial
      (Feli, 2026-10-01). Arriba, el selector de apartados y tu nombre (lleva
      a Tu cuenta, en la app). */
   function pintarQuienSoy(){
@@ -6158,6 +6179,12 @@
     $('yo').textContent = yo.nombre || '';
     pintarApartados($('apartados'), yo, 'transferencias');
     [].forEach.call(document.querySelectorAll('.tab[data-admin]'), function(t){ t.hidden = !ES_ADMIN; });
+    // El Historial de un encargado (Feli, 2/11): Armado de pedido y Transferencias, de sus granjas
+    [].forEach.call(document.querySelectorAll('.hb[data-admin]'), function(b){ b.hidden = !ES_ADMIN; });
+    if(!ES_ADMIN && (HIST.cual === 'conteos' || HIST.cual === 'egresos')){
+      HIST.cual = 'pedidos';
+      [].forEach.call(document.querySelectorAll('.hb'), function(x){ x.classList.toggle('on', x.getAttribute('data-hist') === 'pedidos'); });
+    }
   }
 
   /* Lo de la planilla (listas, catálogo, granjas), por detrás. La pantalla

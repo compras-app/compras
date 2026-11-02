@@ -122,6 +122,15 @@ function vista() {
 }
 function buscarEnVista(ref) { return vista().filter(function (x) { return x.ref === ref; })[0] || null; }
 
+/** Feli (2/11): un bloque que esa persona tiene que contestar (Aprobar compra, ¿Recibiste este pedido?) va arriba de todo,
+    debajo del título; si no, vuelve a su lugar de siempre. */
+function bloqueArriba(id, arriba) {
+  const b = $(id);
+  if (!b.__lugar) { b.__lugar = document.createComment(id); b.parentNode.insertBefore(b.__lugar, b); }
+  if (arriba) { if (b.parentNode !== $('tj-arriba')) $('tj-arriba').appendChild(b); }
+  else if (b.previousSibling !== b.__lugar) b.__lugar.parentNode.insertBefore(b, b.__lugar.nextSibling);
+}
+
 // Cuando la bandeja manda un cambio del tablero: si salió bien, queda en lo del servidor;
 // si no (ej. otro admin la movió antes), se trae el tablero de nuevo.
 (function () {

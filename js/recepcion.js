@@ -28,7 +28,7 @@ function pintarRecepcion() {
   const columna = t ? t.columna : (p && p.columna);
   const r = recepcionVista(ref, p);
   b.hidden = TB.tipo === 'tarea' || !p || p.servicio || !r || columna !== colEntregado();
-  if (b.hidden) return;
+  if (b.hidden) { bloqueArriba('tj-recep-b', false); return; }
   const primero = function (n) { return esc(String(n || '').split(' ')[0]); };
   const yo = APP.yo.nombre;
   const esElla = String(r.para || '').trim().toLowerCase() === String(yo || '').trim().toLowerCase();
@@ -46,6 +46,7 @@ function pintarRecepcion() {
       ': "' + esc(w.texto) + '"</div></div>';
   });
   const espera = bandeja.lista().some(function (m) { return m.fn === 'confirmarRecepcion' && m.args[0] === ref; });
+  bloqueArriba('tj-recep-b', puede && !espera && r.estado !== 'Recibido' && r.estado !== 'No recibió');
   if (espera) html += '<div class="cot-fila espera">' + (APP.enLinea ? '⏳ Mandando tu respuesta…' : '⏳ Tu respuesta se manda sola cuando vuelva la señal.') + '</div>';
   else if (puede) {
     const ya = r.estado === 'Recibido' || r.estado === 'No recibió';

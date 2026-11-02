@@ -3438,11 +3438,33 @@ var JS_AFIP = String(function(o){
         .filter(function(r){ return Number(r.Nro_Desde) === o.numero && Number(r.Punto_Venta) === o.pv && String(r.Nro_Doc_Emisor).replace(/\D/g, '') === o.cuit; })
         .map(function(r){
           return { id: String(r.ID_Mi_Comprobante_Afip), tipo: String(r.Tipo || ''), neto: r.Importe_Neto_Gravado, iva: r.Iva, total: r.Importe_Total,
-                   tipos: String(r.TiposComprobanteCITI || '') };
+                   tipos: String(r.TiposComprobanteCITI || ''), moneda: String(r.Moneda || ''), cambio: r.Tipo_Cambio };
         });
     })
     .catch(function(){ return null; });
 });
+
+/* Feli (2/11): una factura en dólares va con «Moneda de origen» Dólares y la cotización que pone Albor (como la orden de
+   compra). Desde Mis Comprobantes AFIP, Albor ya la trae: se controla. Devuelve lo que se ve, para el resumen. */
+async function monedaDeFactura(pg, d, fila, charla, avisos){
+  var usd = d.moneda === 'USD';
+  var leer = async function(){ try{ return ((await pg.evaluar(JS_CAMPOS, ['ID_Moneda_Origen'])).ID_Moneda_Origen) || null; }catch(e){ if(e instanceof Cortado) throw e; return null; } };
+  var m = await leer();
+  if(fila && fila.moneda && /dol|usd/i.test(fila.moneda) !== usd)
+    avisos.push('AFIP dice que la factura es en ' + (usd ? 'pesos' : 'dólares') + ' y la IA la leyó en ' + (usd ? 'dólares' : 'pesos') + ': revisá la moneda.');
+  if(!m){ if(usd) avisos.push('No encontré «Moneda de origen»: elegí Dólares a mano.'); return usd ? 'Dólares (elegila a mano)' : 'Pesos'; }
+  if(usd && m.valor !== '2'){
+    charla.decir('La factura es en dólares: elijo Dólares en «Moneda de origen» (la cotización la pone Albor).');
+    if(!(await elegirOpcion(pg, '#ID_Moneda_Origen', '2', 'Moneda de origen', charla))){ avisos.push('No pude elegir Dólares en «Moneda de origen»: elegila a mano.'); return 'SIN ELEGIR: elegí Dólares a mano'; }
+  } else if(!usd && m.valor === '2') avisos.push('Albor puso Dólares y la factura está en pesos: revisá la moneda.');
+  if(!usd && m.valor !== '2') return 'Pesos';
+  var fin = Date.now() + 15000, cot = '';
+  while(Date.now() < fin && !cot){ await esperar(pg, 10000, 150); cot = await pg.evaluar(JS_COTIZACION); if(!cot) await pg.esperar(500); }
+  var deFactura = d.cotizacion ? plataAlbor(d.cotizacion) : '';
+  if(cot && d.cotizacion && Math.abs((numAlbor(cot) || 0) - d.cotizacion) > 0.009)
+    avisos.push('La cotización de Albor es ' + cot + ' y la factura dice ' + deFactura + ': revisá cuál va.');
+  return 'Dólares' + (cot ? ' (cotización de Albor: ' + cot + ')' : '') + (deFactura ? ' · la factura dice ' + deFactura : '');
+}
 
 /* ¿Ya está en Albor? El comprobante de compra con ese número y de ese proveedor (o null). */
 async function facturaYaEnAlbor(pg, d){
@@ -3687,6 +3709,7 @@ function cargar_factura(d){
       }
       // 3. Sin ítem de concepto
       await sinItemDeConcepto(pg, charla, 15000);
+      var moneda = await monedaDeFactura(pg, d, fila, charla, avisos);
       var cab = await pg.evaluar(JS_CAMPOS, ['Numero_Comprobante', 'ID_Tercero_Proveedor_nombre', 'Fecha']);
       charla.decir('Cabecera: N° ' + (cab.Numero_Comprobante || '?') + ' · ' + (cab.ID_Tercero_Proveedor_nombre || '¿proveedor?') + ' · ' + (cab.Fecha || ''));
       // 4. OCNS
@@ -3731,11 +3754,13 @@ function cargar_factura(d){
       var tot = numAlbor(t.total);
       var ivaAlbor = (numAlbor(t.iva21) || 0) + (numAlbor(t.iva105) || 0) + (numAlbor(t.iva27) || 0);
       if(d.iva && !ivaAlbor) avisos.unshift('En Albor quedó sin IVA (la factura tiene ' + plataAlbor(d.iva) + '): elegí el IVA de cada renglón con ✏️ antes de guardar.');
+      var signo = d.moneda === 'USD' ? 'US$ ' : '$ ';
       if(tot != null && d.total != null && Math.abs(tot - d.total) > 0.009)
-        avisos.push('Albor da total ' + plataAlbor(tot) + ' y la factura dice ' + plataAlbor(d.total) + ' (diferencia de $ ' + plataAlbor(Math.abs(tot - d.total)) + ').');
+        avisos.push('Albor da total ' + plataAlbor(tot) + ' y la factura dice ' + signo + plataAlbor(d.total) + ' (diferencia de ' + signo + plataAlbor(Math.abs(tot - d.total)) + ').');
       var resumen = 'Revisá la factura en Albor antes de guardarla:\n' +
         '• Factura ' + d.letra + ' ' + d.numeroAlbor + ' · ' + (cab.ID_Tercero_Proveedor_nombre || d.proveedor.nombre) + '\n' +
         '• Orden ' + d.orden.numero + ': ' + ids.length + ' renglón(es) vinculados\n' +
+        '• Moneda: ' + moneda + '\n' +
         '• Neto ' + t.neto + ' · IVA ' + ([t.iva105 && numAlbor(t.iva105) ? '10,5 %: ' + t.iva105 : '', t.iva21 && numAlbor(t.iva21) ? '21 %: ' + t.iva21 : '', t.iva27 && numAlbor(t.iva27) ? '27 %: ' + t.iva27 : ''].filter(String).join(' · ') || '0,00') +
         ' · Total ' + t.total + '\n' +
         '• Tipo de compra: ' + (t.tipoCompra || 'sin elegir') + ' (revisalo)' +

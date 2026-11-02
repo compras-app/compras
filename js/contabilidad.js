@@ -15,7 +15,7 @@
    ============================================================ */
 
 const K_CONTABLE = 'compras_contable';      // el último tablero, para abrir sin señal
-const CT = { datos: null, abierta: null, tarjeta: null, cargando: false };
+const CT = { datos: null, abierta: null, tarjeta: null, cargando: false, verHist: false, historial: null };
 const COLUMNAS_CT = [
   { k: 'precompra', t: 'Pre-compra' }, { k: 'comprado', t: 'Comprado' },
   { k: 'recibido', t: 'Recibido' }, { k: 'factura', t: 'Factura cargada' }     // Feli (31/10): recibido y con la factura cargada en Albor
@@ -127,18 +127,25 @@ function pintarContable() {
   const d = CT.datos;
   if (!d) { $('ct-cols').innerHTML = ''; return; }
   armarFiltrosContables();
-  $('ct-cols').innerHTML = COLUMNAS_CT.map(function (c) {
-    const l = (d[c.k] || []).filter(pasaFiltrosContables);
-    return '<div class="ct-col"><h3>' + esc(c.t) + ' <span class="n">' + l.length + '</span></h3>' +
-      (l.map(htmlTarjetaCt).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>';
-  }).join('');
-  const proc = (d.procesando || []).filter(pasaFiltrosContables);
-  $('ct-proc').hidden = !proc.length;
-  $('ct-proc-t').textContent = '⚙️ Procesando (' + proc.length + '): todo comprado';
-  $('ct-proc-l').innerHTML = proc.map(function (p) {
-    return '<button type="button" class="proc-i" data-id="' + esc(p.ref) + '"><b>' + esc(p.titulo || p.ref) + '</b><small>' + esc([p.cuenta.texto, p.sitio, p.solicitante].join(' · ')) + '</small></button>';
-  }).join('');
-  document.querySelectorAll('#ct-cols [data-id], #ct-proc-l [data-id]').forEach(function (el) {
+  $('ct-hist-b').setAttribute('aria-pressed', CT.verHist ? 'true' : 'false');
+  $('ct-hist-b').textContent = CT.verHist ? '← Volver al tablero' : '📚 Historial';
+  if (CT.verHist) {
+    // Historial (Feli, 2/11): lo que pasó 7 días en Factura cargada, con los mismos filtros y el buscador
+    const l = (CT.historial || []).filter(pasaFiltrosContables);
+    $('ct-cols').innerHTML = '<div class="ct-hist-h"><h3>📚 Historial <span class="n">' + l.length + '</span></h3>' +
+      '<small class="nota">Las compras que pasaron 7 días en Factura cargada.</small></div>' +
+      (CT.historial === null ? '<p class="nota">Cargando…</p>' :
+       '<div class="ct-hist">' + (l.map(function (t) {
+         return htmlTarjetaCt(t).replace(/<\/div>$/, '<div class="ct-hist-f">Factura cargada desde el ' + esc(fechaCorta(t.enFactura)) + '</div></div>');
+       }).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>');
+  } else {
+    $('ct-cols').innerHTML = COLUMNAS_CT.map(function (c) {
+      const l = (d[c.k] || []).filter(pasaFiltrosContables);
+      return '<div class="ct-col"><h3>' + esc(c.t) + ' <span class="n">' + l.length + '</span></h3>' +
+        (l.map(htmlTarjetaCt).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>';
+    }).join('');
+  }
+  document.querySelectorAll('#ct-cols [data-id]').forEach(function (el) {
     const abrirla = function () { abrir('ctarjeta', { id: el.dataset.id }); };
     el.addEventListener('click', abrirla);
     el.addEventListener('keydown', function (e) { if (e.key === 'Enter') abrirla(); });
@@ -146,7 +153,24 @@ function pintarContable() {
 }
 
 ['ct-q', 'ct-sitio', 'ct-cuenta', 'ct-sinorden'].forEach(function (id) { $(id).addEventListener(id === 'ct-q' ? 'input' : 'change', pintarContable); });
-$('ct-refrescar').addEventListener('click', function () { cargarContable(); if (document.body.dataset.pantalla === 'ctarjeta') cargarTarjetaContable(); });
+$('ct-refrescar').addEventListener('click', function () {
+  cargarContable();
+  if (CT.verHist) cargarHistorialContable();
+  if (document.body.dataset.pantalla === 'ctarjeta') cargarTarjetaContable();
+});
+$('ct-hist-b').addEventListener('click', function () {
+  CT.verHist = !CT.verHist;
+  pintarContable();
+  if (CT.verHist) cargarHistorialContable();
+});
+
+async function cargarHistorialContable() {
+  const r = await api('getHistorialContable');
+  if (!r.ok) { notaAd('ct-estado', r.sinConexion ? '📶 Hace falta señal para ver el Historial.' : r.error); if (CT.historial === null) CT.historial = []; pintarContable(); return; }
+  CT.historial = r.historial || [];
+  notaAd('ct-estado', '');
+  pintarContable();
+}
 
 /* Al instante: cuando cambia algo en Compras (el canal de siempre). Sin canal, pregunta cada 20 s mientras se mira. */
 function refrescarContable() {
