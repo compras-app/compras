@@ -5213,6 +5213,9 @@
     if(calza){
       $('pdestino').value = calza.clave;
       $('ppedidotxt').innerHTML += ' · envío <b>' + esc(calza.nombre) + '</b>';
+    }else if(d.pedido.granja && !DESTINOS.length){
+      // Feli (2/11): la lista de envíos todavía no llegó del servidor (no es que falte la granja)
+      errorP('Todavía no llegó la lista de envíos. Esperá un momento (hace falta señal) y elegí el pedido de nuevo.');
     }else if(d.pedido.granja){
       errorP('El pedido es para «' + d.pedido.granja + '», que no figura en la lista de envíos. ' +
              'Elegí el envío a mano o agregala en "editar destinos".');

@@ -1750,14 +1750,18 @@ async function guardarComprobante(pg, charla, aplicar, o){
     var urlAntes = await pg.url();
     var r = await tocarYEsperar(pg, porAplicar ? '#btAplicar' : aplicar ? BTN_GUARDAR : '#btGuardarYOtro', async function(){
       var h = await huella(pg);
-      if(porAplicar) return h === null || !!(h && h[3]);
+      // Feli (2/11): Albor guardó al aplicar y saltó a "Editar": la extensión no lo reconocía y esperó minutos
+      if(porAplicar) return h === null || !!(h && h[3]) || (await pg.url()) !== urlAntes;
       return !sigueAbierto(antes, h) || (aplicar && (await pg.url()) !== urlAntes) || (await guardadoEnPantalla(pg));
-    }, C.ESPERA_GUARDAR);                // la prueba la acorta; en Albor, un minuto y medio
+    }, porAplicar ? (C.ESPERA_APLICAR || 45000) : C.ESPERA_GUARDAR);   // Aplicar: 45 s y después se mira la lista (Feli, 2/11); Guardar: un minuto y medio
     if(r.sesion) return await sesionCaidaAlGuardar(pg, charla, numero);
     if(r.ok){
       if(porAplicar){
+        var otraPagina = (await pg.url()) !== urlAntes;
         numero = await leerNumero(pg);
         charla.decir('   comprobante ' + (numero || 'sin número todavía'));
+        // Albor lo guardó solo al aplicar (cambió de página): no se toca Guardar; el control de la lista confirma que quedó
+        if(otraPagina){ charla.decir('   Albor lo guardó al aplicar.'); return numero; }
         antes = await huella(pg) || antes;
         continue;
       }
@@ -1775,10 +1779,13 @@ async function guardarComprobante(pg, charla, aplicar, o){
       // (podría guardarlo dos veces). Feli (2/11): antes de preguntar, me fijo yo en la lista de Comprobantes de Stock
       // (ella lo buscó con un filtro puesto, no lo vio y canceló: Albor sí lo había guardado y la app no lo anotó).
       var enLista = null;
-      if(o && !porAplicar){
+      if(o){
         charla.decir('   Albor no contestó: me fijo en la lista de Comprobantes de Stock…');
         enLista = await yaEnLaLista(pg, o, numero);
-        if(enLista && enLista.fila){ charla.decir('   Albor tardó, pero está guardado.'); return numero; }
+        if(enLista && enLista.fila){
+          charla.decir('   Albor tardó, pero está guardado.');
+          return numero || (porAplicar && enLista.fila.ref) || '';      // si fue al aplicar, Albor ya lo guardó: no se toca Guardar
+        }
       }
       await charla.pausa((r.noToco ? 'No pude tocar ' + (porAplicar ? 'Aplicar' : 'Guardar') + '.'
                                    : 'Albor no confirmó que terminó de ' + que + ' (pasó un minuto y medio).') +
@@ -1911,6 +1918,7 @@ function diferenciasGuardado(det, o){
    si no está ni en pantalla; {sinControl: true} si no se pudo mirar la lista (se sigue como antes, avisando). */
 async function confirmarEnAlbor(pg, charla, o){
   var nombre = o.egreso ? 'el egreso N° ' + o.numero + ' de ' + o.punto : 'la transferencia ' + o.punto + (o.numero ? ' (' + o.numero + ')' : '');
+  charla.decir('   Reviso en Albor que quedó guardado…');
   for(var vuelta = 1; vuelta <= 2; vuelta++){
     var lista = await listaDelDia(pg, o.empresa, o.fecha);
     if(!lista){

@@ -45,7 +45,7 @@ aplicarZoomApp();
 window.addEventListener('resize', aplicarZoomApp);           // el zoom del navegador cambia la escala y avisa con un resize
 
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = '6dbdc2599f';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = 'ba3059bb41';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -648,13 +648,33 @@ function mirandoComo() {
   const yo = (typeof APP !== 'undefined' && APP.yo) || (guardado.leerJSON(K.inicio, {}) || {}).yo;
   return yo && yo.como ? { nombre: yo.nombre, quien: yo.como.quien, hasta: yo.como.hasta } : null;
 }
+function clavesDeLaPersona() {
+  let l = GUARDADO_DE_LA_PERSONA.slice();
+  try { l = l.concat(Object.keys(localStorage).filter(function (k) { return k.indexOf('compras_chat_') === 0; })); } catch (e) {}
+  return l;
+}
 function borrarGuardadoDeLaPersona() {
-  GUARDADO_DE_LA_PERSONA.forEach(function (k) { guardado.borrar(k); });
-  try { Object.keys(localStorage).filter(function (k) { return k.indexOf('compras_chat_') === 0; }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+  clavesDeLaPersona().forEach(function (k) { guardado.borrar(k); });
+}
+/* Feli (2/11): al volver, Transferencias quedó sin la lista de envíos y sin su color hasta que llegó lo del servidor.
+   Ahora lo propio se copia aparte al entrar como otra persona y se repone al volver. */
+const K_GUARDADO_MIO = 'compras_guardado_mio';
+function copiarLoMio() {
+  const c = {};
+  clavesDeLaPersona().forEach(function (k) { const v = guardado.leer(k); if (v !== null) c[k] = v; });
+  return guardado.guardarJSON(K_GUARDADO_MIO, c);
+}
+function reponerLoMio() {
+  const c = guardado.leerJSON(K_GUARDADO_MIO, null);
+  if (c) Object.keys(c).forEach(function (k) { guardado.guardar(k, c[k]); });
+  guardado.borrar(K_GUARDADO_MIO);
 }
 /** Entra como esa persona (la llave nueva ya la dio el servidor). */
 function cambiarAComo(token) {
-  if (!guardado.leer(K_TOKEN_MIO)) guardado.guardar(K_TOKEN_MIO, APP.token);
+  if (!guardado.leer(K_TOKEN_MIO)) {
+    guardado.guardar(K_TOKEN_MIO, APP.token);
+    if (!copiarLoMio()) guardado.borrar(K_GUARDADO_MIO);       // si no entra en el dispositivo, al volver se trae de nuevo
+  }
   borrarGuardadoDeLaPersona();
   guardado.guardar(K.token, token);
   guardado.guardar(K_APARTADO, 'compras');
@@ -667,6 +687,7 @@ function volverAMi() {
   const de = guardado.leer(K.token);
   if (de && de !== mia) { try { llamar('salirComo', [de]); } catch (e) {} }
   borrarGuardadoDeLaPersona();
+  reponerLoMio();
   guardado.guardar(K.token, mia);
   guardado.borrar(K_TOKEN_MIO);
   guardado.guardar(K_APARTADO, 'compras');
