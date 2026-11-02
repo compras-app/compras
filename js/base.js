@@ -45,7 +45,7 @@ aplicarZoomApp();
 window.addEventListener('resize', aplicarZoomApp);           // el zoom del navegador cambia la escala y avisa con un resize
 
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = '20d8dcf62c';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '6dbdc2599f';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -367,6 +367,12 @@ const bandeja = {
   guardarLista(l) { guardado.guardarJSON(K.bandeja, l); pintarSinRed(); },
   /** Devuelve la clave del renglón (sirve para sacarlo si todavía no se mandó, ej. "Deshacer"). */
   agregar(fn, args, texto) {
+    // Entrar como (Feli, 2/11): mirando como otra persona no se guarda nada
+    if (mirandoComo()) {
+      const t = '👤 Estás viendo como ' + mirandoComo().nombre + ': no se guarda nada.';
+      try { aviso(t, 'bad'); } catch (e) { alert(t); }          // Transferencias no tiene el cartelito de avisos
+      return null;
+    }
     const l = this.lista();
     const clave = nuevoId();
     l.push({ clave: clave, id: nuevoId(), fn: fn, args: args || [], token: APP.token,
@@ -623,3 +629,73 @@ setInterval(function () {
   document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
 });
 document.addEventListener('touchmove', function (e) { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
+
+/* ============================================================
+   ENTRAR COMO (Feli, 2/11)
+   Solo Feli (ver_como en el servidor): desde Tu cuenta entra a la app como otra persona para ver lo que ve ella. Es una
+   sesión de esa persona, solo para mirar (el servidor frena todo lo que cambie algo) y por dos horas. La llave propia
+   queda guardada aparte (compras_token_mio) y "Volver a mí" la pone de nuevo. Al cambiar, se borra lo que quedó
+   guardado de la otra persona (tablero, tarjetas, chats…), así no se mezcla.
+   ============================================================ */
+const K_TOKEN_MIO = 'compras_token_mio';
+const GUARDADO_DE_LA_PERSONA = ['compras_inicio', 'compras_desde', 'compras_tablero', 'compras_tarjetas', 'compras_contable', 'compras_chats',
+  'compras_notificaciones', 'compras_servicios', 'compras_tareas', 'compras_tr_datos', 'compras_tr_enviados', 'compras_css_mio', 'compras_estilo',
+  'compras_formulario'];
+
+/** {nombre, quien, hasta} si se está mirando como otra persona; si no, null. */
+function mirandoComo() {
+  const yo = (typeof APP !== 'undefined' && APP.yo) || (guardado.leerJSON(K.inicio, {}) || {}).yo;
+  return yo && yo.como ? { nombre: yo.nombre, quien: yo.como.quien, hasta: yo.como.hasta } : null;
+}
+function borrarGuardadoDeLaPersona() {
+  GUARDADO_DE_LA_PERSONA.forEach(function (k) { guardado.borrar(k); });
+  try { Object.keys(localStorage).filter(function (k) { return k.indexOf('compras_chat_') === 0; }).forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+}
+/** Entra como esa persona (la llave nueva ya la dio el servidor). */
+function cambiarAComo(token) {
+  if (!guardado.leer(K_TOKEN_MIO)) guardado.guardar(K_TOKEN_MIO, APP.token);
+  borrarGuardadoDeLaPersona();
+  guardado.guardar(K.token, token);
+  guardado.guardar(K_APARTADO, 'compras');
+  location.replace(RAIZ_APP);
+}
+/** "Volver a mí": cierra la sesión de mirar y pone la llave propia. */
+function volverAMi() {
+  const mia = guardado.leer(K_TOKEN_MIO);
+  if (!mia) return false;
+  const de = guardado.leer(K.token);
+  if (de && de !== mia) { try { llamar('salirComo', [de]); } catch (e) {} }
+  borrarGuardadoDeLaPersona();
+  guardado.guardar(K.token, mia);
+  guardado.borrar(K_TOKEN_MIO);
+  guardado.guardar(K_APARTADO, 'compras');
+  setTimeout(function () { location.replace(RAIZ_APP); }, 300);       // que salga el aviso de cerrar la de mirar
+  return true;
+}
+/** La franja de arriba mientras se mira como otra persona (en Compras, Transferencias y el formulario). */
+function pintarFranjaComo() {
+  const c = mirandoComo();
+  let f = document.getElementById('franja-como');
+  if (!c) { if (f) f.remove(); document.documentElement.classList.remove('mirando-como'); return; }
+  if (!document.getElementById('franja-como-css')) {
+    const st = document.createElement('style');
+    st.id = 'franja-como-css';
+    st.textContent = '#franja-como{position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;' +
+      'padding:6px 12px;background:#f2c94c;color:#1d1a12;font:600 13px/1.3 system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.35)}' +
+      '#franja-como button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:4px 12px;background:#1d1a12;color:#f2c94c;cursor:pointer}' +
+      'html.mirando-como body{padding-top:34px}';
+    document.head.appendChild(st);
+  }
+  if (!f) {
+    f = document.createElement('div');
+    f.id = 'franja-como';
+    document.body.insertBefore(f, document.body.firstChild);
+  }
+  f.innerHTML = '<span>👤 Estás viendo como <b></b> · solo para mirar</span><button type="button" id="franja-como-b">Volver a mí</button>';
+  f.querySelector('b').textContent = c.nombre;
+  document.documentElement.classList.add('mirando-como');
+  document.getElementById('franja-como-b').onclick = function () { this.disabled = true; this.textContent = 'Volviendo…'; volverAMi(); };
+}
+document.addEventListener('DOMContentLoaded', pintarFranjaComo);
+if (document.readyState !== 'loading') setTimeout(pintarFranjaComo, 0);

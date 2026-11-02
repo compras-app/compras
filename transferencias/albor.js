@@ -1730,7 +1730,7 @@ async function guardadoEnPantalla(pg){
 /* Aplica (transferencias) y guarda con "Guardar y crear otro", y no sale de
    ahí hasta ver que Albor lo guardó. Si Albor muestra una advertencia, frena
    para que la persona la resuelva a mano. Devuelve el número del comprobante. */
-async function guardarComprobante(pg, charla, aplicar){
+async function guardarComprobante(pg, charla, aplicar, o){
   var numero = '', antes = await huella(pg);
   for(var vuelta = 1; vuelta <= 8; vuelta++){
     var ing = await pideIngreso(pg);
@@ -1752,7 +1752,7 @@ async function guardarComprobante(pg, charla, aplicar){
       var h = await huella(pg);
       if(porAplicar) return h === null || !!(h && h[3]);
       return !sigueAbierto(antes, h) || (aplicar && (await pg.url()) !== urlAntes) || (await guardadoEnPantalla(pg));
-    });
+    }, C.ESPERA_GUARDAR);                // la prueba la acorta; en Albor, un minuto y medio
     if(r.sesion) return await sesionCaidaAlGuardar(pg, charla, numero);
     if(r.ok){
       if(porAplicar){
@@ -1772,11 +1772,20 @@ async function guardarComprobante(pg, charla, aplicar){
       if(await sigueEnPantalla(pg)){ var h2 = await huella(pg); if(h2) antes = h2; }
     }else{
       // No se pudo tocar el botón, o Albor no contestó: no se vuelve a tocar
-      // (podría guardarlo dos veces). Lo termina la persona.
+      // (podría guardarlo dos veces). Feli (2/11): antes de preguntar, me fijo yo en la lista de Comprobantes de Stock
+      // (ella lo buscó con un filtro puesto, no lo vio y canceló: Albor sí lo había guardado y la app no lo anotó).
+      var enLista = null;
+      if(o && !porAplicar){
+        charla.decir('   Albor no contestó: me fijo en la lista de Comprobantes de Stock…');
+        enLista = await yaEnLaLista(pg, o, numero);
+        if(enLista && enLista.fila){ charla.decir('   Albor tardó, pero está guardado.'); return numero; }
+      }
       await charla.pausa((r.noToco ? 'No pude tocar ' + (porAplicar ? 'Aplicar' : 'Guardar') + '.'
                                    : 'Albor no confirmó que terminó de ' + que + ' (pasó un minuto y medio).') +
-                         '\nFijate en Albor: si hay un recuadro rojo arriba, resolvelo. ' +
-                         (porAplicar ? 'Aplicalo y guardalo' : 'Guardalo') + ' a mano y tocá «Ya está guardado».',
+                         (enLista && enLista.lista ? '\nYa me fijé en la lista de Comprobantes de Stock y no está.' : '') +
+                         '\nFijate en la pantalla de Albor: si hay un recuadro rojo arriba, resolvelo. ' +
+                         (porAplicar ? 'Aplicalo y guardalo' : 'Guardalo') + ' a mano y tocá «Ya está guardado»: después me fijo yo en la lista ' +
+                         '(no hace falta que lo busques).',
                          'Ya está guardado');
       if(!numero) numero = await leerNumero(pg);
       return numero;
@@ -1936,12 +1945,31 @@ async function confirmarEnAlbor(pg, charla, o){
   return { otraVez: (await sigueEnPantalla(pg)) ? 'guardar' : 'armar' };
 }
 
-/* Guarda y confirma en Albor; si no quedó, lo vuelve a guardar o lo manda a armar de nuevo (Rehacer). */
+/* ¿Está en la lista de Comprobantes de Stock? {lista: true/false, fila} (sin lista, no se pudo mirar). */
+async function yaEnLaLista(pg, o, numero){
+  var l = null;
+  try{ l = await listaDelDia(pg, o.empresa, o.fecha); }catch(e){ if(e instanceof Cortado) throw e; }
+  if(!l) return { lista: false, fila: null };
+  return { lista: true, fila: buscarGuardado(l, Object.assign({}, o, { numero: o.egreso ? o.numero : (numero || o.numero) })) };
+}
+
+/* Guarda y confirma en Albor; si no quedó, lo vuelve a guardar o lo manda a armar de nuevo (Rehacer).
+   Feli (2/11): si la persona cancela mientras se guarda o se confirma, antes de cortar me fijo si Albor igual lo guardó:
+   si está, se anota en la app (cancelo: el que llama lo da por hecho y después corta). */
 async function guardarYConfirmar(pg, charla, aplicar, o){
   for(;;){
-    var numero = await guardarComprobante(pg, charla, aplicar);
-    if(!o.egreso) o.numero = numero;
-    var c = await confirmarEnAlbor(pg, charla, o);
+    var numero = '', c;
+    try{
+      numero = await guardarComprobante(pg, charla, aplicar, o);
+      if(!o.egreso) o.numero = numero;
+      c = await confirmarEnAlbor(pg, charla, o);
+    }catch(e){
+      if(!(e instanceof Cancelado)) throw e;
+      var x = await yaEnLaLista(pg, o, numero);
+      if(!x.fila) throw e;
+      charla.decir('   [!] Cancelaste, pero Albor sí lo guardó: queda anotado en la app.');
+      return { numero: numero || x.fila.ref || '', fila: x.fila, cancelo: true };
+    }
     if(c.otraVez === 'armar'){ charla.decir('   Lo armo de nuevo desde el principio.'); throw new Rehacer(); }
     if(c.otraVez === 'guardar'){ charla.decir('   Lo guardo de nuevo.'); continue; }
     return { numero: numero, fila: c.fila || null };
@@ -2031,11 +2059,12 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total, deNuevo)
                      '\n\nCon este botón aplico y guardo solo.', 'Aplicar y guardar');
 
   var antes = await antesDeGuardar(pg, b.empresa_id, b.fecha);
-  var numero = (await guardarYConfirmar(pg, charla, true, {
+  var gt = await guardarYConfirmar(pg, charla, true, {
     egreso: false, empresa: b.empresa_id, fecha: b.fecha, punto: b.origen_nombre + ' → ' + b.destino_nombre, antes: antes,
-    renglones: r.cargados })).numero;
+    renglones: r.cargados });
+  var numero = gt.numero || (gt.fila && gt.fila.ref) || '';
 
-  return { empresa: empresaActual, hecho: {
+  return { empresa: empresaActual, cancelo: !!gt.cancelo, hecho: {
     origen: b.origen_nombre, destino: b.destino_nombre, bloque: b._i,      // bloque: su lugar en la lista de la pantalla (el orden puede cambiar)
     comprobante: numero, cargados: r.cargados.length,
     total: b.items.length, fallados: r.fallados
@@ -2061,6 +2090,7 @@ async function transferir(pg, bloques, charla, hechos, alHacer){
     empresa = r.empresa;
     hechos.push(r.hecho);
     avisarHecho(alHacer, r.hecho);
+    if(r.cancelo) throw new Cancelado();          // Feli (2/11): se canceló, pero había quedado en Albor: anotado, y se corta acá
   }
   return hechos;
 }
@@ -2309,7 +2339,7 @@ async function egresarComprobante(pg, c, empresaActual, charla, n, total, deNuev
     egreso: true, empresa: c.empresa_id, fecha: c.fecha, numero: c.numero, punto: c.punto_nombre, antes: antes,
     renglones: r.cargados, centro: centro, centroTexto: textoCentro });
 
-  return { empresa: empresaActual, hecho: {
+  return { empresa: empresaActual, cancelo: !!g.cancelo, hecho: {
     punto: c.punto_nombre, cuenta: c.cuenta, bloque: c._i,
     numero: g.fila ? numeroCorto(g.fila.nro) : c.numero,      // el que quedó en Albor, aunque lo hayan cambiado a mano
     cuenta_nombre: cuentas[String(c.cuenta)] || '',
@@ -2337,6 +2367,7 @@ async function egresar(pg, comprobantes, charla, hechos, cuentas, alHacer){
     empresa = r.empresa;
     hechos.push(r.hecho);
     avisarHecho(alHacer, r.hecho);
+    if(r.cancelo) throw new Cancelado();          // Feli (2/11): se canceló, pero había quedado en Albor: anotado, y se corta acá
   }
   return hechos;
 }

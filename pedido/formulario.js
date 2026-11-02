@@ -336,6 +336,8 @@ function nuevoIdEnvio(){
 let mirando=null;   // el Ref del pedido que muestra la pantalla de listo
 
 async function enviar(){
+  // Entrar como (Feli, 2/11): mirando como otra persona no se manda nada
+  if(mirandoComo()){ alert('👤 Estás viendo como '+mirandoComo().nombre+': no se manda nada.'); return; }
   if(!validar()) return;
   const btn=$('#enviar'); if(btn.disabled) return; btn.disabled=true;
   try{

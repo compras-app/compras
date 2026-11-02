@@ -54,6 +54,7 @@ function aplicarAspecto(cssMio, estilo) {
 /** Guarda y aplica lo que trae inicioApp. */
 function aplicarInicio(r) {
   APP.yo = r.yo;
+  pintarFranjaComo();
   APP.config = r.config;
   APP.actualizado = r.actualizado || new Date().toISOString();
   guardado.guardarJSON(K.inicio, { yo: r.yo, config: r.config, actualizado: APP.actualizado });
@@ -100,6 +101,7 @@ function alVolverALaApp() { if (!$('app').hidden) refrescarInicio(); }
 
 /** La llave dejó de valer: se borra con lo guardado y se vuelve a pedir el código. */
 function sesionPerdida(texto) {
+  if (volverAMi()) return;              // Entrar como (Feli, 2/11): se cerró la de mirar (las 2 horas): vuelve a la propia
   APP.token = null; APP.yo = null; APP.config = null;
   guardado.borrar(K.token);
   guardado.borrar(K.desde);

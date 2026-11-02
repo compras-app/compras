@@ -1130,8 +1130,13 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .link-gris{background:none;border:0;padding:4px 2px;font:inherit;font-size:12px;color:var(--muted);cursor:pointer;align-self:center}
 .link-gris:hover{text-decoration:underline;color:var(--fg)}
 /* Fase 6 (30/10): la cuenta del pedido masivo */
-.ma-cuenta{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.ma-cuenta span{font-weight:600}
+.ma-bien-b{background:none;border:1px solid var(--line);color:var(--muted);font:inherit;font-size:13px;border-radius:999px;padding:5px 12px;cursor:pointer;width:fit-content}
+.ma-bien-el{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1.5px solid var(--accent);border-radius:8px;padding:8px 12px}
+.ma-bien-lista{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:260px;overflow:auto}
+.ma-bien-op{display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:none;border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:inherit;font:inherit;cursor:pointer}
+.ma-bien-op:hover{background:var(--accent-soft)}
+.ma-bien-op small{color:var(--muted)}
+#ma-bien-q{margin-top:8px}
 .ma-prueba{display:flex;gap:8px;align-items:center;margin-top:8px;font-weight:400}
 .ma-prueba input[type=checkbox]{width:18px;height:18px;min-height:0;flex:none;margin:0;padding:0;accent-color:var(--accent)}
 
@@ -1144,3 +1149,9 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 /* Feli (2/11): Aprobar compra y ¿Recibiste este pedido?, arriba de todo cuando a esa persona le toca contestar */
 #tj-arriba .bloque{border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:2px 12px 12px;margin:12px 0 4px}
 #tj-arriba .bloque h3{margin-top:10px}
+
+/* Entrar como (Feli, 2/11): la lista de personas */
+.vc-lista{display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:50vh;overflow:auto}
+.vc-p{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:none;border:1px solid var(--line);border-radius:8px;padding:9px 12px;color:inherit;font:inherit;cursor:pointer}
+.vc-p:hover{background:var(--accent-soft)}
+.vc-p small{color:var(--muted)}

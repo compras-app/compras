@@ -92,8 +92,42 @@ function pantallaCuenta() {
   const desde = guardado.leer(K.desde);
   $('c-desde').textContent = desde ? new Date(desde).toLocaleString('es-AR', { hour12: false }) : '—';
   estado('e-cuenta', '');
+  $('c-como').hidden = !APP.yo.verComo;
   pintarAspecto();
 }
+
+/* Entrar como (Feli, 2/11): elegir a la persona y entrar como ella, solo para mirar (base.js) */
+$('c-como-b').addEventListener('click', async function () {
+  if (bandeja.pendientes() || (guardado.leerJSON('compras_adjuntos', []) || []).length)
+    return aviso('Primero tienen que mandarse tus cambios (esperá a tener señal).', 'bad');
+  aviso('Un momento…');
+  const r = await api('personasVerComo');
+  if (!r.ok) return aviso(textoDeError(r), 'bad');
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<input type="search" id="vc-q" placeholder="Buscar" autocomplete="off"><div class="vc-lista" id="vc-lista"></div>';
+  const id = await dialogo({ titulo: '👤 Entrar como…', cuerpo: cuerpo, botones: [{ texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      const pintar = function () {
+        const q = sinTildes($('vc-q').value.trim());
+        $('vc-lista').innerHTML = r.personas.filter(function (p) { return !q || sinTildes(p.nombre).indexOf(q) !== -1; }).map(function (p) {
+          return '<button type="button" class="vc-p" data-id="' + esc(p.id) + '"><b>' + esc(p.nombre) + '</b><small>' + esc(NOMBRE_ROL[p.rol] || p.rol) + '</small></button>';
+        }).join('') || '<p class="nota">No hay nadie con ese nombre.</p>';
+      };
+      $('vc-q').addEventListener('input', pintar);
+      $('vc-lista').addEventListener('click', function (e) {
+        const b = e.target.closest('[data-id]');
+        if (b && cerrarDialogoActual) cerrarDialogoActual(b.dataset.id);
+      });
+      pintar();
+      $('vc-q').focus();
+    } });
+  if (!id) return;
+  aviso('Entrando…');
+  const e = await api('entrarComo', id);
+  if (!e.ok) return aviso(textoDeError(e), 'bad');
+  cambiarAComo(e.token);
+});
 
 /* ---------- El color y el tablero de cada uno (Paso 6, Feli) ----------
    Feli (2026-10-01): el formato y la letra son siempre los de Transferencias

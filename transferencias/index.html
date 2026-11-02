@@ -464,7 +464,7 @@
   .albor.chico{width:auto;max-width:calc(100vw - 32px)}
   .albor.chico .log, .albor.chico .pausa, .albor.chico .fin{display:none !important}
   /* Feli (30/10): "A transferir" se puede bajar a mano */
-  input.ajuste{width:72px;text-align:right;font:inherit;padding:2px 6px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:inherit}
+  input.ajuste{scroll-margin:110px 0 170px;width:72px;text-align:right;font:inherit;padding:2px 6px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:inherit}
   @media print{ input.ajuste{border:0;background:none;width:auto;padding:0} }
   .btn-gris{background:none;border:0;padding:4px 6px;font-size:12px;color:var(--ink-soft);cursor:pointer;text-decoration:underline}
   .albor .cab{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
@@ -2625,6 +2625,7 @@
   /* Feli (30/10): lo que se transfiere se puede bajar a mano (pidieron 10, hay 5: transferir 3 y quedan 7 pendientes).
      Por insumo; vale para este pedido con estas existencias (si cambia alguno, se olvida). */
   var AJUSTE_TRANSF = { pedido: null, data: null, por: {} };
+  var FOCO_AJUSTE = null;            // el campo de "A transferir" que tiene que quedar elegido después de volver a armar la tabla
   function analizar(){
     if(!DATA || !PEDIDO){ ANALISIS = null; pintarPedido(); return; }
     if(AJUSTE_TRANSF.pedido !== PEDIDO || AJUSTE_TRANSF.data !== DATA) AJUSTE_TRANSF = { pedido: PEDIDO, data: DATA, por: {} };
@@ -2797,8 +2798,9 @@
       });
       // Feli (30/10): se puede transferir menos de lo que hay (en La Colorada, lo de cada oficina)
       var celdaVa = it.maximo > 0
-        ? '<input class="ajuste" type="number" inputmode="decimal" min="0" max="' + it.maximo + '" step="any" value="' + it.porBloque[0] + '" data-k="' +
-          esc(it.k) + '" title="Podés transferir menos: hasta ' + fmt(it.maximo) + '">'
+        // Feli (2/11): sin las flechitas de subir y bajar; la flecha ↓ del teclado pasa al siguiente (y ↑ al anterior), ya seleccionado
+        ? '<input class="ajuste" type="text" inputmode="decimal" autocomplete="off" data-max="' + it.maximo + '" value="' + it.porBloque[0] + '" data-k="' +
+          esc(it.k) + '" title="Podés transferir menos: hasta ' + fmt(it.maximo) + '. Con ↓ o ↑ pasás al siguiente.">'
         : fmt(it.porBloque[0]);
       if(doble){
         h.push('<td class="va">' + celdaVa + '</td>');
@@ -2831,14 +2833,33 @@
     h.push('</tr></tfoot></table>');
 
     $('ptablehost').innerHTML = h.join('');
-    $('ptablehost').querySelectorAll('input.ajuste').forEach(function(inp){
-      inp.addEventListener('change', function(){
-        var max = Number(inp.max), v = Number(String(inp.value).replace(',', '.'));
-        if(!isFinite(v) || v < 0) v = 0;
-        if(v >= max) delete AJUSTE_TRANSF.por[inp.dataset.k]; else AJUSTE_TRANSF.por[inp.dataset.k] = v;
-        analizar();
+    var ajustes = [].slice.call($('ptablehost').querySelectorAll('input.ajuste'));
+    // Guarda lo escrito; true si cambió algo (entonces hay que volver a armar la tabla)
+    function tomarAjuste(inp){
+      var max = Number(inp.dataset.max), v = Number(String(inp.value).trim().replace(',', '.'));
+      if(String(inp.value).trim() === '' || !isFinite(v) || v < 0) v = 0;
+      var antes = AJUSTE_TRANSF.por[inp.dataset.k];
+      if(v >= max) delete AJUSTE_TRANSF.por[inp.dataset.k]; else AJUSTE_TRANSF.por[inp.dataset.k] = v;
+      return antes !== AJUSTE_TRANSF.por[inp.dataset.k];
+    }
+    ajustes.forEach(function(inp, n){
+      inp.addEventListener('focus', function(){ inp.select(); });
+      inp.addEventListener('change', function(){ if(tomarAjuste(inp)) analizar(); });
+      inp.addEventListener('keydown', function(e){
+        var paso = e.key === 'ArrowDown' || e.key === 'Enter' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+        if(!paso) return;
+        e.preventDefault();
+        var otro = ajustes[n + paso];
+        FOCO_AJUSTE = otro ? otro.dataset.k : inp.dataset.k;
+        if(tomarAjuste(inp)) analizar();                 // vuelve a armar la tabla: el foco lo pone abajo
+        else { var x = otro || inp; FOCO_AJUSTE = null; x.focus(); x.select(); x.scrollIntoView({ block: 'nearest' }); }
       });
     });
+    if(FOCO_AJUSTE){
+      var foco = ajustes.filter(function(x){ return x.dataset.k === FOCO_AJUSTE; })[0];
+      FOCO_AJUSTE = null;
+      if(foco){ foco.focus(); foco.select(); foco.scrollIntoView({ block: 'nearest' }); }
+    }
     $('ptoolbar').classList.add('on');
     $('ptablewrap').classList.add('on');
   }
@@ -6225,6 +6246,7 @@
     guardado.guardarJSON(K.inicio, inicio);
     var antes = JSON.stringify([APP.yo && APP.yo.admin, APP.yo && APP.yo.apartados]);
     APP.yo = r.yo;
+    pintarFranjaComo();
     aplicarColorDe(r);
     if(JSON.stringify([r.yo.admin, r.yo.apartados]) !== antes){ ES_ADMIN = !!r.yo.admin; return arrancar(); }
     pintarQuienSoy();
@@ -6232,6 +6254,7 @@
 
   /* La sesión ya no vale (cerrada o revocada): a entrar de nuevo, en la app. */
   window.sesionPerdida = function(){
+    if(volverAMi()) return;           // Entrar como (Feli, 2/11): se cerró la de mirar: vuelve a la propia
     guardado.borrar(K.token); guardado.borrar(K.inicio);
     guardado.guardar(K_APARTADO, 'transferencias');
     location.replace(APARTADOS.compras.url);

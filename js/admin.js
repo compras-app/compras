@@ -552,23 +552,82 @@ function mostrarMasivo() {
   pintarMasivo();
 }
 
-/* Fase 6 (contador, 30/10): la cuenta contable del pedido masivo (o un bien de uso). Con la cuenta, el sitio sale del centro */
-$('ma-cuenta-b').addEventListener('click', async function () {
+/* Fase 6 (contador, 30/10): la cuenta contable del pedido masivo (o un bien de uso). Con la cuenta, el sitio sale del centro.
+   Feli (2/11): como en el formulario, la cuenta y el centro a la vista, con la de siempre ya elegida (GAN-Mantenimiento), o
+   "es para un bien de uso"; sin una de las dos no se crea. m.f6 = {cuenta, centro, sitio} o {bienUso}; m.op = opcionesImputacion. */
+async function cargarOpcionesMasivo() {
   const m = AD.masivo;
-  aviso('Un momento…');
+  if (m.op || m.cargandoOp || !APP.yo.fase6) return;
+  m.cargandoOp = true;
+  notaAd('ma-f6-estado', 'Cargando las cuentas…');
   const op = await api('opcionesImputacion');
-  if (!op.ok) return aviso(op.sinConexion ? '📶 Hace falta señal para elegir la cuenta.' : op.error, 'bad');
-  const f = await elegirImputacion(op, m.f6 ? { cuenta: m.f6.cuenta, centro: m.f6.centro, bien: m.f6.bienUso } : {}, 'Cuenta del pedido masivo', 'El sitio se elige abajo.');
-  if (!f) return;
-  m.f6 = f;
-  m.f6Texto = f.bienUso ? '🚜 ' + ((op.bienes.filter(function (b) { return b.id === f.bienUso; })[0] || {}).nombre || f.bienUso) + ' (sin orden de compra)'
-                        : '📒 ' + ((op.cuentas.filter(function (c) { return c.codigo === f.cuenta; })[0] || {}).nombre || f.cuenta) + ' · ' + f.centro;
+  m.cargandoOp = false;
+  if (!op.ok) { notaAd('ma-f6-estado', op.sinConexion ? '📶 Hace falta señal para elegir la cuenta.' : op.error); return; }
+  notaAd('ma-f6-estado', '');
+  m.op = op;
+  if (!m.f6) m.f6 = { cuenta: op.predeterminada || '', centro: '' };
+  pintarMasivo();
+}
+function pintarCuentaMasivo() {
+  const m = AD.masivo, op = m.op;
+  if (!op) { $('ma-cuenta-c').hidden = $('ma-centro-c').hidden = true; return; }
+  const f = m.f6 || (m.f6 = { cuenta: op.predeterminada || '', centro: '' });
+  const bien = f.bienUso ? op.bienes.filter(function (b) { return b.id === f.bienUso; })[0] : null;
+  $('ma-bien-b').hidden = !!bien; $('ma-bien-el').hidden = !bien; $('ma-bien-nota').hidden = !bien;
+  if (bien) { $('ma-bien-nombre').textContent = bien.nombre + (bien.patente && bien.nombre.toUpperCase().indexOf(bien.patente.toUpperCase()) === -1 ? ' · ' + bien.patente : ''); $('ma-bien-buscar').hidden = true; }
+  $('ma-cuenta-c').hidden = $('ma-centro-c').hidden = !!bien;
+  if (bien) { f.sitio = ''; return; }
+  $('ma-cuenta').innerHTML = (f.cuenta ? '' : '<option value="">Elegí la cuenta</option>') +
+    op.cuentas.map(function (c) { return '<option value="' + esc(c.codigo) + '">' + esc(c.nombre) + '</option>'; }).join('');
+  $('ma-cuenta').value = f.cuenta;
+  const cs = (op.cuentas.filter(function (c) { return c.codigo === f.cuenta; })[0] || {}).centros || [];
+  if (cs.length === 1) f.centro = cs[0].centro;
+  if (!cs.some(function (c) { return c.centro === f.centro; })) f.centro = '';
+  $('ma-centro').innerHTML = (f.centro ? '' : '<option value="">Elegí el centro de costos</option>') +
+    cs.map(function (c) { return '<option value="' + esc(c.centro) + '">' + esc(c.centro) + '</option>'; }).join('');
+  $('ma-centro').value = f.centro;
+  $('ma-centro').disabled = cs.length === 1;
+  const cc = cs.filter(function (c) { return c.centro === f.centro; })[0];
+  f.sitio = cc ? cc.sitio : '';
+  $('ma-centro-sitio').textContent = cc ? 'Va a ' + cc.sitio + '.' : '';
   if (f.sitio) {
     if (![].some.call($('ma-sitio').options, function (o) { return o.value === f.sitio; })) $('ma-sitio').insertAdjacentHTML('beforeend', '<option>' + esc(f.sitio) + '</option>');
     $('ma-sitio').value = f.sitio;
   }
+}
+/** ¿Tiene la cuenta y el centro, o el bien de uso? */
+function cuentaMasivoLista() {
+  const f = AD.masivo.f6;
+  return !!(f && (f.bienUso || (f.cuenta && f.centro)));
+}
+function pintarBienesMasivo() {
+  const op = AD.masivo.op, q = sinTildes($('ma-bien-q').value.trim());
+  const l = (op ? op.bienes : []).filter(function (b) { return !q || sinTildes(b.nombre + ' ' + b.patente).indexOf(q) !== -1; });
+  $('ma-bien-lista').innerHTML = l.map(function (b) {
+    return '<button type="button" class="ma-bien-op" data-id="' + esc(b.id) + '"><b>' + esc(b.nombre) + '</b><small>' +
+      esc([b.nombre.toUpperCase().indexOf(String(b.patente).toUpperCase()) === -1 ? b.patente : '', b.sitio].filter(Boolean).join(' · ')) + '</small></button>';
+  }).join('') || '<p class="nota">No hay ninguno con eso.</p>';
+}
+$('ma-bien-b').addEventListener('click', function () {
+  const v = $('ma-bien-buscar').hidden;
+  $('ma-bien-buscar').hidden = !v;
+  if (v) { $('ma-bien-q').value = ''; pintarBienesMasivo(); $('ma-bien-q').focus(); }
+});
+$('ma-bien-q').addEventListener('input', pintarBienesMasivo);
+$('ma-bien-lista').addEventListener('click', function (e) {
+  const b = e.target.closest('[data-id]');
+  if (!b) return;
+  AD.masivo.antesDelBien = AD.masivo.f6 && !AD.masivo.f6.bienUso ? AD.masivo.f6 : AD.masivo.antesDelBien;
+  AD.masivo.f6 = { bienUso: b.dataset.id };
   pintarMasivo();
 });
+$('ma-bien-x').addEventListener('click', function () {
+  const m = AD.masivo;
+  m.f6 = m.antesDelBien || { cuenta: (m.op && m.op.predeterminada) || '', centro: '' };
+  pintarMasivo();
+});
+$('ma-cuenta').addEventListener('change', function () { AD.masivo.f6 = { cuenta: this.value, centro: '' }; pintarMasivo(); });
+$('ma-centro').addEventListener('change', function () { AD.masivo.f6.centro = this.value; pintarMasivo(); });
 $('ma-prueba').addEventListener('change', function () { AD.masivo.prueba = this.checked; revisarMasivo(); });
 
 function pintarMasivo() {
@@ -581,8 +640,7 @@ function pintarMasivo() {
   $('ma-tipo').querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.tipo === (m.tipo || 'pedido'))); });
   // Fase 6: la cuenta, solo para los de "Ven lo de la Fase 6" y en un pedido (los servicios todavía no llevan cuenta)
   $('ma-f6').hidden = !APP.yo.fase6 || m.tipo === 'servicio';
-  $('ma-cuenta-t').textContent = m.f6 ? m.f6Texto : 'Sin cuenta: se compra como siempre, sin orden de compra.';
-  $('ma-cuenta-b').textContent = m.f6 ? '✏️ Cambiar' : '📒 Elegir la cuenta';
+  if (!$('ma-f6').hidden) { pintarCuentaMasivo(); cargarOpcionesMasivo(); }
   $('ma-prueba').checked = !!m.prueba;
   $('ma-sitio').disabled = !!(m.f6 && m.f6.sitio) && !$('ma-f6').hidden;
   pintarArchivos();
@@ -596,7 +654,7 @@ function revisarMasivo() {
   const m = AD.masivo;
   const f6 = APP.yo.fase6 && m.tipo !== 'servicio';
   $('ma-crear').disabled = !$('ma-sitio').value || !m.urgencia || m.creando || $('ma-titulo').value.trim().length < 3 ||
-                           (f6 && m.prueba && !m.f6);              // uno de prueba necesita su cuenta (para la orden)
+                           (f6 && !cuentaMasivoLista());           // Feli (2/11): sin cuenta (o bien de uso) no se crea
   $('ma-crear').textContent = (m.tipo === 'servicio' ? 'Crear servicio masivo' : 'Crear pedido masivo') + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
 }
 ['ma-sitio', 'ma-titulo'].forEach(function (id) { $(id).addEventListener('input', revisarMasivo); $(id).addEventListener('change', revisarMasivo); });
@@ -632,7 +690,7 @@ $('ma-crear').addEventListener('click', async function () {
               titulo: $('ma-titulo').value.trim(), descripcion: $('ma-desc').value.trim(), compartido: elegidosLista(m.compartir), tipo: m.tipo || 'pedido' };
   // Fase 6 (30/10): la cuenta (o el bien de uso) y, si es de prueba, la Ref "PRUEBA-M…"
   if (APP.yo.fase6 && d.tipo !== 'servicio') {
-    if (m.f6) d.fase6 = m.f6.bienUso ? { bienUso: m.f6.bienUso } : { cuenta: m.f6.cuenta, centro: m.f6.centro };
+    d.fase6 = m.f6.bienUso ? { bienUso: m.f6.bienUso } : { cuenta: m.f6.cuenta, centro: m.f6.centro };
     if (m.prueba) d.id = 'PRUEBA-' + m.id;
   }
   m.creando = true;
@@ -644,7 +702,7 @@ $('ma-crear').addEventListener('click', async function () {
   const ref = r.ref || d.id;
   const archivos = m.archivos.slice();
   // Todo de nuevo para el próximo (con otro número)
-  AD.masivo = { id: nuevoIdMasivo(), urgencia: m.urgencia, archivos: [], compartir: {}, sitiosArmados: true, tipo: m.tipo };
+  AD.masivo = { id: nuevoIdMasivo(), urgencia: m.urgencia, archivos: [], compartir: {}, sitiosArmados: true, tipo: m.tipo, op: m.op };
   $('ma-sitio').disabled = false;
   ['ma-titulo', 'ma-desc', 'ma-razon'].forEach(function (id) { $(id).value = ''; });
   notaAd('ma-estado', '');

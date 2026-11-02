@@ -448,11 +448,23 @@
         <div class="campo"><label>¿Qué es?</label><div class="urgencias-el" id="ma-tipo">
           <button type="button" data-tipo="pedido" aria-pressed="true">📦 Pedido</button><button type="button" data-tipo="servicio" aria-pressed="false">🔧 Servicio</button></div></div>
         <div class="campo"><label for="ma-titulo">Título</label><input type="text" id="ma-titulo" maxlength="200" autocomplete="off" placeholder="Ej: Materiales obra silos PAB"></div>
-        <!-- Fase 6 (contador, 30/10): el pedido masivo lleva cuenta contable y orden de compra; solo los de "Ven lo de la Fase 6" (admin.js) -->
-        <div class="campo" id="ma-f6" hidden><label>Cuenta contable</label>
-          <div class="ma-cuenta"><span id="ma-cuenta-t">Sin cuenta: se compra como siempre, sin orden de compra.</span>
-            <button type="button" class="btn-chico" id="ma-cuenta-b">📒 Elegir la cuenta</button></div>
-          <label class="ma-prueba"><input type="checkbox" id="ma-prueba"> 🧪 Es de prueba (lo ven solo los de "Ven lo de la Fase 6" y no le llega nada a nadie)</label></div>
+        <!-- Fase 6 (contador, 30/10): el pedido masivo lleva cuenta contable y orden de compra; solo los de "Ven lo de la Fase 6" (admin.js).
+             Feli (2/11): como en el formulario, la cuenta y el centro a la vista (la de siempre ya elegida) o un bien de uso; sin eso no se crea -->
+        <div id="ma-f6" hidden>
+          <div class="campo">
+            <button type="button" class="ma-bien-b" id="ma-bien-b">es para un bien de uso</button>
+            <div class="ma-bien-el" id="ma-bien-el" hidden><span>🚜 <b id="ma-bien-nombre"></b></span><button type="button" class="icono" id="ma-bien-x" aria-label="Sacar el bien de uso">×</button></div>
+            <div id="ma-bien-buscar" hidden>
+              <input type="text" id="ma-bien-q" placeholder="Buscá por nombre o patente" autocomplete="off" aria-label="Buscar el bien de uso">
+              <div class="ma-bien-lista" id="ma-bien-lista"></div>
+            </div>
+            <p class="nota" id="ma-bien-nota" hidden>Un pedido para un bien de uso va sin orden de compra. El sitio se elige abajo.</p>
+          </div>
+          <div class="campo" id="ma-cuenta-c"><label for="ma-cuenta">Cuenta contable</label><select id="ma-cuenta"></select></div>
+          <div class="campo" id="ma-centro-c"><label for="ma-centro">Centro de costos</label><select id="ma-centro"></select><p class="nota" id="ma-centro-sitio"></p></div>
+          <p class="nota" id="ma-f6-estado" role="status"></p>
+          <label class="ma-prueba"><input type="checkbox" id="ma-prueba"> 🧪 Es de prueba (lo ven solo los de "Ven lo de la Fase 6" y no le llega nada a nadie)</label>
+        </div>
         <div class="campo"><label for="ma-sitio">Sitio</label><select id="ma-sitio"></select></div>
         <div class="campo"><label>Urgencia</label><div class="urgencias-el" id="ma-urg"></div></div>
         <div class="campo"><label for="ma-razon">Razón <small>(opcional)</small></label><input type="text" id="ma-razon" maxlength="2000" autocomplete="off" placeholder="Ej: obra nueva, reposición del mes…"></div>
@@ -527,6 +539,13 @@
           <dt>Versión</dt><dd id="c-version"></dd>
           <dt id="c-error-t" hidden>Último error</dt><dd id="c-error" hidden></dd>
         </dl>
+      </div>
+      <!-- Entrar como (Feli, 2/11): solo Feli, para ver la app como la ve otra persona (base.js) -->
+      <div class="caja" id="c-como" hidden>
+        <h2>👤 Entrar como otra persona</h2>
+        <p class="nota">Ves la app como la ve esa persona: sus pestañas, sus botones, sus chats y sus granjas. Es solo para mirar:
+          no se guarda nada y no sale ningún WhatsApp. Arriba aparece una franja para volver a vos; si no, se cierra sola a las 2 horas.</p>
+        <button type="button" class="btn2" id="c-como-b">👤 Entrar como…</button>
       </div>
       <!-- Paso 6 (Feli, 2026-10-01): el formato es siempre el de Transferencias; cada uno elige su color y su tablero -->
       <div class="caja" id="c-aspecto">
