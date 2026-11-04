@@ -96,6 +96,9 @@ function htmlCasillero(col, p) {
     h += '<button type="button" class="cq-elegir no-imprimir" aria-pressed="' + elegido + '" data-cq-elegir="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' +
       (elegido ? '✓ Elegido' : 'Elegir') + '</button>';
   }
+  // Feli (4/11): "Elegir este" (fuera de la compra): lo elegido se pinta de verde; el más barato solo se menciona
+  else if (!CQ.editar && !q_soloMirar()) h += '<button type="button" class="cq-elegir no-imprimir' + (c.ganador ? ' cq-ganador-b' : '') + '" aria-pressed="' + !!c.ganador + '" data-cq-ganador="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' +
+    (c.ganador ? '🏆 Elegido' : 'Elegir este') + '</button>';
   if (c.masBarato) h += '<div class="cq-barato">Más barato</div>';
   if (c.parte > 1) h += '<div class="cq-parte-b">' + esc(nombreParte(c.parte)) + (c.fechaParte ? ' · ' + esc(fechaCorta(c.fechaParte)) : '') + '</div>';
   const editar = CQ.editar && CQ.modo !== 'comprar';
@@ -124,7 +127,7 @@ function htmlCasillero(col, p) {
   if (c.otraUnidad && c.precioNuestro !== null) h += '<div class="cq-nuestra">= ' + esc(plata(c.precioNuestro, c.moneda)) + ' ' + esc(porNuestraUnidad(p.cantidad)) + '</div>';
   if (c.avisos.length) h += '<div class="cq-aviso">' + c.avisos.map(esc).join(' · ') + '</div>';
   h += htmlControl(col.proveedor + '|' + p.linea, c.huella, c.control);
-  return '<td class="cq-cas' + (c.masBarato ? ' cq-mas-barato' : '') + (elegido ? ' cq-elegido' : '') + (c.comprado && c.comprado.aEste ? ' cq-comprado-aca' : '') + '"' +
+  return '<td class="cq-cas' + (c.ganador ? ' cq-ganador' : '') + (elegido ? ' cq-elegido' : '') + (c.comprado && c.comprado.aEste ? ' cq-comprado-aca' : '') + '"' +
     ' data-cq-destino="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' + h + '</td>';
 }
 
@@ -204,6 +207,9 @@ function pintarCuadro() {
   let h = '<table class="cq-tabla"><thead><tr><th class="cq-fija">' + (q.sinProductos ? 'Presupuesto' : 'Pediste') + '</th>' + cols.map(function (c) {
     return '<th><div class="cq-prov">' + esc(c.nombre) + '</div>' + (c.sinConfirmar ? '<div class="cq-sin">Sin revisar</div>' : '') +
       (CQ.modo === 'comprar' && !q.sinProductos ? '<button type="button" class="btn-chico cq-todo no-imprimir" data-cq-todo="' + esc(c.proveedor) + '">Elegir todo de ' + esc(c.nombre) + '</button>' : '') +
+      // Feli (4/11): "Opción ganadora": elige este proveedor en todo lo que cotizó (otra vez, lo saca)
+      (CQ.modo !== 'comprar' && !CQ.editar && !q.sinProductos && !q_soloMirar() ? '<button type="button" class="btn-chico cq-todo no-imprimir' + (esGanadora(c) ? ' cq-ganador-b' : '') + '" aria-pressed="' + esGanadora(c) + '" data-cq-ganadora="' + esc(c.proveedor) + '">' +
+        (esGanadora(c) ? '🏆 Opción ganadora' : 'Opción ganadora') + '</button>' : '') +
       (c.partes.length > 1 ? '<div class="cq-gris">En ' + c.partes.length + ' partes: ' + c.partes.map(function (e) { return esc(fechaCorta(e.fecha)); }).join(' y ') + '</div>' : '') + '</th>';
   }).join('') + '</tr></thead><tbody>';
   q.productos.forEach(function (p) {
@@ -239,7 +245,7 @@ function pintarCuadro() {
   if (q.anterior && q.anterior.quien) h += '<p class="cq-gris cq-al-pie no-imprimir">La vez anterior lo armó ' + esc(q.anterior.quien) + ' el ' + esc(fechaHoraCorta(q.anterior.cuando)) + '.</p>';
   // Arriba: el buscador y, para comprar, "Elegir el más barato en cada fila" (o pasar de mirar a comprar)
   const herramientas = q.sinProductos ? '' : CQ.modo === 'comprar'
-    ? '<button type="button" class="btn-chico" id="cq-baratos">Elegir el más barato en cada fila</button><button type="button" class="btn-chico" id="cq-limpiar">Sacar lo elegido</button>' +
+    ? '<button type="button" class="btn-chico" id="cq-baratos">Seleccionar lo elegido</button><button type="button" class="btn-chico" id="cq-limpiar">Sacar lo elegido</button>' +
       '<button type="button" class="btn-chico" id="cq-a-mirar">Dejar de comprar</button>'
     : (q.puedeComprar ? '<button type="button" class="btn-chico si" id="cq-a-comprar">🛒 Realizar la compra</button>' : '') +
       '<button type="button" class="btn-chico" id="cq-editar" aria-pressed="' + CQ.editar + '">' + (CQ.editar ? '✓ Listo' : '✏️ Editar') + '</button>' +
@@ -267,6 +273,12 @@ function pintarCuadro() {
   cuerpo.querySelectorAll('[data-cq-nota-cas]').forEach(function (x) { x.addEventListener('click', function () { notaDeCasillero(x.dataset.cqNotaCas, x.dataset.prov); }); });
   cuerpo.querySelectorAll('[data-cq-renombrar]').forEach(function (x) { x.addEventListener('click', function () { renombrarRenglon(x.dataset.cqRenombrar); }); });
   cuerpo.querySelectorAll('[data-cq-mover]').forEach(function (x) { x.addEventListener('click', function () { moverRenglonA(x.dataset.cqMover, x.dataset.prov); }); });
+  cuerpo.querySelectorAll('[data-cq-ganador]').forEach(function (x) {
+    x.addEventListener('click', function () { cambiarGanador({ linea: x.dataset.cqGanador, proveedor: x.getAttribute('aria-pressed') === 'true' ? '' : x.dataset.prov }); });
+  });
+  cuerpo.querySelectorAll('[data-cq-ganadora]').forEach(function (x) {
+    x.addEventListener('click', function () { const col = columnaDe(x.dataset.cqGanadora); cambiarGanador({ todo: col.proveedor, lineas: lineasCotizadas(col) }); });
+  });
   cuerpo.querySelectorAll('[data-cq-opcion]').forEach(function (x) { x.addEventListener('click', function () { cambiarOpciones(x.dataset.linea, x.dataset.prov, { opciones: x.dataset.cqOpcion === 'si' }); }); });
   cuerpo.querySelectorAll('[data-cq-elegir-op]').forEach(function (x) { x.addEventListener('click', function () { cambiarOpciones(x.dataset.linea, x.dataset.prov, { elegida: x.dataset.cqElegirOp }); }); });
   armarArrastreCuadro(cuerpo);
@@ -367,18 +379,37 @@ function elegirTodo(pid) {
 }
 
 /** El marcado como más barato; si lo cotizó uno solo, ese; con monedas distintas, ninguno (y lo avisa). */
+/** "Seleccionar lo elegido" (Feli, 4/11; antes "el más barato en cada fila"): lo marcado con "Elegir este" u "Opción ganadora". */
 function elegirBaratos() {
-  let sinElegir = 0;
+  let n = 0;
   CQ.datos.productos.forEach(function (p) {
-    const cs = CQ.datos.columnas.filter(function (col) { return sePuedeElegir(col, p.linea); });
-    if (!cs.length || p.comprado || p.duda || p.noPedido) return;       // lo no pedido se elige a mano (Feli, 13/10); lo preguntado por la IA, tampoco
-    const barato = cs.filter(function (col) { return col.casilleros[p.linea].masBarato; })[0];
-    if (barato) CQ.sel[p.linea] = barato.proveedor;
-    else if (cs.length === 1) CQ.sel[p.linea] = cs[0].proveedor;
-    else sinElegir++;
+    if (p.comprado) return;
+    const col = CQ.datos.columnas.filter(function (c) { return sePuedeElegir(c, p.linea) && c.casilleros[p.linea].ganador; })[0];
+    if (col) { CQ.sel[p.linea] = col.proveedor; n++; }
   });
   pintarCuadro();
-  if (sinElegir) aviso(sinElegir + ' producto' + (sinElegir === 1 ? '' : 's') + ' sin elegir: tienen precios en monedas distintas o sin precio. Elegilos a mano.');
+  if (!n) aviso('Todavía no elegiste nada: tocá "Dejar de comprar" y usá "Elegir este" u "Opción ganadora".');
+}
+
+/** ¿Está elegido en todo lo que cotizó? */
+function esGanadora(col) {
+  const ls = lineasCotizadas(col);
+  return ls.length > 0 && ls.every(function (l) { return col.casilleros[l].ganador; });
+}
+function lineasCotizadas(col) {
+  return Object.keys(col.casilleros).filter(function (l) { const c = col.casilleros[l]; return c.renglones && c.renglones.length && !c.comprado; });
+}
+function q_soloMirar() { return !APP.yo.admin; }
+
+/** "Elegir este" / "Opción ganadora" (Feli, 4/11). */
+async function cambiarGanador(d) {
+  const ref = CQ.datos.ref;
+  aviso('Guardando…');
+  const r = await api('ganadorCuadro', ref, d);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
+  aviso('🏆 Listo.');
+  if (TB.abierta === ref) traerTarjeta(ref);
+  abrirCuadro(ref, CQ.modo);
 }
 
 /** Lo elegido, por proveedor (en el orden de las columnas): [{col, lineas, total, moneda}]. */

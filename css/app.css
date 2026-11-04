@@ -827,7 +827,8 @@ td.cq-soltar{outline:2px dashed var(--accent);outline-offset:-3px;background:var
 .solo-imprimir{display:none}
 .pr-nota-mano{color:var(--fg);opacity:.85}
 .cq-nopedido{opacity:.6}
-.cq-mas-barato{background:rgba(95,191,122,.12)}
+.cq-tabla td.cq-ganador{background:rgba(95,191,122,.16)}      /* Feli (4/11): lo elegido; el más barato ya no se pinta */
+.cq-ganador-b{border-color:#5fbf7a!important;color:#5fbf7a!important}
 .cq-barato{display:inline-block;font-size:11px;font-weight:700;color:#5fbf7a;border:1px solid #5fbf7a;border-radius:9px;padding:1px 7px;margin-bottom:4px}
 .cq-control{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:12px;color:var(--muted);cursor:pointer}
 .cq-controlo{font-size:11px;color:#5fbf7a;margin-top:2px}
@@ -865,7 +866,7 @@ td.cq-soltar{outline:2px dashed var(--accent);outline-offset:-3px;background:var
   .cuadro-tit b{font-size:12px}
   .cuadro-tit span{font-size:9px}
   .cq-aviso,.cq-gris,.cq-controlo{color:#555!important}
-  .cq-tabla td.cq-mas-barato{background:#dff3e5!important}
+  .cq-tabla td.cq-ganador{background:#dff3e5!important}
   .cq-barato{border-color:#2e8b57}
   .cq-cambio,.cq-sin{color:#b35c00!important;border-color:#b35c00}
 }
@@ -1165,3 +1166,5 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .cq-opciones-p{margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);font-size:12.5px}
 .cq-opcion-p{color:var(--muted)}
 .cq-opcion-p.si{color:inherit;font-weight:650}
+.pr-ganador{display:inline-block;font-size:11.5px;font-weight:700;color:#5fbf7a;border:1px solid #5fbf7a;border-radius:9px;padding:1px 8px;margin-left:4px}
+.cq-elegir.cq-ganador-b[aria-pressed="true"]{background:#5fbf7a!important;color:#10261a!important;border-color:#5fbf7a!important}

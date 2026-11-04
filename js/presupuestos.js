@@ -514,6 +514,14 @@ function estadoDePartes(partes) {
  * Un presupuesto en la tarjeta: un solo desplegable por proveedor, con sus partes adentro, una después de la otra
  * (Feli, 2026-10-06). En el título, el total sin IVA si se sabe (y la marca), y lo que vale para este pedido si cambia.
  */
+/** Feli (4/11): "Opción ganadora" del cuadro comparativo (o en cuántos productos). */
+function htmlGanador(partes) {
+  const n = partes.reduce(function (x, b) { return x + (b.ganador ? b.ganador.n : 0); }, 0);
+  const de = partes.reduce(function (x, b) { return x + (b.ganador ? b.ganador.de : 0); }, 0);
+  if (!n) return '';
+  return ' <span class="pr-ganador">🏆 ' + (n === de ? 'Opción ganadora' : 'Ganadora en ' + n + ' de ' + de) + '</span>';
+}
+
 function htmlPresupuesto(partes) {
   const b = partes[0], est = partes.length > 1 ? estadoDePartes(partes) : b.estado;
   // El total del título: el de cada parte (o lo que vale para este pedido), sumado si tienen la misma marca
@@ -528,7 +536,7 @@ function htmlPresupuesto(partes) {
     paraEste = 'las ' + partes.length + ' partes juntas';
   }
   const cabeza = '<summary><b>' + esc(b.nombre) + '</b>' + (partes.length > 1 ? ' <span class="pr-parte">' + partes.length + ' partes</span>' : '') +
-    ' ' + htmlEstado(est) +
+    ' ' + htmlEstado(est) + htmlGanador(partes) +
     (total ? ' <span class="pr-total">' + total + (paraEste ? '<small class="pr-total-este">' + paraEste + '</small>' : '') + '</span>' : '') + '</summary>';
   const h = partes.map(function (x, i) {
     if (partes.length === 1) return htmlCuerpoPresupuesto(x);
