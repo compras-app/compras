@@ -45,7 +45,7 @@ aplicarZoomApp();
 window.addEventListener('resize', aplicarZoomApp);           // el zoom del navegador cambia la escala y avisa con un resize
 
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'f66a9eb080';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '9e482eb384';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -720,3 +720,17 @@ function pintarFranjaComo() {
 }
 document.addEventListener('DOMContentLoaded', pintarFranjaComo);
 if (document.readyState !== 'loading') setTimeout(pintarFranjaComo, 0);
+
+/* Feli (4/11): con el mouse (Windows), al seleccionar un texto y soltar afuera de la tarjeta o de una ventanita, se cerraba:
+   el "clic" le llega al fondo, que cierra. Un clic que empezó adentro y terminó lejos es un arrastre: no cuenta. */
+(function () {
+  let abajo = null, x0 = 0, y0 = 0;
+  document.addEventListener('mousedown', function (e) { abajo = e.target; x0 = e.clientX; y0 = e.clientY; }, true);
+  document.addEventListener('click', function (e) {
+    const desde = abajo;
+    abajo = null;
+    if (!desde || !e.detail) return;                      // un "clic" del teclado (Enter) no tiene mouse
+    const lejos = Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) > 8;
+    if (lejos && e.target !== desde && e.target.contains && e.target.contains(desde)) { e.stopPropagation(); e.preventDefault(); }
+  }, true);
+})();

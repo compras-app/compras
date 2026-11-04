@@ -282,7 +282,8 @@ async function editarProveedor(p, previo) {
   const v = previo || { nombre: p ? p.nombre : '', telefono: p ? p.telefono : '', email: p ? p.email : '', notas: p ? p.notas : '',
                         contacto: p ? (p.contacto || '') : '', activo: p ? p.activo : true, rubros: p ? p.rubros.slice() : [],
                         otros: p ? (p.otros || []).join(', ') : '',
-                        cuit: p ? (p.cuit || '') : '', nombreAlbor: p ? (p.nombreAlbor || '') : '', codigoAlbor: p ? (p.codigoAlbor || '') : '' };
+                        cuit: p ? (p.cuit || '') : '', nombreAlbor: p ? (p.nombreAlbor || '') : '', codigoAlbor: p ? (p.codigoAlbor || '') : '',
+                        online: p ? !!p.online : false };
   const elegidos = {};
   v.rubros.forEach(function (c) { elegidos[c] = true; });
   const max = AD.provs.maximo;
@@ -303,7 +304,9 @@ async function editarProveedor(p, previo) {
     (AD.provs.fase6 ? '<h3>En Albor</h3>' +
       campoDlg('pr-cuit', 'CUIT', v.cuit, { max: 13, inputmode: 'numeric', placeholder: '30-71151425-9', nota: 'Con o sin guiones. Se controla el último número.' }) +
       campoDlg('pr-albor-nom', 'Nombre en Albor', v.nombreAlbor, { max: 120, nota: 'Si queda vacío, lo completa la primera orden de compra.' }) +
-      campoDlg('pr-albor-cod', 'Código en Albor', v.codigoAlbor, { max: 8, inputmode: 'numeric', placeholder: 'Ej: 10398' }) : '');
+      campoDlg('pr-albor-cod', 'Código en Albor', v.codigoAlbor, { max: 8, inputmode: 'numeric', placeholder: 'Ej: 10398' }) +
+      // Feli (4/11): Mercado Libre y otros que se compran por internet
+      '<label class="check"><input type="checkbox" id="pr-online"> Proveedor online (ej. Mercado Libre): se le compra sin orden de compra y sin mandarle mensaje</label>' : '');
   const datos = await dialogo({
     titulo: p ? p.nombre : 'Agregar proveedor', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
@@ -312,10 +315,12 @@ async function editarProveedor(p, previo) {
                rubros: Object.keys(elegidos).filter(function (c) { return elegidos[c]; }).sort(),
                cuit: AD.provs.fase6 ? $('pr-cuit').value.trim() : undefined,
                nombreAlbor: AD.provs.fase6 ? $('pr-albor-nom').value.trim() : undefined,
-               codigoAlbor: AD.provs.fase6 ? $('pr-albor-cod').value.trim() : undefined };
+               codigoAlbor: AD.provs.fase6 ? $('pr-albor-cod').value.trim() : undefined,
+               online: AD.provs.fase6 ? $('pr-online').checked : undefined };
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
       $('pr-activo').checked = v.activo !== false;
+      if ($('pr-online')) $('pr-online').checked = !!v.online;
       const pintarRubros = function () {
         $('pr-rubros').innerHTML = AD.provs.rubros.map(function (x) {
           const antes = p && p.rubros.indexOf(x.nombre) !== -1;

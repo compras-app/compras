@@ -1155,3 +1155,13 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .vc-p{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;background:none;border:1px solid var(--line);border-radius:8px;padding:9px 12px;color:inherit;font:inherit;cursor:pointer}
 .vc-p:hover{background:var(--accent-soft)}
 .vc-p small{color:var(--muted)}
+
+/* Cuadro comparativo, "Es otra opción" (Feli, 4/11) */
+.cq-opciones-t{font-size:12px;font-weight:650;color:var(--accent);margin-bottom:4px}
+.cq-opcion{font-size:12px;font-weight:650;color:var(--muted);margin-bottom:2px}
+.cq-opcion.si{color:var(--accent)}
+.cq-ren.cq-opcion-no{opacity:.6}
+.cq-es-opcion{display:block;margin-bottom:2px}
+.cq-opciones-p{margin-top:8px;padding-top:6px;border-top:1px dashed var(--line);font-size:12.5px}
+.cq-opcion-p{color:var(--muted)}
+.cq-opcion-p.si{color:inherit;font-weight:650}

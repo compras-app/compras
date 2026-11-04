@@ -428,9 +428,9 @@ function pintarAprobacion() {
   // Un servicio también se manda a aprobar desde su Decisión (Feli, 2026-10-04)
   const sv = p && p.servicio ? buscarServicio(ref) : null;
   const columna = p && p.servicio ? (sv ? sv.columna : p.columna) : (t ? t.columna : (p && p.columna));
-  const puedeMandar = APP.yo.admin && p && !esTrabajo(ref) && columna === (p.servicio ? colDecisionServicio() : colDecision());
+  const puedeMandar = APP.yo.admin && p && columna === (p.servicio ? colDecisionServicio() : colDecision());   // también una tarjeta de seguimiento (Feli, 4/11)
   const a = aprobacionVista(ref, p);
-  b.hidden = TB.tipo === 'tarea' || esTrabajo(ref) || !p || (!a && !esperan.length && !puedeMandar);
+  b.hidden = TB.tipo === 'tarea' || !p || (!a && !esperan.length && !puedeMandar);
   bloqueArriba('tj-aprob-b', !b.hidden && !esperan.length && !!a && a.estado === 'Esperando' && a.aprueba === APP.yo.nombre);
   if (b.hidden) return;
   const fecha = function (iso) { return iso ? ' (' + fechaCorta(iso) + ')' : ''; };
@@ -454,7 +454,7 @@ function pintarAprobacion() {
 $('tj-aprobar-mandar').addEventListener('click', async function () {
   const ref = TB.abierta, d = TB.detalle;
   if (!ref || !d || !d.pedido || !APP.yo.admin) return;
-  const prods = lineasConCambios(ref, d.lineas || []).filter(function (l) { return vigente(l) && l.estado !== 'Para agregar' && !l.tarjeta; })
+  const prods = lineasConCambios(ref, d.lineas || []).filter(function (l) { return vigente(l) && l.estado !== 'Para agregar' && (!l.tarjeta || l.tarjeta === ref); })
     .map(function (l) { return '- ' + (l.unidad ? cantidadConUnidad(l.cantidad, l.unidad) + ' ' : l.cantidad + 'x ') + nombreProducto(l); });
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';

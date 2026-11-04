@@ -99,10 +99,17 @@ function htmlCasillero(col, p) {
   if (c.masBarato) h += '<div class="cq-barato">Más barato</div>';
   if (c.parte > 1) h += '<div class="cq-parte-b">' + esc(nombreParte(c.parte)) + (c.fechaParte ? ' · ' + esc(fechaCorta(c.fechaParte)) : '') + '</div>';
   const editar = CQ.editar && CQ.modo !== 'comprar';
-  h += c.renglones.map(function (r) {
+  // Feli (4/11): "Es otra opción": cuenta una sola (la elegida o la primera cargada)
+  const opDatos = ' data-linea="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '"';
+  if (c.opciones) h += '<div class="cq-opciones-t">' + c.renglones.length + ' opciones · cuenta una sola' +
+    (editar && !c.comprado ? ' <button type="button" class="cq-agregar-nota no-imprimir" data-cq-opcion="no"' + opDatos + '>No son opciones</button>' : '') + '</div>';
+  h += c.renglones.map(function (r, i) {
     const mover = editar && r.id && !(c.comprado);
-    return '<div class="cq-ren' + (mover ? ' cq-movible' : '') + '"' + (mover ? ' draggable="true" data-cq-ren="' + esc(r.id) + '" data-prov="' + esc(col.proveedor) + '"' : '') + '>' +
-      (mover ? '<span class="cq-asa no-imprimir" title="Arrastralo a otro producto">⠿</span>' : '') +
+    const op = c.opciones ? '<div class="cq-opcion' + (r.elegida ? ' si' : '') + '">' + (r.elegida ? '✓ Opción ' + (i + 1) + ': la que cuenta'
+      : 'Opción ' + (i + 1) + (c.comprado ? '' : ' <button type="button" class="cq-agregar-nota no-imprimir" data-cq-elegir-op="' + esc(r.id) + '"' + opDatos + '>Elegir esta opción</button>')) + '</div>'
+      : (editar && c.renglones.length > 1 && !c.comprado && r.id ? '<button type="button" class="cq-agregar-nota cq-es-opcion no-imprimir" data-cq-opcion="si"' + opDatos + '>Es otra opción</button>' : '');
+    return '<div class="cq-ren' + (mover ? ' cq-movible' : '') + (c.opciones && !r.elegida ? ' cq-opcion-no' : '') + '"' + (mover ? ' draggable="true" data-cq-ren="' + esc(r.id) + '" data-prov="' + esc(col.proveedor) + '"' : '') + '>' +
+      op + (mover ? '<span class="cq-asa no-imprimir" title="Arrastralo a otro producto">⠿</span>' : '') +
       '<span class="cq-cant">' + esc([cantTexto(r.cant), r.unidad].filter(String).join(' ')) + '</span> ' +
       (mover ? '<button type="button" class="cq-nombre no-imprimir" data-cq-renombrar="' + esc(r.id) + '" title="Cambiar el nombre">' + esc(capital(r.texto)) + ' ✏️</button><span class="solo-imprimir">' + esc(capital(r.texto)) + '</span>'
              : esc(capital(r.texto))) +
@@ -114,12 +121,25 @@ function htmlCasillero(col, p) {
       (r.id ? '<button type="button" class="cq-agregar-nota no-imprimir" data-cq-nota="' + esc(r.id) + '">' + (r.nota ? 'Cambiar la nota' : 'Agregar nota') + '</button>' : '') +
       (mover ? ' <button type="button" class="cq-agregar-nota no-imprimir" data-cq-mover="' + esc(r.id) + '" data-prov="' + esc(col.proveedor) + '">Mover a…</button>' : '') + '</div>';
   }).join('');
-  if (c.renglones.length > 1 && c.total !== null) h += '<div class="cq-precios">Total: <b>' + esc(plata(c.total, c.moneda)) + '</b></div>';
+  if (c.renglones.length > 1 && c.total !== null) h += '<div class="cq-precios">' + (c.opciones ? 'Cuenta: ' : 'Total: ') + '<b>' + esc(plata(c.total, c.moneda)) + '</b></div>';
   if (c.otraUnidad && c.precioNuestro !== null) h += '<div class="cq-nuestra">= ' + esc(plata(c.precioNuestro, c.moneda)) + ' ' + esc(porNuestraUnidad(p.cantidad)) + '</div>';
   if (c.avisos.length) h += '<div class="cq-aviso">' + c.avisos.map(esc).join(' · ') + '</div>';
   h += htmlControl(col.proveedor + '|' + p.linea, c.huella, c.control);
   return '<td class="cq-cas' + (c.masBarato ? ' cq-mas-barato' : '') + (elegido ? ' cq-elegido' : '') + (c.comprado && c.comprado.aEste ? ' cq-comprado-aca' : '') + '"' +
     ' data-cq-destino="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '">' + h + '</td>';
+}
+
+/** En "Pediste", las opciones de cada proveedor que las tiene (Feli, 4/11). */
+function htmlOpcionesPediste(p) {
+  return (CQ.datos.columnas || []).map(function (col) {
+    const c = col.casilleros[p.linea];
+    if (!c || !c.opciones) return '';
+    return '<div class="cq-opciones-p"><div class="cq-gris">Opciones de ' + esc(col.nombre) + ':</div>' + c.renglones.map(function (r, i) {
+      const precio = r.importe !== null ? r.importe : r.precio;
+      return '<div class="cq-opcion-p' + (r.elegida ? ' si' : '') + '">' + (r.elegida ? '✓ ' : '') + (i + 1) + '. ' + esc(capital(r.texto)) +
+        (precio !== null ? ' · ' + esc(plata(precio, r.moneda)) : '') + '</div>';
+    }).join('') + (c.opcionElegidaPor ? '<div class="cq-gris">La eligió ' + esc(c.opcionElegidaPor) + '</div>' : '<div class="cq-gris">Cuenta la primera hasta que se elija otra.</div>') + '</div>';
+  }).join('');
 }
 
 function htmlTotalesColumna(col) {
@@ -142,6 +162,8 @@ function htmlTotalesColumna(col) {
       (col.repite ? '<div class="cq-cambio">Ojo: una parte repite productos de otra, y la suma los cuenta dos veces. Para comparar, mirá el total comparable.</div>' : '')
       : '<div class="cq-gris">Las partes no se pueden sumar: no dicen lo mismo del IVA.</div>';
   }
+  if (col.conOpciones && col.totalOpciones) h += '<div class="cq-este"><div class="cq-gris">Con las opciones que cuentan (una por producto):</div>' +
+    fila('Total', col.totalOpciones.monto, col.totalOpciones.moneda, true) + '</div>';
   return h + htmlControl(col.proveedor + '|_totales', col.huella, col.control);
 }
 
@@ -192,7 +214,7 @@ function pintarCuadro() {
     h += '<tr class="cq-fila" data-cq-buscar="' + esc(sinTildes(texto)) + '"><th class="cq-fija"><span class="cq-cant">' + esc(p.cantidad) + '</span> ' + esc(p.nombre) + (p.nota ? '<div class="cq-gris">' + esc(p.nota) + '</div>' : '') +
       (p.noPedido ? '<div class="cq-np">' + (q.masivo ? 'Del presupuesto de ' : 'No pedido · lo cotizó ') + esc(p.noPedido) + '</div>' : '') +          // Feli (2026-10-07); un masivo, 30/10
       (p.duda ? '<div class="cq-np">🤖 ¿Es «' + esc(p.duda) + '»? Contestalo en el presupuesto</div>' : '') +     // Paso 8
-      (p.comprado ? '<div class="cq-comprado">🛒 Comprado en ' + esc(p.comprado) + '</div>' : '') + '</th>' +
+      (p.comprado ? '<div class="cq-comprado">🛒 Comprado en ' + esc(p.comprado) + '</div>' : '') + htmlOpcionesPediste(p) + '</th>' +
       cols.map(function (c) { return htmlCasillero(c, p); }).join('') + '</tr>';
   });
   const renglones = function (l) {
@@ -245,6 +267,8 @@ function pintarCuadro() {
   cuerpo.querySelectorAll('[data-cq-nota-cas]').forEach(function (x) { x.addEventListener('click', function () { notaDeCasillero(x.dataset.cqNotaCas, x.dataset.prov); }); });
   cuerpo.querySelectorAll('[data-cq-renombrar]').forEach(function (x) { x.addEventListener('click', function () { renombrarRenglon(x.dataset.cqRenombrar); }); });
   cuerpo.querySelectorAll('[data-cq-mover]').forEach(function (x) { x.addEventListener('click', function () { moverRenglonA(x.dataset.cqMover, x.dataset.prov); }); });
+  cuerpo.querySelectorAll('[data-cq-opcion]').forEach(function (x) { x.addEventListener('click', function () { cambiarOpciones(x.dataset.linea, x.dataset.prov, { opciones: x.dataset.cqOpcion === 'si' }); }); });
+  cuerpo.querySelectorAll('[data-cq-elegir-op]').forEach(function (x) { x.addEventListener('click', function () { cambiarOpciones(x.dataset.linea, x.dataset.prov, { elegida: x.dataset.cqElegirOp }); }); });
   armarArrastreCuadro(cuerpo);
   pintarBarraCompra();
   cuerpo.querySelectorAll('[data-cq-anotar]').forEach(function (x) { x.addEventListener('click', function () { anotar(x.dataset.cqAnotar); }); });
@@ -448,7 +472,10 @@ async function confirmarCompra() {
         if (!si) break;
       }
       // Fase 6, Paso 5: sin CUIT no se compra con orden; se carga acá mismo (Feli, 29/10)
-      const oq = CQ.datos.orden, op = oq && oq.proveedores[g.col.proveedor];
+      const oq0 = CQ.datos.orden, op = oq0 && oq0.proveedores[g.col.proveedor];
+      // Feli (4/11): un proveedor online (Mercado Libre): sin orden de compra y sin mandarle mensaje
+      const online = !!(op && op.online);
+      const oq = online ? Object.assign({}, oq0, { orden: false, motivo: (op.nombre || g.col.nombre) + ' es un proveedor online' }) : oq0;
       if (oq && oq.orden && op && !op.cuit) {
         const cuit = await pedirCuitCompra(op.nombre || g.col.nombre);
         if (!cuit) break;
@@ -474,6 +501,9 @@ async function confirmarCompra() {
       cuerpo.innerHTML = (conNP ? '<div class="campo"><label for="cq-pedido-np">Lo que no se pidió va al pedido</label><select id="cq-pedido-np">' +
         pedidos.map(function (p) { return '<option value="' + esc(p.ref) + '">' + esc([p.sitio, p.titulo || p.ref].filter(String).join(' · ')) + '</option>'; }).join('') + '</select></div>' : '') +
         htmlOrdenEnCompra(oq) +
+        (online ? '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') +
+                  (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
+                  '. Es un proveedor online: al tocar "Comprar" queda comprado y sale la tarjeta de seguimiento, sin mandarle ningún mensaje.</p>' :
         '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') + (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
         (conOrden ? '. Al tocar "Comprar", queda comprado y ' + (ext ? 'se carga la orden en Albor' : 'te pido el número y el PDF de la orden') +
                     '. Con el número, al proveedor le llega el PDF de la orden con este mensaje ({numero} se completa solo). Lo podés cambiar.</p>'
@@ -481,16 +511,16 @@ async function confirmarCompra() {
         '<textarea id="cq-msj" rows="' + (conOrden ? 6 : 10) + '">' + esc(conOrden ? mensajeOrden(oq) : mensajeCompra(g)) + '</textarea>' +
         // Feli (29/10): observaciones del presupuesto que van en la orden de compra (se dejan las que sirvan)
         (conOrden ? '<label for="cq-obs" style="margin-top:10px;display:block">Observaciones en la orden de compra <small class="nota">(opcional; vienen las del presupuesto: dejá las que sirvan)</small></label>' +
-                    '<textarea id="cq-obs" rows="4" maxlength="1500">' + esc((op && op.observaciones) || '') + '</textarea>' : '');
+                    '<textarea id="cq-obs" rows="4" maxlength="1500">' + esc((op && op.observaciones) || '') + '</textarea>' : ''));
       const texto = await dialogo({ titulo: 'Comprarle a ' + g.col.nombre + (grupos.length > 1 ? ' (' + (i + 1) + ' de ' + grupos.length + ')' : ''), cuerpo: cuerpo,
-        botones: [{ texto: 'Volver', valor: null }, { texto: oq && (oq.orden || oq.prueba) ? '🛒 Comprar' : '🛒 Comprar y mandar', clase: 'btn', valor: function () {
+        botones: [{ texto: 'Volver', valor: null }, { texto: online || (oq && (oq.orden || oq.prueba)) ? '🛒 Comprar' : '🛒 Comprar y mandar', clase: 'btn', valor: function () {
           if ($('cq-pedido-np')) g.pedidoNP = $('cq-pedido-np').value;
           if ($('cq-obs')) g.obsOrden = $('cq-obs').value.trim();
-          return $('cq-msj').value.trim();
+          return online ? '·' : $('cq-msj').value.trim();
         } }] });
       if (!texto) break;
       aviso('Comprando a ' + g.col.nombre + '…');
-      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: texto, pedidoNP: g.pedidoNP || '',
+      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: online ? '' : texto, pedidoNP: g.pedidoNP || '',
                                             textoSinOrden: conOrden ? mensajeCompra(g) : '', obsOrden: g.obsOrden || '' });
       if (!r.ok) { aviso(r.sinConexion ? '📶 Poca señal: no se pudo comprar a ' + g.col.nombre + '. Probá cuando vuelva.' : r.error, 'bad'); break; }
       compradas++;
@@ -502,9 +532,10 @@ async function confirmarCompra() {
         continue;
       }
       aviso(r.orden ? 'Listo: comprado a ' + g.col.nombre + '. La orden de compra quedó pendiente: cargala desde la tarjeta de seguimiento.'
+            : r.online ? 'Listo: comprado a ' + g.col.nombre + ' (proveedor online: no se le mandó nada).'
             : r.prueba ? 'Listo: comprado a ' + g.col.nombre + ' (es una prueba: no se le mandó nada).'
             : r.enviado ? 'Listo: comprado a ' + g.col.nombre + ' y le llegó la confirmación.' : 'Comprado a ' + g.col.nombre + ', pero el mensaje no salió: mandalo desde el chat.',
-            r.enviado || r.orden || r.prueba ? '' : 'bad');
+            r.enviado || r.orden || r.prueba || r.online ? '' : 'bad');
     }
   } finally {
     CQ.comprando = false;
@@ -671,6 +702,16 @@ async function notaDeRenglon(id) {
 }
 
 /** "Agregar nota" en un casillero que no cotizó (Feli, 21/10): queda en el cuadro, para ese proveedor y ese producto. */
+/** "Es otra opción", "No son opciones" y "Elegir esta opción" (Feli, 4/11). */
+async function cambiarOpciones(linea, pid, d) {
+  const ref = CQ.datos.ref;
+  aviso('Guardando…');
+  const r = await api('opcionesCasillero', ref, pid, linea, d);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
+  aviso(d.opciones === true ? 'Listo: son opciones. Cuenta la primera hasta que elijas otra.' : d.opciones === false ? 'Listo: ya no son opciones (se suman).' : '✓ Opción elegida.');
+  abrirCuadro(ref, CQ.modo);
+}
+
 async function notaDeCasillero(linea, pid) {
   const col = columnaDe(pid), c = col && col.casilleros[linea];
   const p = CQ.datos.productos.filter(function (x) { return x.linea === linea; })[0];
