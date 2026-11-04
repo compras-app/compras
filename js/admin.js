@@ -641,6 +641,8 @@ function pintarMasivo() {
   // Fase 6: la cuenta, solo para los de "Ven lo de la Fase 6" y en un pedido (los servicios todavía no llevan cuenta)
   $('ma-f6').hidden = !APP.yo.fase6 || m.tipo === 'servicio';
   if (!$('ma-f6').hidden) { pintarCuentaMasivo(); cargarOpcionesMasivo(); }
+  if (!APP.yo.pruebasF6) m.prueba = false;               // "Es de prueba": solo quienes prueban la Fase 6 (Feli, 4/11)
+  $('ma-prueba').closest('label').hidden = !APP.yo.pruebasF6;
   $('ma-prueba').checked = !!m.prueba;
   $('ma-sitio').disabled = !!(m.f6 && m.f6.sitio) && !$('ma-f6').hidden;
   pintarArchivos();

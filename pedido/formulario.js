@@ -129,7 +129,10 @@ function cuentaF6(cod){ return (F6&&F6.cuentas||[]).find(c=>c.codigo===cod); }
 function pintarF6(){
   const f6=conF6(), bien=f6&&S.f6.bien?(F6.bienes||[]).find(b=>b.id===S.f6.bien):null;
   if(f6&&S.f6.bien&&!bien) S.f6.bien='';
-  $('#q-bien').hidden=!f6; $('#q-prueba').hidden=!f6; $('#q-como').hidden=!f6;
+  // "Probar como" y "Es de prueba": solo quienes prueban la Fase 6 (traen personas; Feli, 4/11)
+  const pruebas=f6&&!!((F6_PROPIO||F6).personas);
+  $('#q-bien').hidden=!f6; $('#q-prueba').hidden=!pruebas; $('#q-como').hidden=!pruebas;
+  if(!pruebas&&S.f6) S.f6.prueba=false;
   if(f6){
     const ps=(F6_PROPIO&&F6_PROPIO.personas||[]).filter(n=>!SES||n!==SES.nombre);
     $('#como').innerHTML='<option value="">Yo'+(SES?' ('+esc(SES.nombre)+')':'')+'</option>'+ps.map(n=>`<option>${esc(n)}</option>`).join('');
