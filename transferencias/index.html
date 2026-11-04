@@ -1958,7 +1958,8 @@
     if(!cargarTexto(g.texto, g.nombre, g.fecha, true)) return;
     EXIST_CUANDO = g.cuando;
     if(g.hasta){ DATA.hasta = g.hasta; mostrarFechaReporte(); }
-    if(g.transferido) TRANSFERIDO_CON = { data: DATA, envio: g.transferido };
+    if(g.transferidos) TRANSFERIDO_CON = { data: DATA, prods: g.transferidos };
+    else if(g.transferido) TRANSFERIDO_CON = { data: DATA, envio: g.transferido };      // lo guardado antes del 4/11: sin los productos
     var egr = g.egresadas || {};
     if(Object.keys(egr).length){
       EGRESADAS = { data: DATA, granjas: egr };
@@ -5773,7 +5774,18 @@
      sigue mostrando el stock de antes hasta que se bajan de nuevo, y un
      segundo clic cargaría todo dos veces en Albor. */
   var EGRESADAS = null;                  // {data, granjas:{nombre:true}} ya egresadas con ese DATA
-  var TRANSFERIDO_CON = null;            // {data, envio}
+  /* Lo ya transferido con estas existencias (Feli, 4/11): {data, prods: {"oficina|código": nombre}}. Otra transferencia
+     con el mismo reporte se frena solo si lleva algo de eso (el reporte sigue mostrando su stock de antes); lo demás sale. */
+  var TRANSFERIDO_CON = null;
+  function anotarTransferido(bloques, x){
+    if(!TRANSFERIDO_CON || TRANSFERIDO_CON.data !== DATA || !TRANSFERIDO_CON.prods) TRANSFERIDO_CON = { data: DATA, prods: {} };
+    var b = bloques[x && x.bloque != null ? x.bloque : -1], fuera = {};
+    ((x && x.fallados) || []).forEach(function(f){ fuera[clave(f.codigo)] = true; });
+    (b ? [b] : bloques).forEach(function(bl){
+      bl.items.forEach(function(it){ if(!fuera[clave(it.codigo)]) TRANSFERIDO_CON.prods[bl.origen_nombre + '|' + clave(it.codigo)] = it.nombre; });
+    });
+    recordarExistencias({ transferidos: TRANSFERIDO_CON.prods, transferido: null });
+  }
 
   function alborLog(texto){
     var log = $('alborlog');
@@ -5886,9 +5898,28 @@
   async function cargarTransferenciaEnAlbor(){
     if(CARGANDO || bajando) return;
     if(!ANALISIS || !ANALISIS.hay){ errorP('No hay nada para transferir todavía.'); return; }
-    if(TRANSFERIDO_CON && TRANSFERIDO_CON.data === DATA && TRANSFERIDO_CON.envio === ANALISIS.dest.nombre){
+    var bloques = bloquesTransferencia();
+    if(TRANSFERIDO_CON && TRANSFERIDO_CON.data === DATA && !TRANSFERIDO_CON.prods && TRANSFERIDO_CON.envio === ANALISIS.dest.nombre){
       errorP('Ya cargaste una transferencia a ' + ANALISIS.dest.nombre + ' con estas existencias. ' +
              'Bajalas de nuevo antes de cargar otra: si no, se transfiere dos veces lo mismo.');
+      return;
+    }
+    // Feli (4/11): solo frena si esta transferencia lleva algo que ya salió de esa oficina con estas existencias
+    var rep = {}, repetidos = [];
+    if(TRANSFERIDO_CON && TRANSFERIDO_CON.data === DATA && TRANSFERIDO_CON.prods){
+      bloques.forEach(function(b){
+        b.items.forEach(function(it){
+          if(!TRANSFERIDO_CON.prods[b.origen_nombre + '|' + clave(it.codigo)]) return;
+          if(!rep[it.nombre]){ rep[it.nombre] = []; repetidos.push(it.nombre); }
+          rep[it.nombre].push(b.origen_nombre);
+        });
+      });
+      repetidos = repetidos.map(function(n){ return n + ' (' + rep[n].join(' y ') + ')'; });
+    }
+    if(repetidos.length){
+      errorP('Con estas existencias ya transferiste ' + (repetidos.length === 1 ? 'este producto' : 'estos productos') + ': ' + repetidos.join(', ') + '. ' +
+             'Bajá las existencias de nuevo antes de transferirlos otra vez (si no, la app no sabe que ya salieron de la oficina), ' +
+             'o poné su "A transferir" en 0 para transferir lo demás.');
       return;
     }
     // Feli (30/10): con existencias de hace 3 horas o más, preguntar antes
@@ -5898,7 +5929,7 @@
                   ' a las ' + String(vieja.getHours()).padStart(2,'0') + ':' + String(vieja.getMinutes()).padStart(2,'0') +
                   '). ¿Estás seguro?\n\nSi no, bajá las existencias de nuevo antes de transferir.')) return;
     }
-    var dest = ANALISIS.dest, bloques = bloquesTransferencia();
+    var dest = ANALISIS.dest;
     var renglones = bloques.reduce(function(s, b){ return s + b.items.length; }, 0);
     if(!confirm('Cargar en Albor la transferencia a ' + dest.nombre + '\n\n' +
                 bloques.map(function(b){
@@ -5923,7 +5954,7 @@
     /* Cada comprobante que Albor confirma queda anotado enseguida (Feli, 30/10: si la carga se cuelga, lo hecho no se
        pierde). La transferencia manual se anota al final, cuando ya es un pedido de la granja. */
     function alHacer(x){
-      TRANSFERIDO_CON = { data: DATA, envio: dest.nombre }; recordarExistencias({ transferido: dest.nombre });
+      anotarTransferido(bloques, x);
       if(manual) return;
       anotarMovimientos('Transferencia', bloques, [x], pedido, extraHist, lote);
       anotados[x.bloque] = true;
@@ -5935,7 +5966,7 @@
     }catch(e){ r = { ok:false, motivo:'Falló la conexión con Albor: ' + e }; }
 
     var hechos = (r && r.hechos) || [];
-    if(hechos.length){ TRANSFERIDO_CON = { data: DATA, envio: dest.nombre }; recordarExistencias({ transferido: dest.nombre }); }
+    hechos.forEach(function(x){ anotarTransferido(bloques, x); });
     /* Transferencia manual (Feli, 16/10): queda como un pedido de esa granja, así se marca Transferido con sus
        pendientes, igual que uno que mandó la granja. */
     var avisoManualAlbor = '';
