@@ -101,11 +101,10 @@ function htmlCasillero(col, p) {
   const editar = CQ.editar && CQ.modo !== 'comprar';
   // Feli (4/11): "Es otra opción": cuenta una sola (la elegida o la primera cargada)
   const opDatos = ' data-linea="' + esc(p.linea) + '" data-prov="' + esc(col.proveedor) + '"';
-  if (c.opciones) h += '<div class="cq-opciones-t">' + c.renglones.length + ' opciones · cuenta una sola' +
-    (editar && !c.comprado ? ' <button type="button" class="cq-agregar-nota no-imprimir" data-cq-opcion="no"' + opDatos + '>No son opciones</button>' : '') + '</div>';
+  if (c.opciones && editar && !c.comprado) h += '<div class="cq-opciones-t"><button type="button" class="cq-agregar-nota no-imprimir" data-cq-opcion="no"' + opDatos + '>No son opciones</button></div>';
   h += c.renglones.map(function (r, i) {
     const mover = editar && r.id && !(c.comprado);
-    const op = c.opciones ? '<div class="cq-opcion' + (r.elegida ? ' si' : '') + '">' + (r.elegida ? '✓ Opción ' + (i + 1) + ': la que cuenta'
+    const op = c.opciones ? '<div class="cq-opcion' + (r.elegida ? ' si' : '') + '">' + (r.elegida ? '✓ Opción ' + (i + 1) + ': La elegida'
       : 'Opción ' + (i + 1) + (c.comprado ? '' : ' <button type="button" class="cq-agregar-nota no-imprimir" data-cq-elegir-op="' + esc(r.id) + '"' + opDatos + '>Elegir esta opción</button>')) + '</div>'
       : (editar && c.renglones.length > 1 && !c.comprado && r.id ? '<button type="button" class="cq-agregar-nota cq-es-opcion no-imprimir" data-cq-opcion="si"' + opDatos + '>Es otra opción</button>' : '');
     return '<div class="cq-ren' + (mover ? ' cq-movible' : '') + (c.opciones && !r.elegida ? ' cq-opcion-no' : '') + '"' + (mover ? ' draggable="true" data-cq-ren="' + esc(r.id) + '" data-prov="' + esc(col.proveedor) + '"' : '') + '>' +
@@ -121,7 +120,7 @@ function htmlCasillero(col, p) {
       (r.id ? '<button type="button" class="cq-agregar-nota no-imprimir" data-cq-nota="' + esc(r.id) + '">' + (r.nota ? 'Cambiar la nota' : 'Agregar nota') + '</button>' : '') +
       (mover ? ' <button type="button" class="cq-agregar-nota no-imprimir" data-cq-mover="' + esc(r.id) + '" data-prov="' + esc(col.proveedor) + '">Mover a…</button>' : '') + '</div>';
   }).join('');
-  if (c.renglones.length > 1 && c.total !== null) h += '<div class="cq-precios">' + (c.opciones ? 'Cuenta: ' : 'Total: ') + '<b>' + esc(plata(c.total, c.moneda)) + '</b></div>';
+  if (c.renglones.length > 1 && c.total !== null) h += '<div class="cq-precios">' + 'Total: ' + '<b>' + esc(plata(c.total, c.moneda)) + '</b></div>';
   if (c.otraUnidad && c.precioNuestro !== null) h += '<div class="cq-nuestra">= ' + esc(plata(c.precioNuestro, c.moneda)) + ' ' + esc(porNuestraUnidad(p.cantidad)) + '</div>';
   if (c.avisos.length) h += '<div class="cq-aviso">' + c.avisos.map(esc).join(' · ') + '</div>';
   h += htmlControl(col.proveedor + '|' + p.linea, c.huella, c.control);
@@ -138,11 +137,14 @@ function htmlOpcionesPediste(p) {
       const precio = r.importe !== null ? r.importe : r.precio;
       return '<div class="cq-opcion-p' + (r.elegida ? ' si' : '') + '">' + (r.elegida ? '✓ ' : '') + (i + 1) + '. ' + esc(capital(r.texto)) +
         (precio !== null ? ' · ' + esc(plata(precio, r.moneda)) : '') + '</div>';
-    }).join('') + (c.opcionElegidaPor ? '<div class="cq-gris">La eligió ' + esc(c.opcionElegidaPor) + '</div>' : '<div class="cq-gris">Cuenta la primera hasta que se elija otra.</div>') + '</div>';
+    }).join('') + (c.opcionElegidaPor ? '<div class="cq-gris">La eligió ' + esc(c.opcionElegidaPor) + '</div>' : '') + '</div>';
   }).join('');
 }
 
 function htmlTotalesColumna(col) {
+  // Feli (4/11): el total es uno solo: la suma de los renglones como quedaron (lo corregido, la opción elegida, lo no pedido)
+  if (col.total) return '<div class="cq-tot"><span>Total <span class="cq-gris">(' + esc(col.total.que) + ')</span></span><b>' + esc(plata(col.total.monto, col.total.moneda)) + '</b></div>' +
+    htmlControl(col.proveedor + '|_totales', col.huella, col.control);
   const fila = function (t, v, m, fuerte) { return v === null || v === undefined ? '' : '<div class="cq-tot"><span>' + t + '</span>' + (fuerte ? '<b>' : '<span>') + esc(plata(v, m)) + (fuerte ? '</b>' : '</span>') + '</div>'; };
   let h = col.partes.map(function (e) {
     const iva = e.conIva === 'si' ? '(precios con IVA)' : e.conIva === 'no' ? '(precios sin IVA)' : '(sin dato de IVA)';
@@ -162,8 +164,6 @@ function htmlTotalesColumna(col) {
       (col.repite ? '<div class="cq-cambio">Ojo: una parte repite productos de otra, y la suma los cuenta dos veces. Para comparar, mirá el total comparable.</div>' : '')
       : '<div class="cq-gris">Las partes no se pueden sumar: no dicen lo mismo del IVA.</div>';
   }
-  if (col.conOpciones && col.totalOpciones) h += '<div class="cq-este"><div class="cq-gris">Con las opciones que cuentan (una por producto):</div>' +
-    fila('Total', col.totalOpciones.monto, col.totalOpciones.moneda, true) + '</div>';
   return h + htmlControl(col.proveedor + '|_totales', col.huella, col.control);
 }
 

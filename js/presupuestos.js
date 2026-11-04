@@ -457,7 +457,11 @@ function htmlCuerpoPresupuesto(b) {
   const iva = b.conIva === 'si' ? '(precios con IVA)' : b.conIva === 'no' ? '(precios sin IVA)' : '(sin dato de IVA)';
   const tot = [['Subtotal', b.subtotal], ['Descuento', b.descuento], ['IVA', b.iva], ['Otros impuestos', b.otros || null], ['Flete y otros cargos', b.cargos || null], ['Total', b.total]]
     .filter(function (x) { return x[1] !== null && x[1] !== undefined; });
-  if (tot.length) {
+  if (b.totalUnico && est !== 'Leyendo') {
+    // Feli (4/11): el total es uno solo: la suma de los renglones como quedaron (corregidos, la opción elegida, para este pedido)
+    h += '<div class="pr-totales"><div><span>Total</span><b>' + esc(plata(b.resumen.monto, b.moneda)) + '</b></div>' +
+      '<div class="pr-nota">(' + esc(b.resumen.que) + ')</div></div>';
+  } else if (tot.length) {
     h += '<div class="pr-totales">' + tot.map(function (x) { return '<div><span>' + x[0] + '</span><b>' + esc(plata(x[1], b.moneda)) + '</b></div>'; }).join('') +
       '<div class="pr-nota">' + iva + '</div></div>';
   } else if (b.suma !== null && b.suma !== undefined && est !== 'Leyendo') {
@@ -466,7 +470,7 @@ function htmlCuerpoPresupuesto(b) {
       '<div class="pr-nota">El presupuesto no trae totales: la suma la hizo la app (los precios de los productos son sin IVA).</div></div>';
   }
   // Lo que vale para este pedido, si cambiaste cantidades o se repartió con otro pedido (Feli, 2026-10-06)
-  const a = b.paraEste;
+  const a = b.totalUnico ? null : b.paraEste;
   if (a) {
     const fila = function (t, v) { return v === null || v === undefined ? '' : '<div><span>' + t + '</span><span>' + esc(plata(v, b.moneda)) + '</span></div>'; };
     const motivos = [];
@@ -513,11 +517,11 @@ function estadoDePartes(partes) {
 function htmlPresupuesto(partes) {
   const b = partes[0], est = partes.length > 1 ? estadoDePartes(partes) : b.estado;
   // El total del título: el de cada parte (o lo que vale para este pedido), sumado si tienen la misma marca
-  const montos = partes.map(function (x) { return x.paraEste ? { monto: x.paraEste.sinIva, que: x.paraEste.que || 'sin IVA', calculado: true } : x.resumen; });
+  const montos = partes.map(function (x) { return x.paraEste && !x.totalUnico ? { monto: x.paraEste.sinIva, que: x.paraEste.que || 'sin IVA', calculado: true } : x.resumen; });
   let total = '', paraEste = '';
   if (partes.length === 1) {
     total = htmlResumenTotal(b.resumen, b.moneda);
-    if (b.paraEste) paraEste = 'para este pedido: ' + esc(plata(b.paraEste.sinIva, b.moneda)) + ' (' + esc(b.paraEste.que || 'sin IVA') + ')';
+    if (b.paraEste && !b.totalUnico) paraEste = 'para este pedido: ' + esc(plata(b.paraEste.sinIva, b.moneda)) + ' (' + esc(b.paraEste.que || 'sin IVA') + ')';
   } else if (montos.every(function (m) { return m; }) && montos.every(function (m) { return m.que === montos[0].que; })) {
     total = htmlResumenTotal({ monto: Math.round(montos.reduce(function (s, m) { return s + m.monto; }, 0) * 100) / 100, que: montos[0].que,
                                calculado: montos.some(function (m) { return m.calculado; }) }, b.moneda);
