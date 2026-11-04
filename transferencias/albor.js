@@ -79,6 +79,7 @@ var Mano = {
       if(!w) return;
       delete yo.esperan[m.id];
       if(w.t) clearTimeout(w.t);
+      if(w.lento) clearInterval(w.lento);
       if(m.ok) w.ok(m.valor); else w.mal(new Error(m.error || 'La extensión no pudo.'));
     });
     p.onDisconnect.addListener(function(){
@@ -87,6 +88,7 @@ var Mano = {
       var esperan = yo.esperan; yo.esperan = {};
       Object.keys(esperan).forEach(function(k){
         if(esperan[k].t) clearTimeout(esperan[k].t);
+        if(esperan[k].lento) clearInterval(esperan[k].lento);
         esperan[k].mal(new Error('EXT_DESCONECTADA'));
       });
     });
@@ -102,11 +104,18 @@ var Mano = {
       var w = { ok: ok, mal: mal };
       if(limite) w.t = setTimeout(function(){
         delete yo.esperan[id];
+        if(w.lento) clearInterval(w.lento);
         mal(new Error('La extensión no contestó a tiempo (' + hacer + ').'));
       }, limite);
+      // Feli (4/11): si algo tarda, el recuadro dice qué está esperando (antes se quedaba callado minutos)
+      if(hacer !== 'dormir' && (!limite || limite > 20000)) w.lento = setInterval(function(){
+        var que = hacer === 'cdp' ? (datos.metodo || '') + (datos.params && datos.params.expression ? ' ' + String(datos.params.expression).replace(/\s+/g, ' ').slice(0, 60) : '')
+                : hacer === 'ir' ? 'abrir ' + String(datos.url || '').replace(C.BASE, '') : hacer;
+        try{ avisar('   (sigo esperando a Albor: ' + que + ')'); }catch(e){}
+      }, 20000);
       yo.esperan[id] = w;
       try{ yo.puerto.postMessage(m); }
-      catch(e){ delete yo.esperan[id]; yo.puerto = null; mal(new Error('EXT_DESCONECTADA')); }
+      catch(e){ delete yo.esperan[id]; if(w.t) clearTimeout(w.t); if(w.lento) clearInterval(w.lento); yo.puerto = null; mal(new Error('EXT_DESCONECTADA')); }
     });
   },
 
@@ -1261,12 +1270,28 @@ async function comprobanteEnBlanco(pg, empresa, empresaActual, charla, deNuevo){
     return e;
   }
   empresaActual = await irAEmpresa(pg, empresa, empresaActual, charla);
-  await nuevoComprobante(pg);
+  charla.decir('   abro un comprobante nuevo…');
+  await nuevoComprobante(pg, empresaActual);
   return empresaActual;
 }
 
-async function nuevoComprobante(pg){
+/* El comprobante nuevo se abre yendo directo a su página (el link de "Nuevo", /{empresa}/Comprobantes_Stock/Create), como
+   la orden de compra (Feli, 4/11: en La Colorada, después de cambiar a la empresa 5 y tocar "Nuevo", la extensión se quedaba
+   esperando para siempre sin avisar; el 29/10 pasó lo mismo con la orden en Safari). Si la página no abre el formulario,
+   se toca "Nuevo" como antes. */
+async function nuevoComprobante(pg, empresa){
   await cerrarPopups(pg);
+  var e = String(empresa || (await empresaEnUrl(pg)) || '').trim();
+  if(e){
+    try{
+      await pg.ir(C.BASE + '/' + e + '/Comprobantes_Stock/Create', 40000);
+      await esperar(pg, 40000);
+      await pg.loc('#ID_Tipo_Comprobante').waitFor('visible', 15000);
+      return;
+    }catch(err){ if(err instanceof Cortado) throw err; }
+    await pg.ir(C.BASE + '/' + e + '/Comprobantes_Stock', 40000);
+    await esperar(pg, 40000);
+  }
   await pg.loc("a:has-text('Nuevo'), button:has-text('Nuevo'), #btnNuevo").first().click({ timeout: 20000 });
   await esperar(pg, 40000);
 }
@@ -2046,6 +2071,7 @@ async function transferirBloque(pg, b, empresaActual, charla, n, total, deNuevo)
     .filter(function(x){ return ['', '?'].indexOf(String(x[1] == null ? '' : x[1]).trim()) >= 0; })
     .map(function(x){ return x[0]; });
   var grilla = await esperarGrilla(pg);
+  charla.decir('   cabecera lista' + (grilla ? '' : ' (sin la tabla de insumos todavía)') + '.');
 
   var cabecera = '   Origen:  ' + b.origen_nombre + '\n   Destino: ' + b.destino_nombre + '\n   Fecha:   ' + b.fecha +
                  (b.campania ? '\n   Campaña: ' + (campania || 'SIN ELEGIR') : '');
@@ -2434,7 +2460,7 @@ async function centrosDeUnidad(pg, unidad, charla, limite){
    egresos dos veces y después recién hace la transferencia" en La Colorada, que usa dos empresas). */
 async function listasDeEmpresa(pg, empresa, actual, charla, unidades, soloTransferencia){
   actual = await irAEmpresa(pg, empresa, actual, charla);
-  await nuevoComprobante(pg);
+  await nuevoComprobante(pg, actual);
   await elegirOpcion(pg, '#ID_Tipo_Comprobante', TIPO_TRANSFERENCIA, 'Tipo de comprobante', charla);
   var r = { origen: await opcionesDe(pg, '#ID_Punto_Stock_Origen'), destino: await opcionesDe(pg, '#ID_Punto_Stock_Destino') };
   if(soloTransferencia) return { actual: actual, listas: r };
