@@ -109,7 +109,9 @@ function elegirTarjetaYProveedor(tarjetas, todos, otras, provChat) {
         pintar();
       });
     });
-    if ($('pr-otras')) $('pr-otras').addEventListener('click', function () { verOtras = !verOtras; pintar(); });
+    // Feli (4/11): "Otras" no andaba: la primera vez la ventanita todavía no está en la página y $() no lo encontraba
+    const otrasB = cuerpo.querySelector('#pr-otras');
+    if (otrasB) otrasB.addEventListener('click', function () { verOtras = !verOtras; pintar(); });
     const qi = cuerpo.querySelector('#pr-otras-q');
     if (qi) qi.addEventListener('input', function () { q = qi.value; const pos = qi.selectionStart; pintar(); const q2 = cuerpo.querySelector('#pr-otras-q'); q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (e) {} });
     cuerpo.querySelectorAll('[data-prov]').forEach(function (b) { b.addEventListener('click', function () { prov = b.dataset.prov; pintar(); }); });

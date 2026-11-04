@@ -54,6 +54,16 @@ async function abrirCuadro(ref, modo) {
   pintarCuadro();
 }
 
+/** Feli (4/11): rehace el cuadro sin taparlo con "Armando…" ni mandarlo arriba de todo (queda donde estaba). */
+async function actualizarCuadro(ref) {
+  const r = await apiLenta('cuadroComparativo', ref);
+  if ($('cuadro').hidden || CQ.ref !== ref) return;
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para actualizar el cuadro.' : r.error, 'bad');
+  CQ.datos = r.cuadro;
+  pintarCuadroQuieto();
+}
+function pintarCuadroQuieto() { pintarCuadro(); }      // pintarCuadro ya deja el cuadro donde estaba
+
 function cerrarCuadro() {
   if (CQ.comprando) return aviso('Esperá a que termine la compra.');
   $('cuadro').hidden = true;
@@ -191,6 +201,12 @@ function htmlNotas(col) {
 function pintarCuadro() {
   const q = CQ.datos;
   if (!q) return;
+  // Feli (4/11): al redibujar (elegir, anotar, controlar) el cuadro queda donde estaba, no vuelve arriba de todo
+  const cu0 = $('cuadro-cuerpo'), y0 = cu0.scrollTop, x0 = cu0.scrollLeft;
+  try { pintarCuadroAdentro(q); } finally { cu0.scrollTop = y0; cu0.scrollLeft = x0; }
+}
+
+function pintarCuadroAdentro(q) {
   // Feli (2026-10-06): comparar y comprar son el mismo cuadro; los seleccionadores, al tocar "Realizar la compra" (en Cotización)
   if (!q.puedeComprar) CQ.modo = 'ver';
   $('cuadro-titulo').textContent = '📊 Cuadro comparativo · ' + q.codigo + (q.titulo ? ' · ' + q.titulo : '');
@@ -403,13 +419,17 @@ function q_soloMirar() { return !APP.yo.admin; }
 
 /** "Elegir este" / "Opción ganadora" (Feli, 4/11). */
 async function cambiarGanador(d) {
-  const ref = CQ.datos.ref;
-  aviso('Guardando…');
+  const ref = CQ.datos.ref, cols = CQ.datos.columnas;
+  // Se marca enseguida, sin rehacer el cuadro (Feli, 4/11: cada vez la mandaba arriba de todo); se guarda por detrás
+  const poner = function (linea, pid) { cols.forEach(function (c) { const x = c.casilleros[linea]; if (x) x.ganador = !!pid && c.proveedor === pid && x.renglones.length > 0; }); };
+  if (d.todo !== undefined) {
+    const col = columnaDe(d.todo), ya = esGanadora(col);
+    d.lineas.forEach(function (l) { poner(l, ya ? '' : d.todo); });
+  } else poner(d.linea, d.proveedor);
+  pintarCuadroQuieto();
   const r = await api('ganadorCuadro', ref, d);
-  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
-  aviso('🏆 Listo.');
+  if (!r.ok) { aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad'); actualizarCuadro(ref); return; }
   if (TB.abierta === ref) traerTarjeta(ref);
-  abrirCuadro(ref, CQ.modo);
 }
 
 /** Lo elegido, por proveedor (en el orden de las columnas): [{col, lineas, total, moneda}]. */
@@ -600,7 +620,7 @@ async function cambiarRenglon(id, cambios, que) {
   if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
   aviso(que + (r.reabierto ? ' El presupuesto estaba revisado: volvió a "Sin revisar" para que lo revises de nuevo.' : ''));
   if (TB.abierta === ref) traerTarjeta(ref);
-  abrirCuadro(ref, CQ.modo);
+  actualizarCuadro(ref);
 }
 
 async function renombrarRenglon(id) {
@@ -739,8 +759,9 @@ async function cambiarOpciones(linea, pid, d) {
   aviso('Guardando…');
   const r = await api('opcionesCasillero', ref, pid, linea, d);
   if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal para esto. Probá cuando vuelva.' : r.error, 'bad');
-  aviso(d.opciones === true ? 'Listo: son opciones. Cuenta la primera hasta que elijas otra.' : d.opciones === false ? 'Listo: ya no son opciones (se suman).' : '✓ Opción elegida.');
-  abrirCuadro(ref, CQ.modo);
+  aviso(d.opciones === true ? 'Listo: son opciones. Vale la primera hasta que elijas otra.' : d.opciones === false ? 'Listo: ya no son opciones (se suman).' : '✓ Opción elegida.');
+  if (TB.abierta === ref) traerTarjeta(ref);
+  actualizarCuadro(ref);
 }
 
 async function notaDeCasillero(linea, pid) {
