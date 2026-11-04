@@ -771,6 +771,11 @@ body[data-pantalla="chats"] .contenido{max-width:none;padding:0}
 .pr-ed-q input{width:auto!important}
 .pr-ed-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px}
 .pr-editar>label{display:block;font-size:12px;color:var(--muted);margin-top:6px}
+/* Feli (4/11): cantidad, precio unitario y precio total en una fila; el IVA en plata abajo del % */
+.pr-ed-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pr-ed-tot label{display:block;font-size:12px;color:var(--muted)}
+.pr-ed-iva{display:block;margin-top:2px;font-size:11px;color:var(--muted)}
+.pr-ed-sub{margin:4px 0 0}
 /* El visor también muestra PDF (página por página) y videos, adentro de la app (Feli, 2026-10-05) */
 .visor-doc{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;padding:calc(52px + env(safe-area-inset-top)) 8px 24px;text-align:center}
 .visor-doc canvas{display:block;margin:0 auto 10px;max-width:100%;background:#fff;border-radius:4px}

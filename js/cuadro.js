@@ -3,7 +3,7 @@
    proveedor (con sus partes) y una fila por producto pedido, en el orden de la tarjeta. Cada casillero: las
    unidades, el producto como lo escribió el proveedor, el precio unitario y el total; abajo, en gris, los avisos.
    El más barato de cada fila se marca con texto y color (en nuestra unidad y en la misma moneda). Abajo de cada
-   columna: No pedido, totales, total comparable, condiciones y anotaciones. Se arma cada vez (sin IA), así sale
+   columna: No pedido, el total (sin lo no pedido; el total comparable se sacó: Feli, 4/11), condiciones y anotaciones. Se arma cada vez (sin IA), así sale
    rehecho después de cualquier cambio; quedan guardados los tildes de "controlado" y las anotaciones.
    "🖨️ Imprimir" lo imprime o lo guarda como PDF, apaisado y con todas las columnas. Todo necesita señal. */
 
@@ -155,7 +155,7 @@ function htmlOpcionesPediste(p) {
 }
 
 function htmlTotalesColumna(col) {
-  // Feli (4/11): el total es uno solo: la suma de los renglones como quedaron (lo corregido, la opción elegida, lo no pedido)
+  // Feli (4/11): el total es uno solo: la suma de los renglones como quedaron (lo corregido, la opción elegida; sin lo no pedido)
   if (col.total) return '<div class="cq-tot"><span>Total <span class="cq-gris">(' + esc(col.total.que) + ')</span></span><b>' + esc(plata(col.total.monto, col.total.moneda)) + '</b></div>' +
     htmlControl(col.proveedor + '|_totales', col.huella, col.control);
   const fila = function (t, v, m, fuerte) { return v === null || v === undefined ? '' : '<div class="cq-tot"><span>' + t + '</span>' + (fuerte ? '<b>' : '<span>') + esc(plata(v, m)) + (fuerte ? '</b>' : '</span>') + '</div>'; };
@@ -174,7 +174,7 @@ function htmlTotalesColumna(col) {
   }).join('');
   if (col.partes.length > 1) {
     h += col.suma ? '<div class="cq-parte">Las ' + col.partes.length + ' partes juntas</div>' + fila('Total (' + col.suma.que + ')', col.suma.monto, col.partes[0].moneda, true) +
-      (col.repite ? '<div class="cq-cambio">Ojo: una parte repite productos de otra, y la suma los cuenta dos veces. Para comparar, mirá el total comparable.</div>' : '')
+      (col.repite ? '<div class="cq-cambio">Ojo: una parte repite productos de otra, y la suma los cuenta dos veces.</div>' : '')
       : '<div class="cq-gris">Las partes no se pueden sumar: no dicen lo mismo del IVA.</div>';
   }
   return h + htmlControl(col.proveedor + '|_totales', col.huella, col.control);
@@ -249,12 +249,6 @@ function pintarCuadroAdentro(q) {
   if (q.sinProductos) h += fila('Renglones', function (c) { return renglones(c.renglones || []); });
   else if (cols.some(function (c) { return c.noPedido.length; })) h += fila('No pedido', function (c) { return renglones(c.noPedido); }, 'cq-pie');
   h += fila('Totales', htmlTotalesColumna, 'cq-pie');
-  if (!q.sinProductos) {
-    const cp = q.comparable;
-    h += fila('Total comparable<div class="cq-gris">' + (cp.nota ? esc(cp.nota) : 'Solo lo pedido, en la cantidad pedida, de los productos que cotizaron todos (' + cp.productos + ' de ' + cp.de + ')') + '</div>', function (c) {
-      return c.comparable === null ? '<span class="cq-gris">—</span>' : '<b class="cq-comparable">' + esc(plata(c.comparable, cp.moneda)) + '</b>';
-    }, 'cq-pie');
-  }
   h += fila('Condiciones', htmlCondiciones, 'cq-pie');
   h += fila('Anotaciones', htmlNotas, 'cq-pie');
   h += '</tbody></table>';

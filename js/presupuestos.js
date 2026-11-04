@@ -690,55 +690,140 @@ function numEnInput(n) { return n === null || n === undefined ? '' : String(n).r
 /** La cantidad que se ve al corregir: la que cambió una persona, o la del presupuesto. */
 function cantVista(r) { return r && r.ajustada !== null && r.ajustada !== undefined ? r.ajustada : r && r.cant; }
 
-/** La ventana para corregir: cada renglón (a qué producto va, cantidad, precio, importe), agregar renglones, totales y condiciones. */
+/** Un número escrito a mano ("1.234,56", "371587,6", "1234.5"), o null. */
+function numDeInput(t) {
+  let s = String(t === null || t === undefined ? '' : t).replace(/[^\d,.-]/g, '');
+  if (!s) return null;
+  if (s.indexOf(',') !== -1) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+}
+
+/** Un número calculado, para un campo (con coma, sin puntos de miles). */
+function numParaInput(n, dec) {
+  if (n === null || n === undefined || isNaN(n)) return '';
+  const f = Math.pow(10, dec || 2);
+  return String(Math.round(n * f) / f).replace('.', ',');
+}
+
+/**
+ * La ventana para corregir (Feli, 4/11): cada renglón (a qué producto va, cómo lo escribió, cantidad, precio unitario y precio
+ * total, enlazados: al cambiar uno se calcula el otro con la cantidad), agregar renglones, totales y condiciones. El subtotal sigue
+ * a la suma de los renglones (si ya la seguía o está vacío) y el total = subtotal − descuento + IVA (siempre en %) + otros impuestos;
+ * cambiar el total recalcula el subtotal. El flete va aparte. Sin "cómo lo escribió", va como lo pedimos.
+ */
 async function corregirPresupuestoUI(b) {
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo pr-editar';
-  const opciones = '<option value="">No pedido</option>' + (b.deLaTarjeta || b.productos).map(function (p) {
+  const prods = b.deLaTarjeta || b.productos;
+  const opciones = '<option value="">No pedido</option>' + prods.map(function (p) {
     return '<option value="' + esc(p.linea) + '">' + esc(p.cantidad + ' · ' + p.nombre) + '</option>';
   }).join('');
+  // El precio total que se ve: con la cantidad cambiada a mano, el de esa cantidad
+  const importeVista = function (r) { return r.ajustada !== null && r.ajustada !== undefined && r.precio !== null ? Math.round(r.ajustada * r.precio * 100) / 100 : r.importe; };
+  const campo = function (c, titulo, v) { const x = numEnInput(v); return '<label>' + titulo + '<input data-c="' + c + '" inputmode="decimal" value="' + esc(x) + '" data-ini="' + esc(x) + '"></label>'; };
   const fila = function (r) {
     r = r || {};
     return '<div class="pr-ed" data-id="' + esc(r.id || '') + '">' +
       '<div class="pr-ed-n">' + (r.n ? 'Renglón ' + r.n : 'Renglón nuevo') + (r.otras && r.otras.length && !r.linea ? ' <small>(de ' + esc(r.otras.join(' y ')) + ')</small>' : '') + '<label class="pr-ed-q"><input type="checkbox" data-c="quitar"> Quitar</label></div>' +
-      '<label>Producto que pedimos<select data-c="linea">' + opciones + '</select></label>' +
-      '<label>Cómo lo escribió<input data-c="texto" value="' + esc(r.texto || '') + '"></label>' +
-      '<div class="pr-ed-g"><label>Cantidad<input data-c="cant" inputmode="decimal" value="' + esc(numEnInput(cantVista(r))) + '"></label>' +
-      '<label>Unidad<input data-c="unidad" value="' + esc(r.unidad || '') + '"></label>' +
-      '<label title="Cuántas de nuestras unidades trae una (un rollo = 100 m)">Trae<input data-c="contenido" inputmode="decimal" value="' + esc(numEnInput(r.contenido)) + '"></label></div>' +
-      '<div class="pr-ed-g"><label>Precio unitario<input data-c="precio" inputmode="decimal" value="' + esc(numEnInput(r.precio)) + '"></label>' +
-      '<label>Importe<input data-c="importe" inputmode="decimal" value="' + esc(numEnInput(r.importe)) + '"></label></div></div>';
+      '<label>Producto que pedimos<select data-c="linea" data-ini="' + esc(r.linea || '') + '">' + opciones + '</select></label>' +
+      '<label>Cómo lo escribió<input data-c="texto" value="' + esc(r.texto || '') + '" data-ini="' + esc(r.texto || '') + '" placeholder="Vacío: va como lo pedimos"></label>' +
+      '<div class="pr-ed-g pr-ed-3">' + campo('cant', 'Cantidad', cantVista(r)) + campo('precio', 'Precio unitario', r.precio) + campo('importe', 'Precio total', importeVista(r)) + '</div></div>';
   };
-  const tot = [['subtotal', 'Subtotal', b.subtotal], ['descuento', 'Descuento', b.descuento], ['iva', 'IVA', b.iva], ['cargos', 'Flete y otros cargos', b.cargos || null], ['total', 'Total', b.total]];
+  const desc0 = b.descuento === null || b.descuento === undefined ? null : Math.abs(b.descuento);
+  const otros = b.otros || 0;
+  const base0 = (b.subtotal !== null && b.subtotal !== undefined ? b.subtotal : b.suma) - (desc0 || 0);
+  const pct0 = b.iva !== null && b.iva !== undefined && base0 > 0 ? Math.round(b.iva / base0 * 10000) / 100 : null;
   const cond = [['validez', 'Validez', b.validez], ['formaPago', 'Forma de pago', b.formaPago], ['plazo', 'Plazo de entrega', b.plazo], ['entrega', 'Entrega (retira o envío)', b.entrega],
                 ['flete', 'Flete', b.flete], ['observaciones', 'Observaciones', b.observaciones]];
-  cuerpo.innerHTML = '<p class="nota">Los números como en el presupuesto (1.234,56). Las cuentas las vuelve a hacer la app. ' +
-    'Si cambiás solo la cantidad (sin tocar el precio ni el importe), queda como un cambio tuyo para este pedido: el presupuesto sigue diciendo lo suyo y la app calcula el importe nuevo.</p>' +
+  const tot = function (k, titulo, v, extra) { return '<label>' + titulo + '<input data-t="' + k + '" inputmode="decimal" value="' + esc(numEnInput(v)) + '">' + (extra || '') + '</label>'; };
+  cuerpo.innerHTML = '<p class="nota">Los números como en el presupuesto (1.234,56). Al cambiar la cantidad o el precio unitario se calcula el precio total, y al revés.</p>' +
     '<div id="pr-ed-filas">' + b.renglones.map(fila).join('') + '</div>' +
     '<button type="button" class="btn-chico" id="pr-ed-mas">＋ Agregar un renglón</button>' +
-    '<h4>Totales</h4><div class="pr-ed-g">' + tot.map(function (x) { return '<label>' + x[1] + '<input data-t="' + x[0] + '" inputmode="decimal" value="' + esc(numEnInput(x[2])) + '"></label>'; }).join('') + '</div>' +
+    '<h4>Totales</h4><div class="pr-ed-g pr-ed-tot">' + tot('subtotal', 'Subtotal', b.subtotal) + tot('descuento', 'Descuento ($)', desc0) +
+    tot('ivaPct', 'IVA (%)', pct0, '<small class="pr-ed-iva" id="pr-ed-iva"></small>') + tot('total', 'Total', b.total) + '</div>' +
+    (otros ? '<p class="nota">Otros impuestos: ' + esc(plata(otros, b.moneda)) + ' (entran en el total).</p>' : '') +
+    '<p class="nota pr-ed-sub">El total es el subtotal menos el descuento, más el IVA. Si cambiás el total, se recalcula el subtotal.</p>' +
+    '<label>Flete y otros cargos (aparte: no entra en el total)<input data-t="cargos" inputmode="decimal" value="' + esc(numEnInput(b.cargos || null)) + '"></label>' +
     '<label>¿Los precios tienen IVA?<select data-k="conIva"><option value="">Sin dato</option><option value="si">Con IVA</option><option value="no">Sin IVA</option></select></label>' +
     '<h4>Condiciones</h4>' + cond.map(function (x) { return '<label>' + x[1] + '<input data-k="' + x[0] + '" value="' + esc(x[2] || '') + '"></label>'; }).join('');
   // Lo que ya estaba: producto elegido y "con IVA"
   b.renglones.forEach(function (r, i) { cuerpo.querySelectorAll('.pr-ed')[i].querySelector('[data-c="linea"]').value = r.linea || ''; });
   cuerpo.querySelector('[data-k="conIva"]').value = b.conIva === 'si' || b.conIva === 'no' ? b.conIva : '';
+  const T = function (k) { return cuerpo.querySelector('[data-t="' + k + '"]'); };
+  const r2 = function (n) { return Math.round(n * 100) / 100; };
+  // El IVA en plata: el % sobre (subtotal − descuento); si no se pudo sacar el % (sin subtotal) y no se tocó, el que leyó la app
+  let ivaTocado = false;
+  const ivaMonto = function () {
+    const pct = numDeInput(T('ivaPct').value), sub = numDeInput(T('subtotal').value), d = Math.abs(numDeInput(T('descuento').value) || 0);
+    if (pct === null) return ivaTocado || pct0 !== null ? null : (b.iva === undefined ? null : b.iva);
+    return sub === null ? null : r2((sub - d) * pct / 100);
+  };
+  // Con cuerpo.querySelector: la primera vez la ventanita todavía no está en la página
+  const mostrarIva = function () { const m = ivaMonto(); cuerpo.querySelector('#pr-ed-iva').textContent = m === null ? '' : '= ' + plata(m, b.moneda); };
+  const rehacerTotal = function () {
+    const sub = numDeInput(T('subtotal').value);
+    if (sub !== null) T('total').value = numParaInput(sub - Math.abs(numDeInput(T('descuento').value) || 0) + (ivaMonto() || 0) + otros);
+    mostrarIva();
+  };
+  const rehacerSubtotal = function () {
+    const tot = numDeInput(T('total').value), pct = numDeInput(T('ivaPct').value) || 0, d = Math.abs(numDeInput(T('descuento').value) || 0);
+    if (tot !== null) T('subtotal').value = numParaInput((tot - otros) / (1 + pct / 100) + d);
+    mostrarIva();
+  };
+  // El subtotal sigue a la suma de los renglones, si ya la seguía (o estaba vacío): si no, queda lo que dice el presupuesto
+  const sumaFilas = function () {
+    let s = 0;
+    cuerpo.querySelectorAll('.pr-ed').forEach(function (el) { if (!el.querySelector('[data-c="quitar"]').checked) s += numDeInput(el.querySelector('[data-c="importe"]').value) || 0; });
+    return r2(s);
+  };
+  let sumaAntes = sumaFilas();
+  const seguirSuma = function () {
+    const s = sumaFilas(), sub = numDeInput(T('subtotal').value);
+    if (sub === null || Math.abs(sub - sumaAntes) < 0.01) { T('subtotal').value = numParaInput(s); rehacerTotal(); }
+    sumaAntes = s;
+  };
+  cuerpo.addEventListener('input', function (e) {
+    const x = e.target, ren = x.closest('.pr-ed');
+    if (ren && /^(cant|precio|importe)$/.test(x.dataset.c)) {
+      const q = ren.querySelector('[data-c="cant"]'), p = ren.querySelector('[data-c="precio"]'), i = ren.querySelector('[data-c="importe"]');
+      const nq = numDeInput(q.value), np = numDeInput(p.value), ni = numDeInput(i.value);
+      if (x === i) { if (nq && ni !== null) p.value = numParaInput(ni / nq, 4); }
+      else if (nq !== null && np !== null) i.value = numParaInput(nq * np);
+      else if (x === q && nq && ni !== null) p.value = numParaInput(ni / nq, 4);
+      seguirSuma();
+    } else if (x.dataset.t === 'total') rehacerSubtotal();
+    else if (x.dataset.t === 'ivaPct') { ivaTocado = true; rehacerTotal(); }
+    else if (x.dataset.t === 'subtotal' || x.dataset.t === 'descuento') rehacerTotal();
+  });
+  cuerpo.addEventListener('change', function (e) { if (e.target.dataset.c === 'quitar') seguirSuma(); });
+  mostrarIva();
   cuerpo.querySelector('#pr-ed-mas').addEventListener('click', function () {
     $('pr-ed-filas').insertAdjacentHTML('beforeend', fila(null));
   });
+  const nombreDe = function (l) { const p = prods.filter(function (x) { return x.linea === l; })[0]; return p ? p.nombre : ''; };
   const leer = function () {
     const cambios = { renglones: [], totales: {}, condiciones: {} };
-    document.querySelectorAll('#pr-ed-filas .pr-ed').forEach(function (el) {
-      const v = function (c) { const x = el.querySelector('[data-c="' + c + '"]'); return x.type === 'checkbox' ? x.checked : x.value.trim(); };
+    cuerpo.querySelectorAll('#pr-ed-filas .pr-ed').forEach(function (el) {
+      const inp = function (c) { return el.querySelector('[data-c="' + c + '"]'); };
+      const v = function (c) { const x = inp(c); return x.type === 'checkbox' ? x.checked : x.value.trim(); };
       const id = el.dataset.id, ant = b.renglones.filter(function (r) { return r.id === id; })[0];
-      const nuevo = { id: id, linea: v('linea'), texto: v('texto'), cant: v('cant'), unidad: v('unidad'), contenido: v('contenido'), precio: v('precio'), importe: v('importe'), quitar: v('quitar') };
+      const nuevo = { id: id, linea: v('linea'), texto: v('texto'), cant: v('cant'), unidad: ant ? ant.unidad || '' : '', contenido: ant ? numEnInput(ant.contenido) : '',
+                      precio: v('precio'), importe: v('importe'), quitar: v('quitar') };
       if (!id && !nuevo.quitar && !nuevo.texto && !nuevo.importe && !nuevo.precio) return;   // renglón nuevo vacío
-      if (ant && !nuevo.quitar && nuevo.linea === (ant.linea || '') && nuevo.texto === (ant.texto || '') && nuevo.unidad === (ant.unidad || '') &&
-          nuevo.cant === numEnInput(cantVista(ant)) && nuevo.precio === numEnInput(ant.precio) && nuevo.importe === numEnInput(ant.importe) &&
-          nuevo.contenido === numEnInput(ant.contenido)) return;                              // sin cambios
+      if (!nuevo.texto && nuevo.linea) nuevo.texto = nombreDe(nuevo.linea);                 // Feli (4/11): como lo pedimos
+      if (ant && !nuevo.quitar && nuevo.texto === (ant.texto || '') &&
+          ['linea', 'cant', 'precio', 'importe'].every(function (c) { return v(c) === inp(c).dataset.ini; })) return;   // sin cambios
       cambios.renglones.push(nuevo);
     });
-    tot.forEach(function (x) { const v = document.querySelector('[data-t="' + x[0] + '"]').value.trim(); if (v !== numEnInput(x[2])) cambios.totales[x[0]] = v; });
-    cond.concat([['conIva', '', b.conIva]]).forEach(function (x) { const v = document.querySelector('[data-k="' + x[0] + '"]').value.trim(); if (v !== (x[2] || '')) cambios.condiciones[x[0]] = v; });
+    // Los totales: lo que cambió (a mano o por las cuentas). El IVA se guarda en plata
+    const igual = function (a, c) { return a === null || a === undefined ? c === null || c === undefined : c !== null && c !== undefined && Math.abs(a - c) < 0.005; };
+    const fin = { subtotal: numDeInput(T('subtotal').value), descuento: numDeInput(T('descuento').value), iva: ivaMonto(),
+                  cargos: numDeInput(T('cargos').value), total: numDeInput(T('total').value) };
+    const ini = { subtotal: b.subtotal, descuento: desc0, iva: b.iva, cargos: b.cargos || null, total: b.total };
+    Object.keys(fin).forEach(function (k) { if (!igual(ini[k], fin[k])) cambios.totales[k] = numParaInput(fin[k]); });
+    cond.concat([['conIva', '', b.conIva]]).forEach(function (x) { const v = cuerpo.querySelector('[data-k="' + x[0] + '"]').value.trim(); if (v !== (x[2] || '')) cambios.condiciones[x[0]] = v; });
     if (!Object.keys(cambios.totales).length) delete cambios.totales;
     if (!Object.keys(cambios.condiciones).length) delete cambios.condiciones;
     return cambios;
