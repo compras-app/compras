@@ -3458,7 +3458,8 @@ function cargar_orden_compra(o){
      3. "¿Desea dar de alta automáticamente el ítem de concepto?": Cancelar (los renglones salen de la orden; Feli, 31/10).
      4. OCNS: los renglones de nuestra orden, con "A vincular" = lo facturado (si no coincide con la orden, se cambia ahí).
      5. El IVA de cada renglón (Modificar → IVA).
-     6. Frena con el resumen (el Tipo de compra lo trae Albor: lo revisa la persona). Una prueba nunca se guarda (Feli,
+     6. La percepción de IIBB en su provincia y la factura en «Adjuntar» (Feli, 6/11).
+     7. Frena con el resumen (el Tipo de compra lo trae Albor: lo revisa la persona). Una prueba nunca se guarda (Feli,
         30/10); si no, Guardar una sola vez y se confirma en la lista.
    ================================================================== */
 var URL_COMPRAS = '/1/Comprobantes_Compra';
@@ -3655,7 +3656,7 @@ var JS_ELEGIR_RENGLON = String(function(id){
 var JS_TOTALES_COMPRA = String(function(){
   var v = function(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
   var tc = document.getElementById('ID_Tipo_Compra');
-  return { neto: v('Total_NG'), iva21: v('Total_IVA21'), iva105: v('Total_IVA105'), iva27: v('Total_IVA27'), total: v('Importe_Total'),
+  return { neto: v('Total_NG'), iva21: v('Total_IVA21'), iva105: v('Total_IVA105'), iva27: v('Total_IVA27'), total: v('Importe_Total'), iibb: v('PER_IIBB'),
            tipoCompra: tc && tc.selectedIndex > 0 ? tc.options[tc.selectedIndex].text.trim() : '' };
 });
 
@@ -3727,6 +3728,109 @@ async function ivaDeRenglones(pg, ids, d, charla){
     await esperar(pg, 10000);
   }
   return { hechos: hechos, sinTasa: sinTasa };
+}
+
+/* Feli (6/11): la factura de la app va en «Adjuntar» (arriba a la derecha). Albor la sube recién al guardar, junto con el
+   comprobante: acá se abre la ventanita «Archivos adjuntos», se pone el archivo y Aceptar. o = {nombre, mime, datos (base64)}. */
+var JS_ADJUNTAR = String(function(o){
+  var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+  var link = document.getElementById('btAdjuntarArchivos'), input = document.getElementById('file-btAdjuntarArchivos');
+  if(!link || !input) return { error: 'No encontré «Adjuntar» en Albor.' };
+  var cuenta = function(){ var m = /\((\d+)\)/.exec(link.textContent || ''); return m ? Number(m[1]) : 0; };
+  var antes = cuenta();
+  var lista = document.getElementById('dialogo-adjuntar-archivos-btAdjuntarArchivos');
+  if(lista && lista.textContent.indexOf(o.nombre) >= 0) return { ya: true, cuantos: antes };
+  var $ = window.jQuery;
+  if($) $(link).trigger('click'); else link.click();
+  return (async function(){
+    var ok = null;
+    for(var i = 0; i < 20 && !ok; i++){ await dormir(250); ok = document.getElementById('btAceptarDialogoAdjuntarArchivos-btAdjuntarArchivos'); if(ok && ok.offsetParent === null) ok = null; }
+    if(!ok) return { error: 'No se abrió la ventanita de «Adjuntar».' };
+    var bin = atob(o.datos), bytes = new Uint8Array(bin.length);
+    for(var k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
+    var dt = new DataTransfer();
+    dt.items.add(new File([bytes], o.nombre, { type: o.mime || 'application/pdf' }));
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await dormir(600);
+    var err = (ok.closest('.ui-dialog') || document).querySelector('.ui-state-error');
+    var txtErr = err && err.offsetParent !== null ? err.textContent.trim() : '';
+    ok.click();
+    await dormir(600);
+    var para = null;
+    try{ if($ && $.fn.gestorArchivosAdjuntos) para = $(link).gestorArchivosAdjuntos('hayArchivosAdjuntosParaSubir'); }catch(e){}
+    return { cuantos: cuenta(), antes: antes, paraSubir: para, error: txtErr };
+  })();
+});
+
+async function adjuntarFactura(pg, d, charla, avisos){
+  var a = d.archivoDatos;
+  if(!a || !a.datos){ avisos.push('No pude traer la factura desde la app: adjuntala a mano en Albor («Adjuntar», arriba a la derecha).'); return 'no (adjuntala a mano)'; }
+  var r = null;
+  try{ r = await pg.evaluar(JS_ADJUNTAR, a); }catch(e){ if(e instanceof Cortado) throw e; r = { error: motivoDe(e) }; }
+  if(r && r.ya){ charla.decir('La factura ya estaba adjunta.'); return a.nombre; }
+  if(!r || r.error || r.paraSubir === false || !(r.cuantos > r.antes)){
+    avisos.push('No pude adjuntar la factura en Albor' + (r && r.error ? ' (' + r.error + ')' : '') + ': adjuntala a mano («Adjuntar», arriba a la derecha).');
+    return 'no (adjuntala a mano)';
+  }
+  charla.decir('Adjunté la factura: ' + a.nombre + '.');
+  return a.nombre;
+}
+
+/* Feli (6/11): «Percepción IIBB sufridas», cada una en su provincia («Ver más»: PER_IIBB_CO, _BA…; Albor suma el total). o = [{campo, importe}].
+   Si la ventanita no está, va directo en el total. */
+var JS_PER_IIBB = String(function(o){
+  var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+  var $ = window.jQuery;
+  var poner = function(inp, n){
+    var txt = n.toFixed(2).replace('.', ',');
+    try{ if($ && $.fn.autoNumeric && $(inp).data('autoNumeric')) $(inp).autoNumeric('set', n); else if($) $(inp).val(txt); else inp.value = txt; }catch(e){ inp.value = txt; }
+    ['input', 'keyup', 'change', 'blur'].forEach(function(ev){ inp.dispatchEvent(new Event(ev, { bubbles: true })); });
+    if($) $(inp).trigger('keyup').trigger('change').trigger('blur');
+  };
+  var total = document.getElementById('PER_IIBB'), ver = document.getElementById('bt_PER_IIBB');
+  if(!total) return { error: 'No encontré «Percepción IIBB sufridas» en Albor.' };
+  var suma = o.reduce(function(s, x){ return s + x.importe; }, 0);
+  return (async function(){
+    var porProvincia = false;
+    if(ver){
+      ver.click();
+      var ok = null;
+      for(var i = 0; i < 16 && !ok; i++){ await dormir(250); ok = document.getElementById('btAceptarPER_IIBB'); if(ok && ok.offsetParent === null) ok = null; }
+      if(ok){
+        var faltan = o.filter(function(x){ return !document.getElementById('PER_IIBB_' + x.campo); });
+        if(!faltan.length){
+          o.forEach(function(x){ poner(document.getElementById('PER_IIBB_' + x.campo), x.importe); });
+          await dormir(300);
+          ok.click();
+          porProvincia = true;
+          await dormir(600);
+        } else { var c = document.getElementById('btCancelarPER_IIBB'); if(c) c.click(); await dormir(300); }
+      }
+    }
+    var leer = function(){ var s = String(total.value || '').trim(); if(s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.'); return parseFloat(s) || 0; };
+    if(Math.abs(leer() - suma) > 0.009){ poner(total, suma); porProvincia = false; await dormir(400); }
+    return { total: total.value, puesto: leer(), porProvincia: porProvincia };
+  })();
+});
+
+async function percepcionesIIBB(pg, d, charla, avisos){
+  var o = (d.iibb || []).filter(function(x){ return x.importe; });
+  if(!o.length) return '';
+  var suma = o.reduce(function(s, x){ return s + x.importe; }, 0);
+  var r = null;
+  try{ r = await pg.evaluar(JS_PER_IIBB, o.map(function(x){ return { campo: x.campo, importe: x.importe }; })); }catch(e){ if(e instanceof Cortado) throw e; r = { error: motivoDe(e) }; }
+  var cuales = o.map(function(x){ return plataAlbor(x.importe) + ' ' + x.provincia; }).join(' + ');
+  if(!r || r.error || Math.abs((r.puesto || 0) - suma) > 0.009){
+    avisos.push('No pude poner la percepción de IIBB (' + cuales + ')' + (r && r.error ? ': ' + r.error : '') + '. Cargala a mano abajo, en «Percepción IIBB sufridas».');
+    return 'SIN CARGAR: ' + cuales;
+  }
+  o.filter(function(x){ return x.supuesta; }).forEach(function(x){
+    avisos.push('La factura no dice de qué provincia es la percepción de IIBB de ' + plataAlbor(x.importe) + ': la puse en Córdoba. Revisala con «Ver más».');
+  });
+  if(!r.porProvincia && o.length) avisos.push('La percepción de IIBB quedó en el total, sin provincia: elegila con «Ver más».');
+  charla.decir('Percepción IIBB: ' + cuales + '.');
+  return cuales;
 }
 
 /* La carga entera. d = lo que da datosFacturaAlbor. Devuelve {ok, prueba, referencia} o {ok: false, motivo, cancelado}. */
@@ -3814,7 +3918,10 @@ function cargar_factura(d){
       charla.decir('El IVA de cada renglón…');
       var iv = await ivaDeRenglones(pg, ids, d, charla);
       if(iv.sinTasa.length) avisos.push('Sin IVA elegido (la factura no lo dice): ' + iv.sinTasa.join(', ') + '. Elegilo a mano en ✏️.');
-      // 6. Control y Guardar
+      // 6. La percepción de IIBB y la factura adjunta (Feli, 6/11)
+      var iibb = await percepcionesIIBB(pg, d, charla, avisos);
+      var adjunta = await adjuntarFactura(pg, d, charla, avisos);
+      // 7. Control y Guardar
       var t = await pg.evaluar(JS_TOTALES_COMPRA);
       var tot = numAlbor(t.total);
       var ivaAlbor = (numAlbor(t.iva21) || 0) + (numAlbor(t.iva105) || 0) + (numAlbor(t.iva27) || 0);
@@ -3827,7 +3934,8 @@ function cargar_factura(d){
         '• Orden ' + d.orden.numero + ': ' + ids.length + ' renglón(es) vinculados\n' +
         '• Moneda: ' + moneda + '\n' +
         '• Neto ' + t.neto + ' · IVA ' + ([t.iva105 && numAlbor(t.iva105) ? '10,5 %: ' + t.iva105 : '', t.iva21 && numAlbor(t.iva21) ? '21 %: ' + t.iva21 : '', t.iva27 && numAlbor(t.iva27) ? '27 %: ' + t.iva27 : ''].filter(String).join(' · ') || '0,00') +
-        ' · Total ' + t.total + '\n' +
+        (iibb ? ' · Percepción IIBB ' + iibb : '') + ' · Total ' + t.total + '\n' +
+        '• Factura adjunta: ' + adjunta + '\n' +
         '• Tipo de compra: ' + (t.tipoCompra || 'sin elegir') + ' (revisalo)' +
         (avisos.length ? '\n\n⚠️ ' + avisos.join('\n⚠️ ') : '');
       if(d.prueba){

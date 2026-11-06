@@ -425,6 +425,11 @@ async function cargarFacturaEnAlbor(r) {
   const d = await api('datosFacturaAlbor', t.id);
   if (!d.ok) return aviso(d.sinConexion ? '📶 Hace falta señal para cargar la factura.' : d.error, 'bad');
   OC_ALBOR.abrir('Cargando la factura en Albor');
+  // Feli (6/11): la factura va adjunta en Albor; si no se puede traer, la extensión avisa que se adjunte a mano
+  if (d.factura.archivo) {
+    const f = await apiLenta('verArchivo', d.factura.archivo.id);
+    if (f.ok) d.factura.archivoDatos = { nombre: d.factura.archivo.nombre || f.nombre, mime: f.mime || 'application/pdf', datos: f.datos };
+  }
   const abandono = new Promise(function (ok) {
     OC_ALBOR.abandonar = function () {
       try { window.AlborExt.api.responder_carga('cancelar'); } catch (e) {}
