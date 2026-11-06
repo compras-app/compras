@@ -196,15 +196,20 @@ function tablasFlujo(r) {
   const nombreTablero = { compras: 'Compras', servicios: 'Servicios', seguimiento: 'Tarjetas de seguimiento', tareas: 'Tareas' }[r.tablero] || r.tablero;
   // Feli (23/10): cada cuánto entra una tarjeta y cuántas pidió cada uno (los meses guardados antes no lo tienen)
   const rt = r.ritmo, quien = r.tablero === 'tareas' ? 'creó' : 'pidió';
+  const conPedido = (r.tablero === 'compras' || r.tablero === 'servicios') && (r.porUsuario || []).some(function (u) { return 'productos' in u; });
   const ritmo = !rt ? null : {
     titulo: 'Quién ' + quien + ' · ' + nombreTablero,
     nota: rt.tarjetas ? 'Entraron <b>' + nro(rt.tarjetas) + '</b> en ' + nro(rt.diasHabiles) + ' días hábiles: ' + nro(rt.porDiaHabil, 1) + ' por día hábil, ' +
           '<b>una cada ' + nro(rt.cadaHoras, 1) + ' horas</b> de una jornada de 8 h (' + nro(rt.porSemana, 1) + ' por semana).' +
-          (r.tablero === 'seguimiento' ? ' Cada tarjeta de seguimiento cuenta para quien pidió su pedido.' : '') : '',
-    cab: ['Quién', 'Tarjetas', 'Parte', 'Una cada', 'La última'],
+          (r.tablero === 'seguimiento' ? ' Cada tarjeta de seguimiento cuenta para quien pidió su pedido.' : '') +
+          (conPedido ? ' Un pedido sale: lo que se compró de sus productos, en promedio entre los pedidos con alguna compra (sin IVA; los dólares, al dólar de ese día).' : '') : '',
+    // Feli (6/11): cuántos productos pide en promedio y cuánto sale en promedio un pedido suyo (Compras y Servicios)
+    cab: ['Quién', 'Tarjetas', 'Parte', 'Una cada'].concat(conPedido ? ['Productos por pedido', 'Un pedido sale'] : []).concat(['La última']),
     filas: (r.porUsuario || []).map(function (u) {
-      return [u.quien, nro(u.n), nro(u.parte) + '%', u.cadaDias === null || u.cadaDias === undefined ? '—' : nro(u.cadaDias) + (u.cadaDias === 1 ? ' día hábil' : ' días hábiles'),
-              u.ultima ? fechaCorta(u.ultima) : '—'];
+      return [u.quien, nro(u.n), nro(u.parte) + '%', u.cadaDias === null || u.cadaDias === undefined ? '—' : nro(u.cadaDias) + (u.cadaDias === 1 ? ' día hábil' : ' días hábiles')]
+        .concat(conPedido ? [u.productos === null || u.productos === undefined ? '—' : nro(u.productos, 1),
+                             u.costo ? plata(u.costo, 'ARS') + (u.conCompra < u.n ? ' (' + nro(u.conCompra) + ' con compra)' : '') : '—'] : [])
+        .concat([u.ultima ? fechaCorta(u.ultima) : '—']);
     }), vacio: 'No entró ninguna tarjeta en estas fechas.' };
   const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   const maxDia = Math.max.apply(null, (r.diaSemana || []).map(function (d) { return d.n; }).concat([1]));
@@ -238,10 +243,10 @@ function tablasFlujo(r) {
     { titulo: 'Tiempo en cada columna · ' + nombreTablero,
       nota: 'Lo normal: la mitad de las tarjetas tarda menos que eso (cuentan las que ya salieron de la columna). Días corridos; si una tarjeta volvió a una columna, se suman las veces. ' +
             (r.traba ? 'Donde más tiempo pasan: <b>' + esc(r.traba) + '</b>.' : ''),
-      cab: ['Columna', 'Lo normal', '', 'Promedio', 'La más lenta', 'Cuál', 'Pasaron', 'Hoy', 'Promedio por día'],
+      cab: ['Columna', 'Lo normal', '', 'Promedio', 'La más lenta', 'Cuál'],     // Feli (6/11): sin Pasaron, Hoy ni Promedio por día
       barra: 2,
       filas: ordenColumnas(r.columnas).map(function (c) {
-        return [c.columna, dias(c.mediana), { barra: (Number(c.mediana) || 0) / maxMed }, dias(c.promedio), dias(c.maximo), c.masLenta || '', nro(c.terminadas), nro(c.hoy), nro(c.promedioPorDia)];
+        return [c.columna, dias(c.mediana), { barra: (Number(c.mediana) || 0) / maxMed }, dias(c.promedio), dias(c.maximo), c.masLenta || ''];
       }), vacio: 'Todavía no hay tarjetas que hayan pasado por las columnas en estas fechas.' },
     { titulo: 'Trabadas ahora', nota: 'Llevan en su columna el doble de lo normal o más (y al menos 2 días). Tocá una para abrirla.',
       cab: ['Tarjeta', 'Qué es', 'Columna', 'Lleva', 'Lo normal'], abrir: 0,
@@ -249,25 +254,23 @@ function tablasFlujo(r) {
     { titulo: 'De punta a punta, por urgencia', nota: 'Desde que se pidió hasta que llegó a Entregado (solo Compras).',
       cab: ['Urgencia', 'Pedidos', 'Lo normal', 'Promedio'],
       filas: r.puntaApunta.porUrgencia.map(function (u) { return [u.urgencia || '—', nro(u.n), dias(u.mediana), dias(u.promedio)]; }), vacio: 'Ningún pedido llegó a Entregado en estas fechas.' },
-    { titulo: 'De punta a punta, por quién lo pidió', nota: 'Separado por urgencia y rubro, para no comparar jeringas con repuestos importados.',
-      cab: ['Quién', 'Urgencia', 'Rubro', 'Pedidos', 'Lo normal'],
-      filas: r.puntaApunta.porSolicitante.map(function (x) { return [x.quien || '—', x.urgencia || '—', x.rubro, nro(x.n), dias(x.mediana)]; }), vacio: 'Sin datos todavía.' },
-    { titulo: 'De punta a punta, por granja', cab: ['Granja', 'Urgencia', 'Rubro', 'Pedidos', 'Lo normal'],
-      filas: r.puntaApunta.porGranja.map(function (x) { return [x.quien || '—', x.urgencia || '—', x.rubro, nro(x.n), dias(x.mediana)]; }), vacio: 'Sin datos todavía.' },
-    { titulo: 'Urgentes contra normales, columna por columna', nota: 'Lo normal de cada columna (Compras). Por ahora sin un "a tiempo" fijo: con un mes de datos reales se ve si conviene fijarlo.',
+    // Feli (6/11): el promedio de cada uno (sin el detalle por urgencia y rubro; sin granjas)
+    { titulo: 'De punta a punta, por quién lo pidió', nota: 'Cuánto tarda en promedio el pedido de cada uno, desde que lo pide hasta Entregado (solo Compras).',
+      cab: ['Quién', 'Pedidos entregados', 'Tarda en promedio'],
+      filas: r.puntaApunta.porSolicitante.map(function (x) { return [x.quien || '—', nro(x.n), dias(x.promedio !== undefined ? x.promedio : x.mediana)]; }), vacio: 'Sin datos todavía.' },
+    { titulo: 'Urgentes contra normales, columna por columna', nota: 'Cuánto tarda en promedio cada columna (Compras).',
       cab: ['Columna', 'Urgentes', 'Cuántas', 'Las demás', 'Cuántas'],
       filas: ordenColumnas(r.urgencia).map(function (u) { return [u.columna, dias(u.urgentes), nro(u.nUrgentes), dias(u.normales), nro(u.nNormales)]; }), vacio: 'Sin datos todavía.' },
-    { titulo: 'Cotizaciones por tarjeta',
-      nota: 'En total: ' + nro(r.cotizaciones.pedidas) + ' pedidos de cotización, ' + nro(r.cotizaciones.contestaron) + ' contestaron y ' +
+    { titulo: 'Cotizaciones por tarjeta', nota: 'En total: ' + nro(r.cotizaciones.pedidas) + ' pedidos de cotización, ' + nro(r.cotizaciones.contestaron) + ' contestaron y ' +
             nro(r.cotizaciones.cargadas) + ' presupuestos cargados, en ' + nro(r.cotizaciones.tarjetas) + ' tarjetas.',
-      cab: ['Tarjeta', 'Qué es', 'Se pidieron', 'Contestaron', 'Se cargaron'], abrir: 0,
-      filas: r.cotizaciones.detalle.map(function (c) { return [c.ref, c.titulo || '', nro(c.pedidas), nro(c.contestaron), nro(c.cargadas)]; }), vacio: 'No se pidieron cotizaciones en estas fechas.' },
+      cab: ['', 'Se pidieron', 'Contestaron', 'Se cargaron'],
+      filas: r.cotizaciones.tarjetas ? [['Por tarjeta, en promedio', nro(r.cotizaciones.pedidas / r.cotizaciones.tarjetas, 1), nro(r.cotizaciones.contestaron / r.cotizaciones.tarjetas, 1),
+                                         nro(r.cotizaciones.cargadas / r.cotizaciones.tarjetas, 1)]] : [],
+      vacio: 'No se pidieron cotizaciones en estas fechas.' },
     { titulo: 'Uso de la app', nota: 'Cada vez que alguien la abre o vuelve a ella después de 10 minutos o más. ' + nro(r.uso.dias) + ' días en el período.',
       cab: ['Quién', 'Veces', 'Días que la usó', 'Veces por día que la usó', 'Última vez'],
       filas: r.uso.usuarios.map(function (u) { return [u.usuario, nro(u.veces), nro(u.dias) + ' de ' + nro(r.uso.dias), nro(u.veces / Math.max(1, u.dias)), u.ultima ? fechaCorta(u.ultima) + ' ' + u.ultima.slice(11, 13) + ' h' : '—']; }),
-      vacio: 'Todavía no hay datos (se anotan desde el 10/10).' },
-    { titulo: 'Semana a semana', cab: ['Semana del', 'Pedidos', 'Entregados', 'Punta a punta', 'Cancelados', 'A Stand by'],
-      filas: r.semanas.map(function (s) { return [fechaCorta(s.semana), nro(s.pedidos), nro(s.entregados), dias(s.mediana), nro(s.canceladas), nro(s.standby)]; }), vacio: '' }
+      vacio: 'Todavía no hay datos (se anotan desde el 10/10).' }
   ]);
 }
 
