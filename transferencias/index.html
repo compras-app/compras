@@ -493,6 +493,9 @@
   .sugerencias .tipo{margin-left:auto;color:var(--ink-faint);font-size:11.5px}
   .sugerencias .nada{padding:12px;color:var(--ink-soft);font-size:13px}
   .ptipo{gap:6px;margin-bottom:10px}
+  /* El botón de la opción no elegida (Pedido de la granja / Transferencia manual): borde de color, sin relleno */
+  .btn2{appearance:none;font:inherit;font-weight:600;cursor:pointer;background:none;color:var(--accent);
+        border:1px solid var(--accent);padding:7px 16px;border-radius:6px}
   #mtablehost{margin-top:10px;border:1px solid var(--line);border-radius:8px}
   #mtablehost thead th{position:static}
 
@@ -719,6 +722,27 @@
     #atablehost td.cant{padding:4px}
     #atablehost td.cant input.ci{min-height:46px;font-size:20px}
     .sheethead .line{flex-wrap:wrap;gap:4px 14px}
+    /* Transferir en el celu (Feli, 7/11): cada pedido de las granjas en dos o tres renglones, sin que se pisen */
+    .recibidos .uno{flex-wrap:wrap;gap:3px 10px;padding:10px 12px}
+    .recibidos .quien{flex:1 1 auto}
+    .recibidos .granja,.recibidos .cuando{flex:1 1 100%;padding-left:18px}
+    .recibidos .granja{order:3}
+    .recibidos .cuando{order:4;flex-basis:auto}
+    .recibidos .sacar{order:5;margin-left:auto;padding:4px 0}
+    /* La tabla del pedido entra en el ancho del celu (los títulos en dos renglones); si igual no entra, se corre de costado */
+    #ptablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    #ptablehost table{font-size:12.5px}
+    #ptablehost thead th{white-space:normal;padding:7px 4px;font-size:11px;line-height:1.2;vertical-align:bottom}
+    #ptablehost tbody td,#ptablehost tfoot td{padding:6px 4px}
+    #ptablehost tbody td.name,#ptablehost tfoot td.name{padding-left:7px}
+    #ptablehost .marca{font-size:10.5px}
+    #ptablehost input.ajuste{width:44px;padding:3px;font-size:16px}
+    /* La Colorada no entra: se corre de costado y el nombre del insumo queda fijo a la izquierda */
+    #ptablehost .name{position:sticky;left:0;z-index:2;background:var(--panel);box-shadow:1px 0 0 var(--line-strong);min-width:104px}
+    #ptablehost thead .name{background:var(--head);z-index:3;top:auto}
+    #ptablehost tbody tr.alt td.name{background:var(--zebra)}
+    #ptablehost tfoot td.name{background:var(--head);white-space:normal}
+    #presumen{gap:6px 14px}
     /* El Historial en el celular (Feli, 2/11: lo ven los encargados): una tarjeta por renglón, cada dato con su nombre */
     .hresultado > table, .hresultado > table > tbody, .hresultado > table > tbody > tr, .hresultado > table > tbody > tr > td{display:block;width:auto;min-width:0}
     .hresultado > table > thead{display:none}
@@ -846,9 +870,11 @@
       <div class="fila">
         <span class="estado" id="pexist"><span class="punto"></span><span id="pexisttxt"></span></span>
       </div>
-      <p class="nota">Se usa el mismo <b>ExistenciaDeInsumos.csv</b> que cargás en Conteo de stock:
+      <p class="nota" id="pexistnota">Se usa el mismo <b>ExistenciaDeInsumos.csv</b> que cargás en Conteo de stock:
          ese archivo ya trae los tres puntos de oficina juntos. Si es de hace unos días,
          bajalo de nuevo antes de preparar el pedido.</p>
+      <p class="nota" id="pexistcelu" hidden>En el celu es <b>solo para mirar</b> qué se puede transferir y qué no:
+         la transferencia se carga en Albor desde la compu.</p>
     </div>
 
     <div class="paso" id="paso2">
@@ -1968,17 +1994,24 @@
     }
   }
 
-  function cargarTexto(texto, nombreArchivo, fechaArchivo, recuperando){
+  /* servidor: las últimas que bajó una compu (Transferir en el celu, Feli 7/11): solo para mirar, no se guardan acá ni se suben */
+  function cargarTexto(texto, nombreArchivo, fechaArchivo, recuperando, servidor){
     limpiarError();
     var d = construir(texto);
     if(!d){
+      if(servidor) return false;
       mostrarError('Este archivo no parece el reporte de Existencia de Insumos. ' +
                    'Exportalo del sistema como CSV y volvé a intentar.');
       return false;
     }
     DATA = d;
-    if(!recuperando) guardarExistencias(texto, nombreArchivo, fechaArchivo);
-    setTimeout(function(){ subirExistencias(texto, nombreArchivo); }, 0);   // Fase 5: al servidor (también lo que quedó sin subir)
+    if(servidor){
+      DATA.delServidor = { id: servidor.id, quien: servidor.quien, fecha: servidor.fecha };
+      DATA.hasta = servidor.hasta || '';
+    }else{
+      if(!recuperando) guardarExistencias(texto, nombreArchivo, fechaArchivo);
+      setTimeout(function(){ subirExistencias(texto, nombreArchivo); }, 0);   // Fase 5: al servidor (también lo que quedó sin subir)
+    }
     GRANJAS_FUERA = {};              // reporte nuevo: vuelven todas las granjas tildadas
     $('p-hasta').textContent = '';
     DATA.archivoNombre = nombreArchivo || '';
@@ -1992,10 +2025,40 @@
     $('meta').classList.add('on');
     $('tablewrap').classList.add('on');
     render();
+    if(DATA.hasta) mostrarFechaReporte();
+    botonesDeCarga();
     analizar();          // las existencias también alimentan "Transferir"
     analizarEgresos();   // y "Egresos"
-    revisarCatalogo();   // ¿coinciden con el catálogo publicado? (Feli, 19/10)
+    if(!servidor) revisarCatalogo();   // ¿coinciden con el catálogo publicado? (Feli, 19/10)
     return true;
+  }
+
+  /* Transferir en el celu (Feli, 7/11): sin Albor, para saber qué se puede transferir y qué no. Las existencias son las
+     últimas que bajó una compu (cada vez que se bajan quedan en el servidor); se vuelven a pedir cada 5 minutos. Las que se
+     cargaron en el celu a mano (el CSV) mandan. */
+  var EXIST_SERVIDOR = { pidio: 0, trayendo: false, estado: '' };
+  async function existenciasDelServidor(){
+    if(!ES_ADMIN || !EN_CELULAR || (DATA && !DATA.delServidor) || EXIST_SERVIDOR.trayendo) return;
+    if(DATA && Date.now() - EXIST_SERVIDOR.pidio < 5 * 60e3) return;
+    EXIST_SERVIDOR.trayendo = true;
+    if(!DATA){ EXIST_SERVIDOR.estado = 'trayendo'; estadoExistencias(); }
+    var r;
+    try{ r = await apiLenta('ultimasExistencias'); }
+    finally{ EXIST_SERVIDOR.trayendo = false; }
+    if(!r || !r.ok){ EXIST_SERVIDOR.estado = 'sinred'; if(!DATA) estadoExistencias(); return; }
+    EXIST_SERVIDOR.pidio = Date.now();
+    var e = r.existencias;
+    if(!e){ EXIST_SERVIDOR.estado = 'ninguna'; if(!DATA) estadoExistencias(); return; }
+    if(DATA && (!DATA.delServidor || DATA.delServidor.id === e.id)) return;
+    EXIST_SERVIDOR.estado = '';
+    if(!cargarTexto(e.texto, e.nombre, e.fecha, true, e)){ EXIST_SERVIDOR.estado = 'ninguna'; estadoExistencias(); }
+  }
+
+  /* Con las del servidor no se carga nada en Albor ni sale la planilla de la transferencia: queda la de armado, gris. */
+  function botonesDeCarga(){
+    var mirar = !!(DATA && DATA.delServidor);
+    $('pcarga').style.display = $('gcarga').style.display = mirar ? 'none' : '';
+    $('ppend').style.display = $('pprint').style.display = MOTOR.vivo || mirar ? 'none' : '';
   }
 
   function cargarArchivo(file){
@@ -2628,7 +2691,7 @@
   var AJUSTE_TRANSF = { pedido: null, data: null, por: {} };
   var FOCO_AJUSTE = null;            // el campo de "A transferir" que tiene que quedar elegido después de volver a armar la tabla
   function analizar(){
-    if(!DATA || !PEDIDO){ ANALISIS = null; pintarPedido(); return; }
+    if(!DATA || !PEDIDO || !destinoActual()){ ANALISIS = null; pintarPedido(); return; }
     if(AJUSTE_TRANSF.pedido !== PEDIDO || AJUSTE_TRANSF.data !== DATA) AJUSTE_TRANSF = { pedido: PEDIDO, data: DATA, por: {} };
     var dest = destinoActual();
     var idx = indiceExistencias();
@@ -2693,10 +2756,29 @@
 
   function estadoExistencias(){
     var e = $('pexist');
-    e.classList.remove('ok','falta');
+    e.classList.remove('ok','falta','aviso');
+    var celu = ES_ADMIN && EN_CELULAR;
+    $('pexistnota').hidden = celu;
+    $('pexistcelu').hidden = !celu;
     if(!DATA){
       e.classList.add('falta');
-      $('pexisttxt').innerHTML = 'Falta cargar el CSV en la pestaña <b>Conteo de stock</b>.';
+      $('pexisttxt').innerHTML = !celu ? 'Falta cargar el CSV en la pestaña <b>Conteo de stock</b>.'
+        : EXIST_SERVIDOR.estado === 'trayendo' ? 'Trayendo las últimas existencias…'
+        : EXIST_SERVIDOR.estado === 'sinred' ? '📶 Poca señal: todavía no llegaron las existencias. Abajo igual ves lo que pidieron.'
+        : EXIST_SERVIDOR.estado === 'ninguna' ? 'Todavía no hay existencias guardadas: se guardan cuando una compu las baja de Albor.'
+        : 'Sin existencias todavía.';
+      return;
+    }
+    if(DATA.delServidor){
+      var f = new Date(DATA.delServidor.fecha), hoy = new Date();
+      var mismoDia = f.toDateString() === hoy.toDateString();
+      var hora = String(f.getHours()).padStart(2,'0') + ':' + String(f.getMinutes()).padStart(2,'0');
+      var dia = mismoDia ? 'de hoy a las ' + hora
+        : 'del ' + String(f.getDate()).padStart(2,'0') + '/' + String(f.getMonth()+1).padStart(2,'0') + ' a las ' + hora;
+      e.classList.add(mismoDia ? 'ok' : 'aviso');
+      $('pexisttxt').innerHTML = 'Las últimas que bajó una compu: <b>' + esc(dia) + '</b>' +
+        (DATA.delServidor.quien ? ' (' + esc(DATA.delServidor.quien) + ')' : '') +
+        (mismoDia ? '' : ' · <b>no son de hoy</b>');
       return;
     }
     e.classList.add('ok');
@@ -2714,6 +2796,12 @@
   function pintarPedido(){
     estadoExistencias();
     var dest = destinoActual();
+    if(!dest){                        // la lista de envíos todavía no llegó (Feli, 7/11: en el celu, las existencias llegan antes)
+      $('presumen').innerHTML = '';
+      $('ptoolbar').classList.remove('on');
+      $('ptablewrap').classList.remove('on');
+      return;
+    }
     var doble = dest.modo === 'doble';
 
     $('pmodo').classList.remove('ok','falta','aviso');
@@ -2741,6 +2829,7 @@
     var f = $('pfecha').value;
     $('pp-fecha').textContent = f ? f.split('-').reverse().join('/') : '';
 
+    if(!DATA && PEDIDO && EN_CELULAR && ES_ADMIN){ pintarSoloPedido(); return; }
     if(!ANALISIS || !ANALISIS.items.length){
       $('presumen').innerHTML = '';
       $('ptoolbar').classList.remove('on');
@@ -2862,6 +2951,21 @@
       if(foco){ foco.focus(); foco.select(); foco.scrollIntoView({ block: 'nearest' }); }
     }
     $('ptoolbar').classList.add('on');
+    $('ptablewrap').classList.add('on');
+  }
+
+  /* En el celu sin existencias (sin señal o sin ninguna guardada): igual se ve lo que pidieron (Feli, 7/11). */
+  function pintarSoloPedido(){
+    var items = itemsPedido().slice().sort(function(a,b){ return cmp(a.nombre || a.cod, b.nombre || b.cod); });
+    $('presumen').innerHTML = '<div><span>Insumos pedidos</span><b>' + items.length + '</b></div>';
+    var h = ['<table><thead><tr><th class="name">Insumo</th><th>Pedido</th></tr></thead><tbody>'];
+    items.forEach(function(it, n){
+      h.push('<tr class="row' + (n % 2 ? ' alt' : '') + '"><td class="name">' + esc(it.nombre || it.cod) +
+             (it.repetido ? '<span class="marca info">repetido en el pedido</span>' : '') + '</td><td>' + fmt(it.pedido) + '</td></tr>');
+    });
+    h.push('</tbody></table>');
+    $('ptablehost').innerHTML = h.join('');
+    $('ptoolbar').classList.remove('on');
     $('ptablewrap').classList.add('on');
   }
 
@@ -4600,7 +4704,7 @@
     $('gcarga').textContent = vivo ? 'Cargar en Albor' : 'Archivo para Albor';
     // Feli (21/10): con la extensión, las planillas de armado y de pendientes salen solas al terminar la carga en Albor
     // (se bajan y se abre la ventana de imprimir): sin botones. Sin la extensión no hay carga, así que quedan.
-    $('ppend').style.display = $('pprint').style.display = vivo ? 'none' : '';
+    botonesDeCarga();
   }
 
   function errorA(msg){ var e = $('aerror'); e.textContent = msg; e.classList.add('on'); }
@@ -4676,7 +4780,7 @@
   function revisarCatalogo(){
     var caja = $('avisocat');
     if(!caja) return;
-    if(!ES_ADMIN || !DATA || !TR.catalogo){ caja.hidden = true; return; }
+    if(!ES_ADMIN || !DATA || DATA.delServidor || !TR.catalogo){ caja.hidden = true; return; }   // las del servidor, solo para mirar (7/11)
     var pub = {}, nuevo = {};
     CATALOGO.forEach(function(i){ pub[clave(i.cod)] = i; });
     var lista = catalogoDeExistencias(), nuevos = [], cambiados = [];
@@ -6149,7 +6253,7 @@
     if(idPanel === 'panel-armar'){
       limpiarErrorA(); cargarCatalogo(); refrescarBorradores(); pintarEnviados();
     }
-    if(idPanel === 'panel-pedido'){ refrescarRecibidos(); }
+    if(idPanel === 'panel-pedido'){ refrescarRecibidos(); existenciasDelServidor(); }
     if(idPanel === 'panel-ajustes'){ pintarAjustes(); }
     if(idPanel === 'panel-historial'){ llenarGranjasHistorial(); buscarHistorial(); }
   }
@@ -6256,6 +6360,8 @@
     var armando = ARMANDO.length;
     aplicarGuardado();
     if(armando) pintarArmado();
+    // En el celu las existencias del servidor pueden llegar antes que los envíos (Feli, 7/11): se vuelve a armar con ellos
+    if(DATA && DATA.delServidor){ separarPuntos(DATA); render(); analizar(); }
   }
 
   /* Quién sos, de nuevo (si un admin te cambió el rol o las granjas). */
@@ -6300,8 +6406,8 @@
     if(!r.ok && !r.sinSesion) errorA('No se pudo mandar el pedido de ' + m.args[0].granja + ': ' + (r.error || ''));
     pintarEnviados();
   };
-  window.alVolverLaSenal = function(){ traerDatos(); };
-  window.alVolverALaApp = function(){ traerDatos(); refrescarInicio(); if(ES_ADMIN) refrescarRecibidos(); };
+  window.alVolverLaSenal = function(){ traerDatos(); existenciasDelServidor(); };
+  window.alVolverALaApp = function(){ traerDatos(); refrescarInicio(); if(ES_ADMIN){ refrescarRecibidos(); existenciasDelServidor(); } };
 
   function arrancar(){
     if(!APP.yo){ window.sesionPerdida(); return; }
@@ -6314,6 +6420,7 @@
     pintarQuienSoy();
     aplicarGuardado();
     if(ES_ADMIN) recuperarExistencias();
+    if(ES_ADMIN) existenciasDelServidor();
     if(!ES_ADMIN) irA('panel-armar');
     pintarSinRed();
     bandeja.procesar();
