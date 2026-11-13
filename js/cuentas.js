@@ -308,46 +308,63 @@ async function cambiarImputacionUI(ref) {
 /** La ventanita para elegir la cuenta y el centro de costos, o un bien de uso. op = opcionesImputacion; ini = {cuenta, centro, bien}.
  *  Devuelve {cuenta, centro, sitio} o {bienUso}, o null. La usan la tarjeta abierta y el pedido masivo (Fase 6, 30/10). */
 function elegirImputacion(op, ini, titulo, notaSitio) {
-  ini = ini || {};
-  let modo = ini.bien ? 'bien' : 'cuenta', cuenta = ini.cuenta || '', centro = ini.centro || '', bien = ini.bien || '', sitio = '';
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
-  cuerpo.innerHTML = '<div class="seg-imp"><label><input type="radio" name="imp-modo" value="cuenta"> Cuenta contable</label>' +
-    '<label><input type="radio" name="imp-modo" value="bien"> 🚜 Bien de uso</label></div>' +
-    '<div id="imp-c"><div class="campo"><label for="imp-cuenta">Cuenta contable</label><select id="imp-cuenta"></select></div>' +
-    '<div class="campo"><label for="imp-centro">Centro de costos</label><select id="imp-centro"></select><p class="nota" id="imp-sitio"></p></div></div>' +
-    '<div id="imp-b"><div class="campo"><label for="imp-bien">Bien de uso</label><select id="imp-bien"></select>' +
-    '<p class="nota">Un pedido para un bien de uso no lleva cuenta ni orden de compra.' + (notaSitio ? ' ' + esc(notaSitio) : '') + '</p></div></div>';
+  let imp = null;
   return dialogo({ titulo: titulo, cuerpo: cuerpo,
-    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () {
-      return modo === 'bien' ? { bienUso: bien } : { cuenta: cuenta, centro: centro, sitio: sitio };
-    } }],
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Guardar', clase: 'btn', id: 'dg-ok', valor: function () { return imp.valor(); } }],
     alAbrir: function () {
-      const pintar = function () {
-        cuerpo.querySelector('input[value="' + modo + '"]').checked = true;
-        $('imp-c').hidden = modo !== 'cuenta';
-        $('imp-b').hidden = modo !== 'bien';
-        $('imp-cuenta').innerHTML = (cuenta ? '' : '<option value="">Elegí la cuenta</option>') +
-          op.cuentas.map(function (c) { return '<option value="' + esc(c.codigo) + '">' + esc(c.nombre) + '</option>'; }).join('');
-        $('imp-cuenta').value = cuenta;
-        const cs = (op.cuentas.filter(function (c) { return c.codigo === cuenta; })[0] || {}).centros || [];
-        if (cs.length === 1) centro = cs[0].centro;
-        if (!cs.some(function (c) { return c.centro === centro; })) centro = '';
-        $('imp-centro').innerHTML = (centro ? '' : '<option value="">Elegí el centro de costos</option>') +
-          cs.map(function (c) { return '<option value="' + esc(c.centro) + '">' + esc(c.centro) + '</option>'; }).join('');
-        $('imp-centro').value = centro;
-        const cc = cs.filter(function (c) { return c.centro === centro; })[0];
-        sitio = cc ? cc.sitio : '';
-        $('imp-sitio').textContent = cc ? 'El pedido queda en ' + cc.sitio + '.' : '';
-        $('imp-bien').innerHTML = (bien ? '' : '<option value="">Elegí el bien de uso</option>') +
-          op.bienes.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.nombre + (b.patente && b.nombre.toUpperCase().indexOf(b.patente.toUpperCase()) === -1 ? ' · ' + b.patente : '')) + '</option>'; }).join('');
-        $('imp-bien').value = bien;
-        $('dg-ok').disabled = modo === 'bien' ? !bien : !(cuenta && centro);
-      };
-      cuerpo.querySelectorAll('input[name="imp-modo"]').forEach(function (r) { r.addEventListener('change', function () { modo = r.value; pintar(); }); });
-      $('imp-cuenta').addEventListener('change', function () { cuenta = this.value; centro = ''; pintar(); });
-      $('imp-centro').addEventListener('change', function () { centro = this.value; pintar(); });
-      $('imp-bien').addEventListener('change', function () { bien = this.value; pintar(); });
-      pintar();
+      imp = armarImputacion(cuerpo, op, ini, notaSitio, function () { if (imp) $('dg-ok').disabled = !imp.lista(); });
+      $('dg-ok').disabled = !imp.lista();
     } });
+}
+
+/** La cuenta y el centro (o el bien de uso), adentro de un recuadro: lo usan elegirImputacion y "Editar pedido" (Feli, 13/11).
+ *  alCambiar(sitio) cada vez que cambia algo. Devuelve {valor(): {cuenta, centro, sitio} | {bienUso}, lista(): ¿está completo?}. */
+function armarImputacion(cont, op, ini, notaSitio, alCambiar) {
+  ini = ini || {};
+  let modo = ini.bien ? 'bien' : 'cuenta', cuenta = ini.cuenta || '', centro = ini.centro || '', bien = ini.bien || '', sitio = '';
+  const caja = document.createElement('div');
+  caja.className = 'imp-caja';
+  const n = 'imp-modo-' + Math.random().toString(36).slice(2, 7);
+  caja.innerHTML = '<div class="seg-imp"><label><input type="radio" name="' + n + '" value="cuenta"> Cuenta contable</label>' +
+    '<label><input type="radio" name="' + n + '" value="bien"> 🚜 Bien de uso</label></div>' +
+    '<div class="imp-c"><div class="campo"><label>Cuenta contable</label><select class="imp-cuenta"></select></div>' +
+    '<div class="campo"><label>Centro de costos</label><select class="imp-centro"></select><p class="nota imp-sitio"></p></div></div>' +
+    '<div class="imp-b"><div class="campo"><label>Bien de uso</label><select class="imp-bien"></select>' +
+    '<p class="nota">Un pedido para un bien de uso no lleva cuenta ni orden de compra.' + (notaSitio ? ' ' + esc(notaSitio) : '') + '</p></div></div>';
+  cont.appendChild(caja);
+  const q = function (c) { return caja.querySelector(c); };
+  const pintar = function () {
+    caja.querySelector('input[value="' + modo + '"]').checked = true;
+    q('.imp-c').hidden = modo !== 'cuenta';
+    q('.imp-b').hidden = modo !== 'bien';
+    q('.imp-cuenta').innerHTML = (cuenta ? '' : '<option value="">Elegí la cuenta</option>') +
+      op.cuentas.map(function (c) { return '<option value="' + esc(c.codigo) + '">' + esc(c.nombre) + '</option>'; }).join('');
+    q('.imp-cuenta').value = cuenta;
+    const cs = (op.cuentas.filter(function (c) { return c.codigo === cuenta; })[0] || {}).centros || [];
+    if (cs.length === 1) centro = cs[0].centro;
+    if (!cs.some(function (c) { return c.centro === centro; })) centro = '';
+    q('.imp-centro').innerHTML = (centro ? '' : '<option value="">Elegí el centro de costos</option>') +
+      cs.map(function (c) { return '<option value="' + esc(c.centro) + '">' + esc(c.centro) + '</option>'; }).join('');
+    q('.imp-centro').value = centro;
+    const cc = cs.filter(function (c) { return c.centro === centro; })[0];
+    sitio = cc ? cc.sitio : '';
+    q('.imp-sitio').textContent = cc && cc.sitio ? 'El pedido queda en ' + cc.sitio + '.' : '';
+    q('.imp-bien').innerHTML = (bien ? '' : '<option value="">Elegí el bien de uso</option>') +
+      op.bienes.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.nombre + (b.patente && b.nombre.toUpperCase().indexOf(b.patente.toUpperCase()) === -1 ? ' · ' + b.patente : '')) + '</option>'; }).join('');
+    q('.imp-bien').value = bien;
+    if (alCambiar) alCambiar(modo === 'cuenta' ? sitio : '');
+  };
+  caja.querySelectorAll('input[name="' + n + '"]').forEach(function (r) { r.addEventListener('change', function () { modo = r.value; pintar(); }); });
+  q('.imp-cuenta').addEventListener('change', function () { cuenta = this.value; centro = ''; pintar(); });
+  q('.imp-centro').addEventListener('change', function () { centro = this.value; pintar(); });
+  q('.imp-bien').addEventListener('change', function () { bien = this.value; pintar(); });
+  const api = {
+    valor: function () { return modo === 'bien' ? { bienUso: bien } : { cuenta: cuenta, centro: centro, sitio: sitio }; },
+    lista: function () { return modo === 'bien' ? !!bien : !!(cuenta && centro); },
+    cambio: function () { return modo === 'bien' ? bien !== (ini.bien || '') : !!ini.bien || cuenta !== (ini.cuenta || '') || centro !== (ini.centro || ''); }
+  };
+  pintar();
+  return api;
 }

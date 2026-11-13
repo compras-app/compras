@@ -906,7 +906,8 @@ function htmlOrdenCompra(o) {
   if (o.estado === 'Mandada') return '<div class="pr-orden"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +
     (o.prueba ? '<div class="pr-nota">🧪 Es una prueba: no se le mandó nada al proveedor.</div>' : '') + ver + '</div>';
   return '<div class="pr-orden pendiente"><b>📄 Orden de compra N° ' + esc(o.numero) + '</b>' +
-    '<div class="pr-problema">' + (o.estado === 'Mandando' ? 'Se estaba mandando: fijate en el chat si le llegó.' : 'Está guardada, pero el mensaje no salió.') + '</div>' +
+    '<div class="pr-problema">' + (o.estado === 'Mandando' ? 'Se estaba mandando: fijate en el chat si le llegó.'
+      : !o.pdfProveedor && !o.prueba ? '⚠️ Falta mandar la orden al proveedor: todavía no le llegó nada.' : 'Está guardada, pero el mensaje no salió.') + '</div>' +
     ver + ' <button type="button" class="btn-chico si" id="tj-oc-mandar">Mandar la orden</button></div>';
 }
 
@@ -952,6 +953,7 @@ async function cargarOrdenAManoUI(wid, prueba) {
   const prov = await ordenParaProveedor(wid, d.numero);
   const r = await apiLenta('cargarOrdenAMano', wid, d.numero, { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + d.numero + ' (Albor)', base64: base64 }, null, prov);
   if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: la orden se carga con señal. Probá de nuevo en un rato.' : r.error, 'bad');
+  if (r.faltaProveedor) { aviso('La orden ' + d.numero + ' quedó cargada, pero ' + MSJ_FALTA_PROV, 'bad'); if (TB.abierta === wid) traerTarjeta(wid); return; }
   aviso(r.prueba ? 'Listo: la orden ' + d.numero + ' quedó cargada (es una prueba: no se le mandó nada al proveedor).' : 'Listo: la orden ' + d.numero + ' quedó cargada y le llegó al proveedor.');
   if (TB.abierta === wid) traerTarjeta(wid);
 }
@@ -1057,6 +1059,7 @@ async function cargarOrdenEnAlbor(wid) {
     return false;
   }
   if (!x.ok) { aviso('La orden ' + r.numero + ' quedó en Albor, pero no se guardó en la app (' + (x.error || 'sin señal') + '). Cargala a mano con ese número.', 'bad'); return false; }
+  if (x.faltaProveedor) { aviso('La orden ' + r.numero + ' quedó en Albor y en la app, pero ' + MSJ_FALTA_PROV, 'bad'); if (TB.abierta === wid) traerTarjeta(wid); return true; }
   aviso(x.prueba ? 'Listo: la orden ' + r.numero + ' quedó en Albor y en la app (es una prueba: no se le mandó nada al proveedor).'
                  : 'Listo: la orden ' + r.numero + ' quedó en Albor y le llegó al proveedor con el PDF.');
   if (TB.abierta === wid) traerTarjeta(wid);
@@ -1205,14 +1208,22 @@ async function armarOrdenPDF(d) {
   return doc.output('datauristring').replace(/^data:[^,]*,/, '');
 }
 
-/** La orden para el proveedor, como adjunto para cargarOrdenAMano (o null si no se pudo armar: va la de Albor). */
+/** La orden para el proveedor, como adjunto para cargarOrdenAMano o mandarOrden (o null si no se pudo armar).
+    Feli (13/11): el 12/11 el servidor tardó y se le mandó la de Albor; ahora se prueba tres veces, con más tiempo, y sin
+    ella no se le manda nada al proveedor (queda "Falta mandar la orden al proveedor"). */
 async function ordenParaProveedor(wid, numero) {
-  try {
-    const d = await api('datosOrdenProveedor', wid, numero);
-    if (!d.ok) return null;
-    return { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + numero, base64: await armarOrdenPDF(d.orden) };
-  } catch (e) { return null; }
+  for (let i = 0; i < 3; i++) {
+    try {
+      const d = await apiLenta('datosOrdenProveedor', wid, numero);
+      if (d.ok) return { id: 'J' + nuevoId(), nombre: 'Orden de compra ' + numero, base64: await armarOrdenPDF(d.orden) };
+      if (!d.lento && !d.sinConexion && !d.google && !d.reintentar) return null;
+    } catch (e) { /* no se pudo armar el PDF: se prueba de nuevo */ }
+    await new Promise(function (ok) { setTimeout(ok, 3000); });
+  }
+  return null;
 }
+const MSJ_FALTA_PROV = 'no pude armar la orden para el proveedor (el servidor tardó en contestar), así que todavía no le mandé nada. ' +
+                       'Tocá "Mandar la orden" en la tarjeta en un rato.';
 
 /** "Mandar sin orden": la confirmación de siempre (en una prueba, no sale nada). */
 async function mandarSinOrdenUI() {
@@ -1232,9 +1243,15 @@ async function mandarSinOrdenUI() {
 
 /** "Mandar la orden": de nuevo, si el mensaje no salió. */
 async function mandarOrdenUI() {
-  const wid = TB.abierta;
+  const wid = TB.abierta, o = TB.detalle && TB.detalle.compra && TB.detalle.compra.orden;
   aviso('Mandando la orden…');
-  const r = await apiLenta('mandarOrden', wid);
+  // Feli (13/11): si falta la orden para el proveedor, se arma ahora (nunca se le manda la de Albor)
+  let prov = null;
+  if (o && !o.pdfProveedor && !o.prueba) {
+    prov = await ordenParaProveedor(wid, o.numero);
+    if (!prov) return aviso('Todavía no pude armar la orden para el proveedor (el servidor tarda en contestar). Probá de nuevo en un rato.', 'bad');
+  }
+  const r = await apiLenta('mandarOrden', wid, prov);
   if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: probá de nuevo en un rato.' : r.error, 'bad');
   aviso(r.prueba ? 'Listo (es una prueba: no se mandó nada).' : 'Listo: la orden le llegó al proveedor.');
   if (TB.abierta === wid) traerTarjeta(wid);

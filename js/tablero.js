@@ -110,6 +110,7 @@ function aplicarOp(lista, fn, args) {
       if (c.titulo !== undefined) t.titulo = c.titulo;
       if (c.urgencia !== undefined) t.urgencia = c.urgencia;
       if (c.compartido !== undefined) t.compartido = c.compartido;
+      if (c.sitio !== undefined) t.sitio = c.sitio;
       lista[i] = t;
     }
   }
@@ -589,16 +590,21 @@ async function moverA(ref, destino, despuesDe) {
     return pintarTablero();
   }
   const op = { columna: destino, despuesDe: despuesDe, desde: t.columna };
-  // Feli (22/10): cualquier tarjeta pasa a Entregas, pero antes pregunta si no tiene presupuestos o no se compró en la app
   const seccionCol = function (c) { const x = columnasTb().filter(function (k) { return k.columna === c; })[0]; return x ? x.seccion : ''; };
-  if (destino !== t.columna && seccionCol(destino) === 'Entregas' && seccionCol(t.columna) !== 'Entregas' && !t.comprado && !TB.reabiertos[ref]) {
-    const si = await dialogo({
-      titulo: '¿Pasar a seguimiento?',
-      texto: t.presupuestos ? 'Esta tarjeta tiene presupuestos cargados, pero no se realizó la compra en la app. ¿Seguro que la querés pasar a seguimiento?'
-                            : 'Esta tarjeta no tiene presupuestos cargados. ¿Seguro que la querés pasar a seguimiento?',
-      botones: [{ texto: 'Sí, pasarla', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }]
-    });
-    if (!si) return pintarTablero();
+  // Feli (13/11): a Entregas solo desde el cuadro comparativo (desde la Tanda verde, Cotización o Stand by no se pasa a mano)
+  if (destino !== t.columna && seccionCol(destino) === 'Entregas' && seccionCol(t.columna) !== 'Entregas' && !TB.reabiertos[ref]) {
+    pintarTablero();
+    const abrir = await dialogo({ titulo: 'Se compra desde el cuadro', texto: 'La compra se debe confirmar desde el cuadro comparativo.',
+      botones: [{ texto: 'Volver', valor: null }, { texto: '📊 Abrir el cuadro comparativo', clase: 'btn', valor: true }] });
+    if (abrir) abrirCuadro(ref);
+    return;
+  }
+  // Feli (13/11): con productos fuera del padrón no se cotiza
+  const coti = columnasTb().filter(function (k) { return k.seccion === 'Cotización'; }).map(function (k) { return k.columna; });
+  if (destino !== t.columna && coti.indexOf(destino) > 0 && t.fueraPadron > 0) {
+    pintarTablero();
+    return dialogo({ titulo: 'Todavía no se puede cotizar', texto: 'Esta tarjeta tiene un producto fuera del padrón. Todavía no se puede cotizar.',
+      botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
   }
   if (destino !== t.columna && destino === colPorRecibir()) {
     const e = await preguntarEntrega(t.entrega);
@@ -1779,7 +1785,7 @@ function pedidoConCambios(ref, p) {
   bandeja.lista().forEach(function (m) {
     if (m.fn !== 'editarPedido' || m.args[0] !== ref) return;
     const c = m.args[1] || {};
-    ['titulo', 'urgencia', 'razon', 'descripcion', 'compartido'].forEach(function (k) { if (c[k] !== undefined) v[k] = c[k]; });
+    ['titulo', 'urgencia', 'razon', 'descripcion', 'compartido', 'sitio'].forEach(function (k) { if (c[k] !== undefined) v[k] = c[k]; });
   });
   return v;
 }
@@ -1966,7 +1972,7 @@ function productoMandado(m, r) {
 function datosDelPedidoMandados(ref, c) {
   const poner = function (d) {
     if (!d || !d.pedido) return;
-    ['titulo', 'urgencia', 'razon', 'descripcion', 'compartido'].forEach(function (k) { if (c[k] !== undefined) d.pedido[k] = c[k]; });
+    ['titulo', 'urgencia', 'razon', 'descripcion', 'compartido', 'sitio'].forEach(function (k) { if (c[k] !== undefined) d.pedido[k] = c[k]; });
   };
   const todos = detallesGuardados();
   if (todos[ref]) { poner(todos[ref].d); guardado.guardarJSON(K_TARJETAS, todos); }
@@ -2192,13 +2198,27 @@ $('tj-editar').addEventListener('click', async function () {
   const t = buscarEnVista(ref);
   const p = pedidoConCambios(ref, Object.assign({}, d.pedido, t ? { titulo: t.titulo, urgencia: t.urgencia } : {}));
   let urgencia = p.urgencia;
+  // Feli (13/11): un admin cambia también la granja, la cuenta con su centro de costos (o el bien de uso) y con quién se comparte
+  const imp0 = !soloTitulo && !p.servicio ? (d.imputacion || []).filter(function (i) { return i.ref === ref; })[0] : null;
+  let opImp = null, imp = null;
+  if (imp0) {
+    aviso('Un momento…');
+    const op = await api('opcionesImputacion');
+    if (op.ok) opImp = op;
+  }
+  const sitios = (APP.config && (APP.config.sitiosFiltro || APP.config.sitios)) || [];
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo';
   cuerpo.innerHTML = '<div class="campo"><label for="eq-titulo">Título</label><input type="text" id="eq-titulo" maxlength="200" autocomplete="off">' +
     '<p class="nota">Cambia solo el título: los productos quedan como están. Si después se cambia un producto, el título se vuelve a armar con los productos.</p></div>' +
     (soloTitulo ? '' : '<div class="campo"><label>Urgencia</label><div class="urgencias-el" id="eq-urg"></div></div>' +
-    '<div class="campo"><label for="eq-razon">Razón del pedido</label><textarea id="eq-razon" maxlength="2000"></textarea></div>') +
-    (!soloTitulo && p.origen === 'masivo' ? '<div class="campo"><label>Compartir con</label><p class="nota">Los encargados que elijas lo ven. Sin nadie: solo los admins.</p>' +
+    '<div class="campo"><label for="eq-razon">Razón del pedido</label><textarea id="eq-razon" maxlength="2000"></textarea></div>' +
+    (p.servicio ? '' : '<div class="campo"><label for="eq-sitio">Granja</label><select id="eq-sitio">' +
+      sitios.concat(sitios.indexOf(p.sitio) === -1 && p.sitio ? [p.sitio] : []).map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('') + '</select></div>') +
+    (imp0 ? '<div class="campo"><label>Cuenta</label>' + (opImp ? '<div id="eq-imp"></div><p class="nota">Al elegir el centro de costos, la granja se pone sola (la podés cambiar).</p>'
+                                                                 : '<p class="nota">📶 Hace falta señal para cambiar la cuenta.</p>') + '</div>' : '')) +
+    (!soloTitulo ? '<div class="campo"><label>Compartir con</label><p class="nota">' + (p.origen === 'masivo' ? 'Los encargados que elijas lo ven. Sin nadie: solo los admins.'
+                                                                                        : 'Les queda en "Mis pedidos" y pueden cambiarle el título.') + '</p>' +
       '<div class="pr-rubros" id="eq-compartir"></div></div>' : '');
   const antesComp = (p.compartido || []).slice().sort().join('|');
   const elegidos = {};
@@ -2212,10 +2232,10 @@ $('tj-editar').addEventListener('click', async function () {
       const ra = $('eq-razon').value.trim();
       if (urgencia !== p.urgencia) c.urgencia = urgencia;
       if (ra !== (p.razon || '')) c.razon = ra;
-      if (p.origen === 'masivo') {
-        const comp = elegidosLista(elegidos).sort();
-        if (comp.join('|') !== antesComp) c.compartido = comp;
-      }
+      const comp = elegidosLista(elegidos).sort();
+      if (comp.join('|') !== antesComp) c.compartido = comp;
+      if ($('eq-sitio') && $('eq-sitio').value !== (p.sitio || '')) c.sitio = $('eq-sitio').value;
+      if (imp && imp.cambio() && imp.lista()) c.imputacion = imp.valor();
       return c;
     } }, { texto: 'Volver', valor: null }],
     alAbrir: function () {
@@ -2234,15 +2254,36 @@ $('tj-editar').addEventListener('click', async function () {
         urg.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { urgencia = b.dataset.u; pintarUrg(); revisar(); }); });
       };
       // La razón no se puede vaciar si tenía (un masivo puede no tenerla)
-      const revisar = function () { $('dg-ok').disabled = !$('eq-titulo').value.trim() || (!!p.razon && !$('eq-razon').value.trim()); };
-      $('eq-titulo').addEventListener('input', revisar);
-      $('eq-razon').addEventListener('input', revisar);
+      let revisar = function () { $('dg-ok').disabled = !$('eq-titulo').value.trim() || (!!p.razon && !$('eq-razon').value.trim()); };
+      $('eq-titulo').addEventListener('input', function () { revisar(); });
+      $('eq-razon').addEventListener('input', function () { revisar(); });
       pintarUrg();
       if ($('eq-compartir')) pintarChipsEncargados($('eq-compartir'), elegidos);
+      if ($('eq-sitio')) $('eq-sitio').value = p.sitio || '';
+      if (opImp) {
+        let primera = true;
+        imp = armarImputacion($('eq-imp'), opImp, { bien: imp0.bien, cuenta: imp0.cuenta && imp0.cuenta.cuenta, centro: imp0.cuenta && imp0.cuenta.centro }, '',
+          function (sitio) {
+            if (!primera && sitio && $('eq-sitio') && sitios.indexOf(sitio) !== -1) $('eq-sitio').value = sitio;
+            primera = false;
+            if (imp) revisar();
+          });
+        const r0 = revisar;
+        revisar = function () { r0(); if (imp && imp.cambio() && !imp.lista()) $('dg-ok').disabled = true; };
+      }
       revisar();
     }
   });
   if (!c || !Object.keys(c).length) return;
+  // La cuenta va directo (con señal), antes que lo demás: el centro pone la granja y después va la elegida
+  if (c.imputacion) {
+    const ri = await api('cambiarImputacion', ref, c.imputacion);
+    if (!ri.ok) aviso(ri.sinConexion ? '📶 Hace falta señal para cambiar la cuenta: lo demás se guarda igual.' : ri.error, 'bad');
+    else if (ri.aviso) aviso(ri.aviso, 'bad');
+    delete c.imputacion;
+    if (c.sitio === undefined && ri.ok) traerTarjeta(ref);
+    if (!Object.keys(c).length) return;
+  }
   bandeja.agregar('editarPedido', [ref, c], 'cambiar los datos de "' + (p.titulo || ref) + '"');
   pintarTablero();
   pintarTarjeta();

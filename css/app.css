@@ -1173,3 +1173,29 @@ body[data-pantalla="contabilidad"] .contenido{max-width:none}
 .cq-opcion-p.si{color:inherit;font-weight:650}
 .pr-ganador{display:inline-block;font-size:11.5px;font-weight:700;color:#5fbf7a;border:1px solid #5fbf7a;border-radius:9px;padding:1px 8px;margin-left:4px}
 .cq-elegir.cq-ganador-b[aria-pressed="true"]{background:#5fbf7a!important;color:#10261a!important;border-color:#5fbf7a!important}
+/* "Ya está confirmada a mano" (Feli, 13/11): gris y chico, a la izquierda de "Confirmar compra" */
+.cuadro-compra .cq-amano{flex:none;color:var(--band-fg);opacity:.75;text-decoration:underline;font-size:12px}
+.cuadro-compra .cq-amano:hover{opacity:1}
+.cuadro-compra .cq-amano:disabled{opacity:.35;cursor:default}
+/* Pedido masivo desde una lista (Feli, 13/11) */
+.ma-lista-b{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ml-cab{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:6px 0}
+.ml-cab label{font-weight:600}
+.ml-cab input{width:70px}
+.ml-cab .nota{flex:1 1 220px;margin:0}
+.ml-mal{color:var(--warn,#c98a00)}
+.ml-tabla{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px}
+.ml-fila{border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:var(--card,transparent)}
+.ml-fila.fuera{border-color:var(--warn,#c98a00)}
+.ml-dice{font-size:12.5px;color:var(--muted);margin-bottom:4px;overflow-wrap:anywhere}
+.ml-marca{font-weight:600;color:var(--fg)}
+.ml-fila.fuera .ml-marca{color:var(--warn,#c98a00)}
+.ml-campos{display:grid;grid-template-columns:80px 120px minmax(160px,2fr) minmax(120px,1fr) auto auto;gap:6px;align-items:center}
+.ml-campos input,.ml-campos select{min-width:0;width:100%}
+.ml-tot{font-size:12px;color:var(--muted);white-space:nowrap}
+@media (max-width:700px){
+  .ml-campos{grid-template-columns:70px 1fr auto;}
+  .ml-campos .ml-fam,.ml-campos .ml-esp{grid-column:1 / -1}
+  .ml-campos .ml-tot{grid-column:1 / 3}
+  .ml-campos input,.ml-campos select{font-size:16px}
+}

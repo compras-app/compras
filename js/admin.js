@@ -661,8 +661,11 @@ function revisarMasivo() {
   const m = AD.masivo;
   const f6 = APP.yo.fase6 && m.tipo !== 'servicio';
   $('ma-crear').disabled = !$('ma-sitio').value || !m.urgencia || m.creando || $('ma-titulo').value.trim().length < 3 ||
-                           (f6 && !cuentaMasivoLista());           // Feli (2/11): sin cuenta (o bien de uso) no se crea
-  $('ma-crear').textContent = (m.tipo === 'servicio' ? 'Crear servicio masivo' : 'Crear pedido masivo') + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
+                           (f6 && !cuentaMasivoLista()) ||           // Feli (2/11): sin cuenta (o bien de uso) no se crea
+                           (m.tipo !== 'servicio' && !listaMasivoBien());   // la lista (13/11): cada cantidad, mayor a 0
+  $('ma-lista-c').hidden = m.tipo === 'servicio';
+  $('ma-crear').textContent = (m.tipo === 'servicio' ? 'Crear servicio masivo' : 'Crear pedido masivo') +
+    (m.lista && m.tipo !== 'servicio' ? ' con ' + m.lista.renglones.length + ' productos' : '') + (m.archivos.length ? ' (con ' + m.archivos.length + (m.archivos.length === 1 ? ' adjunto)' : ' adjuntos)') : '');
 }
 ['ma-sitio', 'ma-titulo'].forEach(function (id) { $(id).addEventListener('input', revisarMasivo); $(id).addEventListener('change', revisarMasivo); });
 
@@ -691,10 +694,118 @@ function pintarArchivos() {
   });
 }
 
+/* ---------- Productos desde una lista (Feli, 13/11) ----------
+   "📄 Cargar lista" (PDF o foto) o "📋 Pegar el texto": el servidor lee los renglones (la IA solo copia) y busca cada producto en
+   el padrón. Acá se revisa: producto del padrón (de la lista, o se escribe otro), especificación, cantidad y unidad; arriba,
+   "¿Para cuántos galpones?" multiplica todas las cantidades. Lo que queda sin producto del padrón va "fuera del padrón". */
+const ML = { padron: null };
+async function padronParaLista() {
+  if (ML.padron) return ML.padron;
+  const d = await datosProductos();
+  ML.padron = {};
+  ((d && d.familias) || []).forEach(function (f) { ML.padron[f[0]] = f[1] || ''; });
+  $('ma-padron-dl').innerHTML = Object.keys(ML.padron).sort(function (a, b) { return a.localeCompare(b, 'es'); })
+    .map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
+  return ML.padron;
+}
+$('ma-lista-archivo').addEventListener('click', function () { $('ma-lista-f').click(); });
+$('ma-lista-f').addEventListener('change', async function () {
+  const f = this.files && this.files[0];
+  this.value = '';
+  if (!f) return;
+  const esPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+  if (!esPdf && !/^image\//.test(f.type)) return aviso('La lista tiene que ser un PDF o una foto.', 'bad');
+  if (f.size > 10 * 1024 * 1024) return aviso('La lista pesa más de 10 MB.', 'bad');
+  leerListaMasivoUI({ archivo: { base64: await leerPdfBase64(f), mime: f.type || (esPdf ? 'application/pdf' : 'image/jpeg'), nombre: f.name } });
+});
+$('ma-lista-pegar').addEventListener('click', async function () {
+  const cuerpo = document.createElement('div');
+  cuerpo.className = 'cuerpo';
+  cuerpo.innerHTML = '<label for="ml-texto">La lista, copiada del PDF, del Excel o de donde la tengas</label>' +
+    '<textarea id="ml-texto" rows="12" placeholder="28 un  PORTALAMPARAS DE CERAMICA CON ROSCA DE 5/8&#10;800 mts  CABLE UNIPOLAR 1X 2,5 mm CELESTE"></textarea>';
+  const texto = await dialogo({ titulo: '📋 Pegar la lista', cuerpo: cuerpo,
+    botones: [{ texto: 'Volver', valor: null }, { texto: 'Leer la lista', clase: 'btn', valor: function () { return $('ml-texto').value.trim(); } }],
+    alAbrir: function () { $('ml-texto').focus(); } });
+  if (texto) leerListaMasivoUI({ texto: texto });
+});
+
+async function leerListaMasivoUI(d) {
+  const m = AD.masivo;
+  $('ma-lista').innerHTML = '<p class="nota">📄 Leyendo la lista y buscando cada producto en el padrón… (puede tardar un minuto)</p>';
+  const [r] = await Promise.all([apiLenta('leerListaMasivo', d), padronParaLista()]);
+  if (!r.ok) { $('ma-lista').innerHTML = ''; return aviso(r.sinConexion ? '📶 Hace falta señal para leer la lista.' : r.error, 'bad'); }
+  if (!r.renglones.length) { $('ma-lista').innerHTML = ''; return aviso('No encontré productos en esa lista.', 'bad'); }
+  m.lista = { renglones: r.renglones.map(function (x) { return Object.assign({}, x, { cantidad: x.cantidad === null ? '' : x.cantidad }); }),
+              galpones: 1, aclaracion: r.aclaracion || '' };
+  if (!$('ma-titulo').value.trim() && r.titulo) $('ma-titulo').value = r.titulo.charAt(0) + r.titulo.slice(1).toLowerCase();
+  pintarListaMasivo();
+  revisarMasivo();
+}
+
+function numLista(v) { const n = Number(String(v === undefined || v === null ? '' : v).replace(',', '.')); return isFinite(n) ? n : NaN; }
+function pintarListaMasivo() {
+  const m = AD.masivo, L = m.lista;
+  if (!L) { $('ma-lista').innerHTML = ''; return; }
+  const pd = ML.padron || {};
+  const fuera = L.renglones.filter(function (x) { return !pd.hasOwnProperty(x.familia); }).length;
+  $('ma-lista').innerHTML =
+    '<div class="ml-cab"><label for="ml-galpones">¿Para cuántos galpones?</label><input type="text" inputmode="decimal" id="ml-galpones" value="' + esc(String(L.galpones)) + '">' +
+    '<span class="nota">' + (L.aclaracion ? 'La lista dice: «' + esc(L.aclaracion) + '». ' : '') + 'Cada cantidad se multiplica por este número.</span>' +
+    '<button type="button" class="link-gris" id="ml-sacar">Sacar la lista</button></div>' +
+    '<p class="nota"><b>' + L.renglones.length + ' productos</b>' + (fuera ? ' · <span class="ml-mal">⚠️ ' + fuera + ' sin producto del padrón: elegilo o escribilo (si no, queda fuera del padrón y no se puede cotizar)</span>' : ' · ✅ todos en el padrón') + '</p>' +
+    '<div class="ml-tabla">' + L.renglones.map(function (x, i) {
+      const en = pd.hasOwnProperty(x.familia), c = numLista(x.cantidad), tot = c * (numLista(L.galpones) || 1);
+      return '<div class="ml-fila' + (en ? '' : ' fuera') + '" data-i="' + i + '">' +
+        '<div class="ml-dice"><span class="ml-marca">' + (!en ? '⚠️ No lo encontré' : x.como === 'ia' ? '🤖 Lo propuso la IA: revisalo' : '✅ Del padrón') + '</span> ' +
+        'En la lista: «' + esc(x.texto) + '»' + (x.nota ? ' · <i>' + esc(x.nota) + '</i>' : '') + '</div>' +
+        '<div class="ml-campos">' +
+          '<input type="text" class="ml-cant" inputmode="decimal" value="' + esc(String(x.cantidad)) + '" aria-label="Cantidad">' +
+          '<select class="ml-uni" aria-label="Unidad">' + UNIDADES_PEDIDO.map(function (u) { return '<option value="' + u[0] + '"' + (u[0] === x.unidad ? ' selected' : '') + '>' + esc(u[1]) + '</option>'; }).join('') + '</select>' +
+          '<input type="text" class="ml-fam" list="ma-padron-dl" value="' + esc(x.familia || '') + '" placeholder="Producto del padrón" aria-label="Producto del padrón">' +
+          '<input type="text" class="ml-esp" value="' + esc(x.especificacion || '') + '" placeholder="Especificación" aria-label="Especificación">' +
+          '<span class="ml-tot">' + (numLista(L.galpones) > 1 && c > 0 ? '= ' + esc(String(Math.round(tot * 1000) / 1000).replace('.', ',')) : '') + '</span>' +
+          '<button type="button" class="icono ml-x" aria-label="Sacar este producto">×</button></div></div>';
+    }).join('') + '</div>';
+  $('ml-galpones').addEventListener('change', function () { L.galpones = this.value.trim() || 1; pintarListaMasivo(); });
+  $('ml-sacar').addEventListener('click', function () { m.lista = null; pintarListaMasivo(); revisarMasivo(); });
+  $('ma-lista').querySelectorAll('.ml-fila').forEach(function (f) {
+    const x = L.renglones[Number(f.dataset.i)];
+    f.querySelector('.ml-cant').addEventListener('change', function () { x.cantidad = this.value.trim(); pintarListaMasivo(); revisarMasivo(); });
+    f.querySelector('.ml-uni').addEventListener('change', function () { x.unidad = this.value; });
+    f.querySelector('.ml-fam').addEventListener('change', function () {
+      x.familia = this.value.trim(); x.como = pd.hasOwnProperty(x.familia) ? 'mano' : 'no'; pintarListaMasivo();
+    });
+    f.querySelector('.ml-esp').addEventListener('change', function () { x.especificacion = this.value.trim(); });
+    f.querySelector('.ml-x').addEventListener('click', function () { L.renglones.splice(Number(f.dataset.i), 1); if (!L.renglones.length) m.lista = null; pintarListaMasivo(); revisarMasivo(); });
+  });
+}
+/** ¿Las cantidades de la lista están bien? (todas mayores a 0) */
+function listaMasivoBien() {
+  const L = AD.masivo.lista;
+  return !L || (numLista(L.galpones) > 0 && L.renglones.every(function (x) { return numLista(x.cantidad) > 0; }));
+}
+
 $('ma-crear').addEventListener('click', async function () {
   const m = AD.masivo;
   const d = { id: m.id, sitio: $('ma-sitio').value, urgencia: m.urgencia, razon: $('ma-razon').value.trim(),
               titulo: $('ma-titulo').value.trim(), descripcion: $('ma-desc').value.trim(), compartido: elegidosLista(m.compartir), tipo: m.tipo || 'pedido' };
+  // Feli (13/11): los productos de la lista, con las cantidades por la cantidad de galpones
+  if (m.lista && d.tipo !== 'servicio') {
+    const pd = ML.padron || {}, g = numLista(m.lista.galpones) || 1;
+    d.productos = m.lista.renglones.map(function (x) {
+      const en = pd.hasOwnProperty(x.familia);
+      return { texto: en || !x.familia ? x.texto : x.familia, familia: en ? x.familia : '', especificacion: x.especificacion || '',
+               cantidad: Math.round(numLista(x.cantidad) * g * 1000) / 1000, unidad: x.unidad || '',
+               nota: [x.nota, g !== 1 ? x.cantidadTexto + ' por galpón × ' + String(g).replace('.', ',') : ''].filter(String).join(' · ') };
+    });
+    const fuera = d.productos.filter(function (x) { return !x.familia; }).length;
+    if (fuera) {
+      const si = await dialogo({ titulo: 'Hay productos fuera del padrón',
+        texto: fuera + (fuera === 1 ? ' producto queda' : ' productos quedan') + ' fuera del padrón: el pedido no se va a poder pasar a Por cotizar hasta arreglarlos desde la tarjeta. ¿Crearlo igual?',
+        botones: [{ texto: 'Volver', valor: null }, { texto: 'Crearlo igual', clase: 'btn', valor: true }] });
+      if (!si) return;
+    }
+  }
   // Fase 6 (30/10): la cuenta (o el bien de uso) y, si es de prueba, la Ref "PRUEBA-M…"
   if (APP.yo.fase6 && d.tipo !== 'servicio') {
     d.fase6 = m.f6.bienUso ? { bienUso: m.f6.bienUso } : { cuenta: m.f6.cuenta, centro: m.f6.centro };
@@ -712,6 +823,7 @@ $('ma-crear').addEventListener('click', async function () {
   AD.masivo = { id: nuevoIdMasivo(), urgencia: m.urgencia, archivos: [], compartir: {}, sitiosArmados: true, tipo: m.tipo, op: m.op };
   $('ma-sitio').disabled = false;
   ['ma-titulo', 'ma-desc', 'ma-razon'].forEach(function (id) { $(id).value = ''; });
+  pintarListaMasivo();
   notaAd('ma-estado', '');
   pintarChipsEncargados($('ma-compartir'), AD.masivo.compartir);
   pintarMasivo();

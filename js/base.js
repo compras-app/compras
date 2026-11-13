@@ -45,7 +45,7 @@ aplicarZoomApp();
 window.addEventListener('resize', aplicarZoomApp);           // el zoom del navegador cambia la escala y avisa con un resize
 
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = 'b0adaaef9b';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '960f3206bc';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -258,7 +258,7 @@ async function llamarUnaVez(fn, args, id, limite) {
   try {
     resp = await fetch(API, {
       method: 'POST', cache: 'no-store', signal: ctl ? ctl.signal : undefined,
-      body: JSON.stringify({ fn: fn, args: args || [], id: id })
+      body: JSON.stringify({ fn: fn, args: args || [], id: id, t: Date.now() })   // t: para ver si llegó tarde al servidor (Feli, 13/11)
     });
   } catch (e) {
     // Si se cortó por tiempo, hay conexión pero Google está tardando: no es "poca señal"

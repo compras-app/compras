@@ -448,8 +448,29 @@ function pintarBarraCompra() {
       return '<span><b>' + esc(x.col.nombre) + ':</b> ' + x.lineas.length + ' producto' + (x.lineas.length === 1 ? '' : 's') +
         (x.total !== null ? ', ' + esc(plata(Math.round(x.total * 100) / 100, x.moneda)) : '') + '</span>';
     }).join('') + '<small class="cq-gris">Precios sin IVA, con las cantidades para este pedido</small>' : '<span class="cq-gris">Elegí qué le comprás a cada proveedor.</span>') + '</div>' +
+    // Feli (13/11): "Ya está confirmada a mano", gris y chico, a la izquierda de "Confirmar compra"
+    '<button type="button" class="link-gris cq-amano" id="cq-amano"' + (g.length ? '' : ' disabled') + '>Ya está confirmada a mano</button>' +
     '<button type="button" class="btn si" id="cq-confirmar"' + (g.length ? '' : ' disabled') + '>Confirmar compra</button>';
-  $('cq-confirmar').addEventListener('click', confirmarCompra);
+  $('cq-confirmar').addEventListener('click', function () { confirmarCompra(false); });
+  $('cq-amano').addEventListener('click', async function () {
+    const si = await dialogo({ titulo: '⚠️ ¿Ya le confirmaste la compra?',
+      texto: 'Tocá este botón solo si ya le confirmaste la compra al proveedor por WhatsApp. Queda comprado lo elegido y pasa a "En armado", ' +
+             'sin mandarle el mensaje de confirmación (si lleva orden de compra, la orden sí se carga en Albor y le llega).',
+      botones: [{ texto: 'Volver', valor: null }, { texto: 'Sí, ya está confirmada', clase: 'btn', valor: true }] });
+    if (si) confirmarCompra(true);
+  });
+}
+
+/** Feli (13/11): la compra pasa los $400.000 y Luis no la aprobó: se manda a aprobar desde la tarjeta. */
+async function avisarAprobacion(ref, error) {
+  const ir = await dialogo({ titulo: 'Hace falta la aprobación', texto: error,
+    botones: [{ texto: 'Volver', valor: null }, { texto: '📨 Mandar a aprobar', clase: 'btn', valor: true }] });
+  if (!ir) return;
+  cerrarCuadro();
+  if (TB.abierta !== ref) await abrirTarjeta(ref);
+  for (let i = 0; i < 30 && (!TB.detalle || TB.abierta !== ref); i++) await new Promise(function (ok) { setTimeout(ok, 200); });
+  const b = $('tj-aprobar-mandar');
+  if (b && !b.hidden) b.click(); else aviso('Tocá "📨 Mandar a aprobar" en la tarjeta (está en Decisión).');
 }
 
 /** El mensaje de confirmación para un proveedor: el texto de Ajustes con sus productos (como los escribió él, con lo corregido). */
@@ -501,11 +522,11 @@ async function pedirCuitCompra(nombre) {
     } });
 }
 
-async function confirmarCompra() {
+async function confirmarCompra(aMano) {
   const grupos = compraElegida();
   if (!grupos.length || CQ.comprando) return;
   const ref = CQ.datos.ref;
-  let compradas = 0;
+  let compradas = 0, faltaAprobar = '';
   CQ.comprando = true;
   try {
     for (let i = 0; i < grupos.length; i++) {
@@ -543,12 +564,15 @@ async function confirmarCompra() {
       const conNP = g.lineas.some(function (l) { return /^NP\|/.test(l); }) && pedidos.length > 1;
       const cuerpo = document.createElement('div');
       cuerpo.className = 'cuerpo';
+      // Feli (13/11): confirmada a mano y sin orden: no hay mensaje para mandar
+      const sinMensaje = online || (aMano && !conOrden);
       cuerpo.innerHTML = (conNP ? '<div class="campo"><label for="cq-pedido-np">Lo que no se pidió va al pedido</label><select id="cq-pedido-np">' +
         pedidos.map(function (p) { return '<option value="' + esc(p.ref) + '">' + esc([p.sitio, p.titulo || p.ref].filter(String).join(' · ')) + '</option>'; }).join('') + '</select></div>' : '') +
         htmlOrdenEnCompra(oq) +
-        (online ? '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') +
+        (sinMensaje ? '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') +
                   (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
-                  '. Es un proveedor online: al tocar "Comprar" queda comprado y sale la tarjeta de seguimiento, sin mandarle ningún mensaje.</p>' :
+                  (online ? '. Es un proveedor online: al tocar "Comprar" queda comprado y sale la tarjeta de seguimiento, sin mandarle ningún mensaje.</p>'
+                          : '. Ya le confirmaste la compra: al tocar "Comprar" queda comprado y pasa a "En armado", sin mandarle ningún mensaje.</p>') :
         '<p class="nota">' + g.lineas.length + ' producto' + (g.lineas.length === 1 ? '' : 's') + (g.total !== null ? ', ' + esc(plata(Math.round(g.total * 100) / 100, g.moneda)) + ' sin IVA' : '') +
         (conOrden ? '. Al tocar "Comprar", queda comprado y ' + (ext ? 'se carga la orden en Albor' : 'te pido el número y el PDF de la orden') +
                     '. Con el número, al proveedor le llega el PDF de la orden con este mensaje ({numero} se completa solo). Lo podés cambiar.</p>'
@@ -558,15 +582,16 @@ async function confirmarCompra() {
         (conOrden ? '<label for="cq-obs" style="margin-top:10px;display:block">Observaciones en la orden de compra <small class="nota">(opcional; vienen las del presupuesto: dejá las que sirvan)</small></label>' +
                     '<textarea id="cq-obs" rows="4" maxlength="1500">' + esc((op && op.observaciones) || '') + '</textarea>' : ''));
       const texto = await dialogo({ titulo: 'Comprarle a ' + g.col.nombre + (grupos.length > 1 ? ' (' + (i + 1) + ' de ' + grupos.length + ')' : ''), cuerpo: cuerpo,
-        botones: [{ texto: 'Volver', valor: null }, { texto: online || (oq && (oq.orden || oq.prueba)) ? '🛒 Comprar' : '🛒 Comprar y mandar', clase: 'btn', valor: function () {
+        botones: [{ texto: 'Volver', valor: null }, { texto: sinMensaje || (oq && (oq.orden || oq.prueba)) ? '🛒 Comprar' : '🛒 Comprar y mandar', clase: 'btn', valor: function () {
           if ($('cq-pedido-np')) g.pedidoNP = $('cq-pedido-np').value;
           if ($('cq-obs')) g.obsOrden = $('cq-obs').value.trim();
-          return online ? '·' : $('cq-msj').value.trim();
+          return sinMensaje ? '·' : $('cq-msj').value.trim();
         } }] });
       if (!texto) break;
       aviso('Comprando a ' + g.col.nombre + '…');
-      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: online ? '' : texto, pedidoNP: g.pedidoNP || '',
-                                            textoSinOrden: conOrden ? mensajeCompra(g) : '', obsOrden: g.obsOrden || '' });
+      const r = await apiLenta('comprar', { id: 'Z' + nuevoId(), ref: ref, proveedor: g.col.proveedor, lineas: g.lineas, texto: sinMensaje ? '' : texto, pedidoNP: g.pedidoNP || '',
+                                            textoSinOrden: conOrden ? mensajeCompra(g) : '', obsOrden: g.obsOrden || '', aMano: !!aMano });
+      if (!r.ok && r.aprobar) { faltaAprobar = r.error; break; }
       if (!r.ok) { aviso(r.sinConexion ? '📶 Poca señal: no se pudo comprar a ' + g.col.nombre + '. Probá cuando vuelva.' : r.error, 'bad'); break; }
       compradas++;
       g.lineas.forEach(function (l) { delete CQ.sel[l]; });
@@ -578,17 +603,20 @@ async function confirmarCompra() {
       }
       aviso(r.orden ? 'Listo: comprado a ' + g.col.nombre + '. La orden de compra quedó pendiente: cargala desde la tarjeta de seguimiento.'
             : r.online ? 'Listo: comprado a ' + g.col.nombre + ' (proveedor online: no se le mandó nada).'
+            : r.aMano ? 'Listo: comprado a ' + g.col.nombre + ' (confirmada a mano: no se le mandó nada). Quedó en "En armado".'
             : r.prueba ? 'Listo: comprado a ' + g.col.nombre + ' (es una prueba: no se le mandó nada).'
             : r.enviado ? 'Listo: comprado a ' + g.col.nombre + ' y le llegó la confirmación.' : 'Comprado a ' + g.col.nombre + ', pero el mensaje no salió: mandalo desde el chat.',
-            r.enviado || r.orden || r.prueba || r.online ? '' : 'bad');
+            r.enviado || r.orden || r.prueba || r.online || r.aMano ? '' : 'bad');
     }
   } finally {
     CQ.comprando = false;
   }
-  if (!compradas) return;
-  if (TB.abierta === ref) traerTarjeta(ref);
-  cargarTablero();
-  abrirCuadro(ref, 'comprar');
+  if (compradas) {
+    if (TB.abierta === ref) traerTarjeta(ref);
+    cargarTablero();
+    if (!faltaAprobar) abrirCuadro(ref, 'comprar');
+  }
+  if (faltaAprobar) await avisarAprobacion(ref, faltaAprobar);
 }
 
 

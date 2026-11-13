@@ -133,10 +133,11 @@ function pintarContable() {
     // Historial (Feli, 2/11): lo que pasó 7 días en Factura cargada, con los mismos filtros y el buscador
     const l = (CT.historial || []).filter(pasaFiltrosContables);
     $('ct-cols').innerHTML = '<div class="ct-hist-h"><h3>📚 Historial <span class="n">' + l.length + '</span></h3>' +
-      '<small class="nota">Las compras que pasaron 7 días en Factura cargada.</small></div>' +
+      '<small class="nota">Las compras que pasaron 7 días en Factura cargada, y las recibidas sin orden de compra que pasaron 7 días en Recibido.</small></div>' +
       (CT.historial === null ? '<p class="nota">Cargando…</p>' :
        '<div class="ct-hist">' + (l.map(function (t) {
-         return htmlTarjetaCt(t).replace(/<\/div>$/, '<div class="ct-hist-f">Factura cargada desde el ' + esc(fechaCorta(t.enFactura)) + '</div></div>');
+         return htmlTarjetaCt(t).replace(/<\/div>$/, '<div class="ct-hist-f">' + (t.enFactura ? 'Factura cargada desde el ' + esc(fechaCorta(t.enFactura))
+                                                                                 : 'Recibido sin orden de compra desde el ' + esc(fechaCorta(t.sinOrdenDesde))) + '</div></div>');
        }).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>');
   } else {
     $('ct-cols').innerHTML = COLUMNAS_CT.map(function (c) {
