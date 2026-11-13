@@ -88,7 +88,8 @@
 
   /* ---------- La pantalla ---------- */
 
-  var S = { r: null, cargando: false, error: '', parte: 'faltantes', junto: true, todos: false, buscar: '', foco: null, guardando: 0 };
+  var S = { r: null, cargando: false, error: '', parte: 'faltantes', junto: true, todos: false, buscar: '', foco: null, guardando: 0,
+            cot: null };   // cot: el recuadro de "Pedir cotización" abierto (Paso 2)
   try { var v0 = JSON.parse(localStorage.getItem(VISTA) || 'null'); if(v0){ S.parte = v0.parte === 'necesidad' ? 'necesidad' : 'faltantes'; S.junto = v0.junto !== false; S.todos = !!v0.todos; } } catch(e){}
   try { S.r = JSON.parse(localStorage.getItem(GUARDA) || 'null'); } catch(e){}
 
@@ -113,7 +114,8 @@
     var r = await api('getConsumoMensual');
     S.cargando = false;
     if(r && r.ok !== false && r.datos){
-      S.r = { datos: r.datos, meses: r.meses, necesidad: r.necesidad || {}, llego: new Date().toISOString() };
+      S.r = { datos: r.datos, meses: r.meses, necesidad: r.necesidad || {}, proveedores: r.proveedores || [], msjCotizacion: r.msjCotizacion || '',
+              llego: new Date().toISOString() };
       try { localStorage.setItem(GUARDA, JSON.stringify(S.r)); } catch(e){}
     } else S.error = r && r.sinConexion ? 'Hace falta señal para traer el consumo.' + (S.r ? ' Ves lo último que llegó.' : '') : 'No se pudo traer el consumo: ' + ((r && r.error) || '');
     pintar();
@@ -159,6 +161,7 @@
       var hayAMano = Object.keys(S.r.necesidad || {}).length;
       if(hayAMano) h.push('<button class="linkbtn" id="cmborrar">Borrar lo cambiado a mano (' + hayAMano + ')</button>');
       if(S.guardando) h.push('<span class="contado">guardando…</span>');
+      if(!S.cot) h.push('<button class="btn" id="cmcotizar">📤 Pedir cotización</button>');
     }
     h.push('</div>');
     if(S.parte === 'necesidad') h.push('<p class="nota">Necesidad = consumo por mes × meses − existencias de hoy (para arriba, a unidades enteras). ' +
@@ -168,6 +171,7 @@
     h.push('</div>');
 
     var l = filas();
+    if(S.parte === 'necesidad' && S.cot) h.push(htmlCotizar());
     if(S.parte === 'faltantes') h.push(S.junto ? tablaFaltantes(l, null) : OFICINAS.map(function(o){ return tablaFaltantes(l, o); }).join(''));
     else h.push(S.junto ? tablaNecesidad(l, null) : OFICINAS.map(function(o){ return tablaNecesidad(l, o); }).join(''));
     host.innerHTML = h.join('');
@@ -270,6 +274,9 @@
       var antes = JSON.parse(JSON.stringify(S.r.necesidad || {}));
       guardar(null, function(){ S.r.necesidad = {}; }, true, antes);
     };
+    var cot = $('cmcotizar');
+    if(cot) cot.onclick = abrirCotizar;
+    if(S.cot && $('cmcotmandar')) conectarCotizar();
     [].forEach.call(document.querySelectorAll('[data-cm-volver]'), function(x){
       x.onclick = function(){ cambiarNecesidad(x.getAttribute('data-cm-volver'), null); };
     });
@@ -342,6 +349,155 @@
       S.r.meses = antesMeses;
       S.error = r && r.sinConexion ? 'Hace falta señal para guardar el cambio: no se guardó.' : 'No se guardó el cambio: ' + ((r && r.error) || '');
     }
+    pintar();
+  }
+
+  /* ---------- Pedir cotización (Paso 2; Feli, 13/11) ----------
+     Uno o varios proveedores del padrón (con teléfono), los productos con necesidad (todos tildados), el mensaje (se ve y
+     se cambia) y un Excel con código, producto, unidad, cantidad (la necesidad total: la suma de las tres oficinas) y el
+     precio vacío. Sale por WhatsApp (pedirCotizacionStock) y queda en el historial. */
+  var XLSX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+
+  function nuevoIdCot(){ return 'CQ' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 8).toUpperCase(); }
+
+  /** Los productos que se pueden pedir: los que tienen necesidad (total de las tres oficinas). */
+  function paraCotizar(){
+    return calcular(S.r.datos.productos, S.r.meses, S.r.necesidad).filter(function(x){ return x.total.necesidad > 0; });
+  }
+
+  async function abrirCotizar(){
+    if(!S.r.proveedores){ await cargar(); if(!S.r || !S.r.proveedores) return; }   // lo guardado antes del Paso 2 no los trae
+    S.cot = { id: nuevoIdCot(), provs: {}, buscarProv: '', fuera: {}, texto: S.r.msjCotizacion || '', guardarTexto: false, mandando: false, resultado: null, error: '' };
+    pintar();
+    var c = document.querySelector('.cm-cot'); if(c) c.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  function provsElegidos(){ return (S.r.proveedores || []).filter(function(p){ return S.cot.provs[p.id]; }); }
+
+  function htmlCotizar(){
+    var C = S.cot, prods = paraCotizar(), provs = S.r.proveedores || [];
+    var b = sinTildes(C.buscarProv.trim());
+    var lista = provs.filter(function(p){ return !b || sinTildes(p.nombre + ' ' + (p.rubros || []).join(' ')).indexOf(b) >= 0 || C.provs[p.id]; });
+    var h = ['<div class="paso cm-cot"><h3>📤 Pedir cotización</h3>'];
+    // 1. Proveedores
+    h.push('<div class="cm-cot-p"><b>1. A quién</b> <span class="contado" id="cmcotnprov"></span>');
+    h.push('<label class="field"><input type="text" id="cmcotbuscar" autocomplete="off" placeholder="buscar proveedor o rubro" value="' + esc(C.buscarProv) + '"></label>');
+    h.push('<div class="cm-cot-lista" id="cmcotprovs">');
+    if(!lista.length) h.push('<p class="nota">Nada con eso.</p>');
+    lista.forEach(function(p){
+      h.push('<label class="check' + (p.tel ? '' : ' cm-sin') + '"><input type="checkbox" data-cm-prov="' + esc(p.id) + '"' + (C.provs[p.id] ? ' checked' : '') + (p.tel ? '' : ' disabled') + '> ' +
+             esc(p.nombre) + (p.rubros && p.rubros.length ? ' <span class="cm-cod-i">' + esc(p.rubros.join(', ')) + '</span>' : '') +
+             (p.tel ? '' : ' <span class="cm-cod-i">sin teléfono</span>') + (p.activo ? '' : ' <span class="cm-cod-i">no activo</span>') + '</label>');
+    });
+    h.push('</div></div>');
+    // 2. Productos
+    h.push('<div class="cm-cot-p"><b>2. Qué productos</b> <span class="contado" id="cmcotnprod"></span> ' +
+           '<button class="linkbtn" id="cmcottodos">todos</button> · <button class="linkbtn" id="cmcotninguno">ninguno</button>');
+    h.push('<div class="cm-cot-lista">');
+    if(!prods.length) h.push('<p class="nota">No hace falta comprar nada con estos meses.</p>');
+    prods.forEach(function(x){
+      h.push('<label class="check"><input type="checkbox" data-cm-prod="' + esc(x.cod) + '"' + (C.fuera[x.cod] ? '' : ' checked') + '> ' + esc(x.insumo) +
+             ' <span class="cm-cod-i">' + fmt(x.total.necesidad) + (x.unidad ? ' ' + esc(x.unidad) : '') + '</span></label>');
+    });
+    h.push('</div></div>');
+    // 3. Mensaje
+    h.push('<div class="cm-cot-p"><b>3. El mensaje</b> <span class="contado">va con la planilla de Excel adjunta</span>');
+    h.push('<textarea id="cmcottexto" rows="3">' + esc(C.texto) + '</textarea>');
+    h.push('<label class="check"><input type="checkbox" id="cmcotguardar"' + (C.guardarTexto ? ' checked' : '') + '> Usar este texto también las próximas veces</label></div>');
+    if(C.error) h.push('<p class="cm-cot-error">' + esc(C.error) + '</p>');
+    if(C.resultado) h.push('<ul class="cm-cot-res">' + C.resultado.map(function(e){
+      return '<li>' + (e.ok ? '✅ ' : '❌ ') + esc(e.nombre) + (e.ok ? (e.ya ? ': ya se le había mandado' : ': mandado') : ': no salió' + (e.error ? ' (' + esc(e.error) + ')' : '')) + '</li>';
+    }).join('') + '</ul>');
+    h.push('<div class="fila"><button class="btn" id="cmcotmandar"' + (C.mandando ? ' disabled' : '') + '></button>' +
+           '<button class="linkbtn" id="cmcotcerrar">' + (C.resultado && C.resultado.every(function(e){ return e.ok; }) ? 'cerrar' : 'cancelar') + '</button></div>');
+    h.push('</div>');
+    return h.join('');
+  }
+
+  function contarCotizar(){
+    var C = S.cot, np = provsElegidos().length, prods = paraCotizar().filter(function(x){ return !C.fuera[x.cod]; }).length, b;
+    if((b = $('cmcotnprov'))) b.textContent = np ? '(' + np + (np === 1 ? ' elegido)' : ' elegidos)') : '';
+    if((b = $('cmcotnprod'))) b.textContent = '(' + prods + ' de ' + paraCotizar().length + ')';
+    if((b = $('cmcotmandar'))) b.textContent = C.mandando ? 'Mandando…' : 'Mandar a ' + np + (np === 1 ? ' proveedor' : ' proveedores');
+  }
+
+  function conectarCotizar(){
+    var C = S.cot, bus = $('cmcotbuscar'), txt = $('cmcottexto'), gua = $('cmcotguardar');
+    contarCotizar();
+    if(bus) bus.oninput = function(){
+      C.buscarProv = bus.value; var pos = bus.selectionStart, lista = $('cmcotprovs');
+      var arriba = lista ? lista.scrollTop : 0;
+      pintar();
+      var c = $('cmcotbuscar'); if(c){ c.focus(); try { c.setSelectionRange(pos, pos); } catch(e){} }
+      if($('cmcotprovs')) $('cmcotprovs').scrollTop = arriba;
+    };
+    [].forEach.call(document.querySelectorAll('[data-cm-prov]'), function(x){
+      x.onchange = function(){ if(x.checked) C.provs[x.dataset.cmProv] = true; else delete C.provs[x.dataset.cmProv]; contarCotizar(); };
+    });
+    [].forEach.call(document.querySelectorAll('[data-cm-prod]'), function(x){
+      x.onchange = function(){ if(x.checked) delete C.fuera[x.dataset.cmProd]; else C.fuera[x.dataset.cmProd] = true; contarCotizar(); };
+    });
+    $('cmcottodos').onclick = function(){ C.fuera = {}; [].forEach.call(document.querySelectorAll('[data-cm-prod]'), function(x){ x.checked = true; }); contarCotizar(); };
+    $('cmcotninguno').onclick = function(){ paraCotizar().forEach(function(x){ C.fuera[x.cod] = true; }); [].forEach.call(document.querySelectorAll('[data-cm-prod]'), function(x){ x.checked = false; }); contarCotizar(); };
+    if(txt) txt.oninput = function(){ C.texto = txt.value; };
+    if(gua) gua.onchange = function(){ C.guardarTexto = gua.checked; };
+    $('cmcotcerrar').onclick = function(){
+      if(C.mandando) return;
+      S.cot = null; pintar();
+    };
+    $('cmcotmandar').onclick = mandarCotizacion;
+  }
+
+  function cargarXlsx(){
+    if(window.XLSX) return Promise.resolve(window.XLSX);
+    return new Promise(function(si, no){
+      var sc = document.createElement('script');
+      sc.src = XLSX_URL; sc.onload = function(){ window.XLSX ? si(window.XLSX) : no(new Error('no cargó')); };
+      sc.onerror = function(){ no(new Error('Hace falta señal para armar la planilla.')); };
+      document.head.appendChild(sc);
+    });
+  }
+
+  /** La planilla para el proveedor (base64). */
+  async function armarExcel(prods){
+    var X = await cargarXlsx(), hoy = new Date();
+    var fecha = hoy.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    var filas = [['Pedido de cotización · ' + fecha], [], ['Código', 'Producto', 'Unidad', 'Cantidad', 'Precio unitario', 'Precio total']];
+    prods.forEach(function(x){ filas.push([x.cod, x.insumo, x.unidad || '', x.total.necesidad, null, null]); });
+    var hoja = X.utils.aoa_to_sheet(filas);
+    hoja['!cols'] = [{ wch: 12 }, { wch: 46 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 16 }];
+    var libro = X.utils.book_new();
+    X.utils.book_append_sheet(libro, hoja, 'Cotización');
+    return { nombre: 'Pedido de cotizacion ' + fecha.replace(/\//g, '-') + '.xlsx', base64: X.write(libro, { bookType: 'xlsx', type: 'base64' }) };
+  }
+
+  async function mandarCotizacion(){
+    var C = S.cot;
+    if(C.mandando) return;
+    var provs = provsElegidos(), prods = paraCotizar().filter(function(x){ return !C.fuera[x.cod]; });
+    C.error = '';
+    if(!provs.length) C.error = 'Elegí al menos un proveedor.';
+    else if(!prods.length) C.error = 'Elegí al menos un producto.';
+    else if(!String(C.texto).trim()) C.error = 'Falta el mensaje.';
+    if(C.error){ pintar(); return; }
+    if(!confirm('¿Mandar el pedido de cotización de ' + prods.length + (prods.length === 1 ? ' producto' : ' productos') + ' a ' +
+                provs.map(function(p){ return p.nombre; }).join(', ') + '?')) return;
+    C.mandando = true; C.resultado = null; pintar();
+    var archivo;
+    try { archivo = await armarExcel(prods); }
+    catch(e){ C.mandando = false; C.error = 'No se pudo armar la planilla: ' + (e.message || e); pintar(); return; }
+    var r = await apiLenta('pedirCotizacionStock', {
+      id: C.id, proveedores: provs.map(function(p){ return p.id; }), texto: C.texto, guardarTexto: C.guardarTexto, archivo: archivo,
+      productos: prods.map(function(x){ return { codigo: x.cod, producto: x.insumo, unidad: x.unidad, cantidad: x.total.necesidad }; })
+    });
+    C.mandando = false;
+    if(r && r.ok !== false && r.envios){
+      C.resultado = r.envios;
+      if(r.msjCotizacion) S.r.msjCotizacion = r.msjCotizacion;
+      // Los que salieron se destildan: "Mandar" de nuevo reintenta solo los que no salieron (mismo envío)
+      r.envios.forEach(function(e){ if(e.ok) delete C.provs[e.proveedor]; });
+      if(r.envios.every(function(e){ return e.ok; })) C.id = nuevoIdCot();
+    } else C.error = r && r.sinConexion ? 'Hace falta señal para mandarlo: no salió.' : 'No salió: ' + ((r && r.error) || '');
     pintar();
   }
 
