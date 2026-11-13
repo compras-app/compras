@@ -233,6 +233,20 @@ function emojiUrgencia(u) {
   return /[☀-➿]|\uD83C|\uD83D|\uD83E/.test(primera) ? primera : String(u || '');
 }
 function inicial(nombre) { return String(nombre || '').trim().charAt(0).toUpperCase(); }
+/* Feli (13/11): Juan Ponso y Jerónimo eran dos "J" iguales. Cada responsable con su color: Juan azul, Jerónimo verde y los
+   demás uno fijo que sale de su nombre. */
+const COLORES_RESP = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#db2777', '#0891b2', '#65a30d', '#dc2626'];
+const COLOR_RESP_FIJO = { juan: '#2563eb', jeronimo: '#16a34a' };
+function colorResp(nombre) {
+  const k = sinTildes(String(nombre || '').trim().split(/\s+/)[0]);
+  if (COLOR_RESP_FIJO[k]) return COLOR_RESP_FIJO[k];
+  let h = 0;
+  for (let i = 0; i < k.length; i++) h = (h * 31 + k.charCodeAt(i)) >>> 0;
+  return COLORES_RESP[2 + h % (COLORES_RESP.length - 2)];
+}
+function htmlResp(nombre, conTitulo) {
+  return '<span class="resp" style="background:' + colorResp(nombre) + ';color:#fff"' + (conTitulo ? ' title="Responsable: ' + esc(nombre) + '"' : '') + '>' + esc(inicial(nombre)) + '</span>';
+}
 
 function mostrarTablero() {
   if (!TB.filtros) armarFiltros();
@@ -494,7 +508,7 @@ function htmlTarjeta(t, enPorRecibir) {
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
     (enPorRecibir && t.entrega ? '<span class="entrega">' + esc(ENTREGA_CORTO[t.entrega] || t.entrega) + '</span>' : '') +
     (t.paraAprobar && APP.yo && APP.yo.admin ? '<span class="aprobar" title="Cambios para aprobar">⏳ ' + t.paraAprobar + '</span>' : '') +
-    (t.responsable ? '<span class="resp" title="Responsable: ' + esc(t.responsable) + '">' + esc(inicial(t.responsable)) + '</span>' : '') +
+    (t.responsable ? htmlResp(t.responsable, true) : '') +
     '</div>' + (t.standbyEn ? '<div class="sb-aviso">⏰ Pasa a stand by en ' + t.standbyEn + (t.standbyEn === 1 ? ' día' : ' días') + '</div>' : '') +   // Paso 2-ter
     htmlMarcaCotizar(t) + '</div>';                                                // Fase 3: "📤 Pedir cotización" (cotizar.js)
 }
@@ -1183,7 +1197,7 @@ function pintarTarjeta() {
     const comp = (p ? pedidoConCambios(ref, p).compartido : t.compartido) || [];
     dato('Compartido con', esc(comp.length ? comp.join(', ') : 'Solo los admins'));
   }
-  const respHtml = responsable ? '<span class="resp">' + esc(inicial(responsable)) + '</span> ' + esc(responsable) : 'Sin responsable';
+  const respHtml = responsable ? htmlResp(responsable) + ' ' + esc(responsable) : 'Sin responsable';
   dato('Responsable', admin && enTb ? '<button type="button" class="boton-dato" id="tj-resp">' + respHtml + ' ⌄</button>' : respHtml);
   if (columna === colPorRecibir() || entrega) {
     dato('Cómo llega', admin && enTb

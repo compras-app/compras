@@ -248,6 +248,12 @@ function pintarCuadroAdentro(q) {
   };
   if (q.sinProductos) h += fila('Renglones', function (c) { return renglones(c.renglones || []); });
   else if (cols.some(function (c) { return c.noPedido.length; })) h += fila('No pedido', function (c) { return renglones(c.noPedido); }, 'cq-pie');
+  // Feli (13/11): en "✏️ Editar", un producto cotizado se arrastra a esta fila (o a las de No pedido) y pasa a No pedido, esté o no
+  // revisado el presupuesto; sirve también cuando todavía no hay ninguno no pedido
+  if (CQ.editar && CQ.modo !== 'comprar' && !q.sinProductos)
+    h += '<tr class="cq-pie cq-a-np no-imprimir"><th class="cq-fija cq-rotulo">Pasar a No pedido</th>' + cols.map(function (c) {
+      return '<td class="cq-cas cq-np-destino" data-cq-destino="" data-prov="' + esc(c.proveedor) + '"><span class="cq-gris">⬇️ Soltá acá un producto de ' + esc(c.nombre) + ' para pasarlo a No pedido</span></td>';
+    }).join('') + '</tr>';
   h += fila('Totales', htmlTotalesColumna, 'cq-pie');
   h += fila('Condiciones', htmlCondiciones, 'cq-pie');
   h += fila('Anotaciones', htmlNotas, 'cq-pie');

@@ -68,7 +68,7 @@ function pintarPestanasRp() {
   ['rp-desde', 'rp-hasta', 'rp-sitio'].forEach(function (id) { $(id).closest('label').hidden = st || fijo; });
   if (RP.pestana === 'historial') $('rp-tablero-l').hidden = true;
   $('rp-vista-l').hidden = !st;
-  $('rp-buscar-l').hidden = !(st || RP.pestana === 'egresos');      // Feli (19/10): también en lo guardado
+  $('rp-buscar-l').hidden = !(st || RP.pestana === 'egresos' || RP.pestana === 'plata');   // Feli (19/10): también en lo guardado; Gastos (13/11)
   $('rp-armar').hidden = fijo;
   $('rp-excel').hidden = !RP.datos[RP.pestana] || RP.pestana === 'resumen' || RP.pestana === 'historial';     // el Resumen no se baja (Feli, 13/10)
 }
@@ -277,6 +277,11 @@ function tablasFlujo(r) {
 function tablasPlata(r) {
   const tot = r.totales.map(function (t) { return plataRp(t.total, t.moneda) + ' en ' + nro(t.compras) + (t.compras === 1 ? ' compra' : ' compras'); }).join(' · ');
   const ah = r.ahorro.totales.map(function (t) { return plataRp(t.ahorrado, t.moneda) + ' (' + nro(t.porcentaje, 1) + '%)'; }).join(' · ');
+  // Feli (13/11): el buscador de arriba filtra los productos de Último precio e Historial de precios
+  const q = sinTildes(RP.buscar || '').trim();
+  const conQ = function (l) { return q ? (l || []).filter(function (p) { return sinTildes(p.producto).indexOf(q) !== -1; }) : (l || []); };
+  const ult = conQ(ultimosPrecios(r.precios)), hist = conQ(r.precios);
+  const avisoBusq = function (l) { return q ? ' 🔎 «' + esc(RP.buscar.trim()) + '»: ' + l.length + (l.length === 1 ? ' renglón.' : ' renglones.') : ''; };
   const grupo = function (titulo, lista) {
     return { titulo: titulo, cab: [titulo.replace('Por ', ''), 'Moneda', 'Total', 'Compras'],
              filas: lista.map(function (g) { return [g.grupo || '—', g.moneda, plataRp(g.total, g.moneda), nro(g.compras)]; }), vacio: 'Sin compras.' };
@@ -291,15 +296,16 @@ function tablasPlata(r) {
       cab: ['Pedido', 'Producto', 'Proveedor', 'Elegido', 'Promedio', 'Presupuestos', 'Ahorro'], abrir: 0,
       filas: r.ahorro.detalle.map(function (a) { return [a.ref, a.producto, a.proveedor, plataRp(a.elegido, a.moneda), plataRp(a.promedio, a.moneda), nro(a.ofertas), plataRp(a.ahorrado, a.moneda)]; }),
       vacio: 'Ninguna compra tuvo 2 o más presupuestos del mismo producto.' },
-    // Feli (30/10): el último precio pagado de cada producto, con su especificación (sale del historial de abajo)
-    { titulo: 'Último precio', nota: 'Por producto y su especificación, lo último que se pagó por nuestra unidad, sin IVA.',
-      cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'En pesos'],
-      filas: ultimosPrecios(r.precios).map(function (p) { return [p.producto, fechaRp(p.fecha), p.proveedor, plataRp(p.unitario, p.moneda), plataRp(p.enPesos, 'ARS')]; }),
-      vacio: 'Sin precios todavía.' },
-    { titulo: 'Historial de precios', nota: 'Por producto y su especificación (Feli, 30/10: así no se mezclan, por ejemplo, las mangueras de media con las gruesas), lo que se pagó por nuestra unidad, sin IVA, en la moneda en que vino y convertido con el dólar oficial del Banco Nación, venta, de ese día.',
-      cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'Dólar del día', 'En pesos', 'En dólares'],
-      filas: r.precios.map(function (p) { return [p.producto, fechaRp(p.fecha), p.proveedor, plataRp(p.unitario, p.moneda), p.dolar ? '$ ' + nro(p.dolar, 0) : '—', plataRp(p.enPesos, 'ARS'), p.enDolares === null ? '—' : 'US$ ' + nro(p.enDolares, 2)]; }),
-      vacio: 'Sin precios todavía.' }
+    // Feli (30/10): el último precio pagado de cada producto, con su especificación (sale del historial de abajo).
+    // Feli (13/11): con el buscador de arriba y, al tocar un renglón, se abre el pedido de donde salió (refs)
+    { titulo: 'Último precio', nota: 'Por producto y su especificación, lo último que se pagó por nuestra unidad, sin IVA. Tocá un renglón para abrir su pedido.' + avisoBusq(ult),
+      cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'En pesos'], refs: ult.map(function (p) { return p.ref; }),
+      filas: ult.map(function (p) { return [p.producto, fechaRp(p.fecha), p.proveedor, plataRp(p.unitario, p.moneda), plataRp(p.enPesos, 'ARS')]; }),
+      vacio: q ? 'Ningún producto con «' + RP.buscar.trim() + '».' : 'Sin precios todavía.' },
+    { titulo: 'Historial de precios', nota: 'Por producto y su especificación (Feli, 30/10: así no se mezclan, por ejemplo, las mangueras de media con las gruesas), lo que se pagó por nuestra unidad, sin IVA, en la moneda en que vino y convertido con el dólar oficial del Banco Nación, venta, de ese día. Tocá un renglón para abrir su pedido.' + avisoBusq(hist),
+      cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'Dólar del día', 'En pesos', 'En dólares'], refs: hist.map(function (p) { return p.ref; }),
+      filas: hist.map(function (p) { return [p.producto, fechaRp(p.fecha), p.proveedor, plataRp(p.unitario, p.moneda), p.dolar ? '$ ' + nro(p.dolar, 0) : '—', plataRp(p.enPesos, 'ARS'), p.enDolares === null ? '—' : 'US$ ' + nro(p.enDolares, 2)]; }),
+      vacio: q ? 'Ningún producto con «' + RP.buscar.trim() + '».' : 'Sin precios todavía.' }
   ];
 }
 
@@ -455,7 +461,7 @@ function htmlTabla(t, i) {
   if (!t.filas.length) return h + (t.vacio ? '<p class="nota">' + esc(t.vacio) + '</p>' : '') + '</div>';
   h += '<div class="ve-tabla"><table><thead><tr>' + t.cab.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
     t.filas.map(function (f, j) {
-      const clic = t.abrir !== undefined || t.variantes || t.linea;
+      const clic = t.abrir !== undefined || t.refs || t.variantes || t.linea;
       const cls = (clic ? 'rp-clic' : '') + (t.falta && t.falta[j] ? ' rp-falta' : '');
       return '<tr' + (cls ? ' class="' + cls.trim() + '"' : '') + (clic ? ' data-t="' + i + '" data-f="' + j + '"' : '') + '>' + f.map(function (c) {
         if (c && typeof c === 'object' && c.barra !== undefined) return '<td class="rp-barra">' + (c.barra > 0 ? '<span style="width:' + Math.round(Math.min(1, c.barra) * 100) + '%"></span>' : '') + '</td>';
@@ -540,6 +546,7 @@ $('rp-cuerpo').addEventListener('click', function (e) {
   if (!tr) return;
   const t = RP.tablas[Number(tr.dataset.t)], j = Number(tr.dataset.f);
   if (t.abrir !== undefined) return abrirTarjeta(t.filas[j][t.abrir]);
+  if (t.refs) return t.refs[j] && abrirTarjeta(t.refs[j]);
   const sig = tr.nextElementSibling;
   if (sig && sig.classList.contains('rp-detalle')) { sig.remove(); return; }
   const r = RP.datos[RP.pestana].r;

@@ -101,7 +101,7 @@ function htmlServicio(t) {
     '<div class="t">' + esc(t.titulo || t.ref) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + esc(t.sitio) + '</span>' +
-    (t.responsable ? '<span class="resp" title="Responsable: ' + esc(t.responsable) + '">' + esc(inicial(t.responsable)) + '</span>' : '') +
+    (t.responsable ? htmlResp(t.responsable, true) : '') +
     '</div></div>';
 }
 
@@ -215,7 +215,7 @@ function pintarServicioAbierto() {
   dato('Pidió', esc((p && p.solicitante) || (v && v.solicitante) || ''));
   if (p) dato('Cargado', esc(fechaLinda(p.fecha)));
   const resp = (p && p.responsable) || (v && v.responsable) || '';
-  dato('Responsable', resp ? '<span class="resp">' + esc(inicial(resp)) + '</span> ' + esc(resp) : 'Sin responsable');
+  dato('Responsable', resp ? htmlResp(resp) + ' ' + esc(resp) : 'Sin responsable');
   $('tj-datos').innerHTML = datos.join('');
   $('tj-etiquetas').innerHTML = '<span class="etiqueta">🔧 Servicio</span>';
   // tj-presup-b / tj-compra-b: si no, quedaban los presupuestos de la tarjeta abierta antes (19/10)

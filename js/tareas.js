@@ -110,7 +110,7 @@ function htmlTarea(t) {
     '<div class="t">' + esc(t.titulo) + '</div>' +
     '<div class="pie"><span aria-label="' + esc(t.urgencia) + '">' + esc(emojiUrgencia(t.urgencia)) + '</span>' +
     '<span class="sitio">' + (t.recordatorio ? '⏰ ' + esc(cuandoCorto(t.recordatorio)) : '') + '</span>' +
-    (t.responsable ? '<span class="resp" title="Responsable: ' + esc(t.responsable) + '">' + esc(inicial(t.responsable)) + '</span>' : '') +
+    (t.responsable ? htmlResp(t.responsable, true) : '') +
     '</div></div>';
 }
 
@@ -263,7 +263,7 @@ function pintarTareaAbierta() {
   const dato = function (etiqueta, html) { datos.push('<div class="dato"><small>' + esc(etiqueta) + '</small><div class="v">' + html + '</div></div>'); };
   if (t) {
     dato('Urgencia', esc(t.urgencia));
-    const resp = t.responsable ? '<span class="resp">' + esc(inicial(t.responsable)) + '</span> ' + esc(t.responsable) : 'Sin responsable';
+    const resp = t.responsable ? htmlResp(t.responsable) + ' ' + esc(t.responsable) : 'Sin responsable';
     dato('Responsable', '<button type="button" class="boton-dato" id="tk-resp">' + resp + ' ⌄</button>');
     dato('La creó', esc(t.creo));
     dato('Creada', esc(fechaLinda(t.fecha)));
