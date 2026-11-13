@@ -115,6 +115,7 @@
     S.cargando = false;
     if(r && r.ok !== false && r.datos){
       S.r = { datos: r.datos, meses: r.meses, necesidad: r.necesidad || {}, proveedores: r.proveedores || [], msjCotizacion: r.msjCotizacion || '',
+              precios: r.precios || {}, cotizados: r.cotizados || {},
               llego: new Date().toISOString() };
       try { localStorage.setItem(GUARDA, JSON.stringify(S.r)); } catch(e){}
     } else S.error = r && r.sinConexion ? 'Hace falta señal para traer el consumo.' + (S.r ? ' Ves lo último que llegó.' : '') : 'No se pudo traer el consumo: ' + ((r && r.error) || '');
@@ -132,7 +133,7 @@
     var host = $('cm'); if(!host) return;
     // El casillero elegido sigue elegido después de volver a pintar (al llegar la respuesta del servidor)
     var act = document.activeElement;
-    if(!S.foco && act && act.classList && act.classList.contains('cm-in') && host.contains(act)) S.foco = act.dataset.k;
+    if(!S.foco && act && act.classList && act.classList.contains('cm-campo') && host.contains(act)) S.foco = act.dataset.k;
     var h = [], d = S.r && S.r.datos;
     $('cmerror').textContent = S.error; $('cmerror').classList.toggle('on', !!S.error);
     // Encabezado: de cuándo son las existencias y qué meses se promedian
@@ -160,6 +161,8 @@
       h.push('<label class="check"><input type="checkbox" id="cmtodos"' + (S.todos ? ' checked' : '') + '> Ver también lo que no hace falta comprar</label>');
       var hayAMano = Object.keys(S.r.necesidad || {}).length;
       if(hayAMano) h.push('<button class="linkbtn" id="cmborrar">Borrar lo cambiado a mano (' + hayAMano + ')</button>');
+      var hayPrecios = Object.keys(S.r.precios || {}).length;
+      if(hayPrecios) h.push('<button class="linkbtn" id="cmborrarp">Borrar precios y proveedores (' + hayPrecios + ')</button>');
       if(S.guardando) h.push('<span class="contado">guardando…</span>');
       if(!S.cot) h.push('<button class="btn" id="cmcotizar">📤 Pedir cotización</button>');
     }
@@ -167,7 +170,9 @@
     if(S.parte === 'necesidad') h.push('<p class="nota">Necesidad = consumo por mes × meses − existencias de hoy (para arriba, a unidades enteras). ' +
       'LC 50 y CASA se calculan juntas y se reparte lo que hay que comprar para que las dos queden con lo mismo. ' +
       'La necesidad se cambia a mano (con ↓ o Enter pasás al siguiente)' + (S.junto ? '; en "Todo junto", el cambio va a Oficina JM' : '') +
-      '. Lo cambiado a mano queda guardado para todos hasta que lo borres.</p>');
+      '. Lo cambiado a mano queda guardado para todos hasta que lo borres. ' +
+      'Precio unitario y Precio total van juntos (total = unitario × necesidad): cargá el que tengas. Los precios y el proveedor de cada producto ' +
+      'quedan guardados para todos hasta "Borrar precios".</p>');
     h.push('</div>');
 
     var l = filas();
@@ -213,36 +218,80 @@
     return h.join('');
   }
 
+  /* Paso 3 (Feli, 13/11): al lado de la necesidad, Precio unitario y Precio total (enlazados: total = unitario × necesidad)
+     y el proveedor de cada fila. Se guardan en el servidor por producto (el mismo en las tres oficinas) hasta "Borrar precios". */
+  function precioDe(cod){ var p = (S.r.precios || {})[cod]; return p && p.precio !== null && p.precio !== undefined ? n(p.precio) : null; }
+  function proveedorDe(cod){ var p = (S.r.precios || {})[cod]; return p ? p.proveedor || '' : ''; }
+  function nombreProveedor(id){ var p = (S.r.proveedores || []).filter(function(x){ return x.id === id; })[0]; return p ? p.nombre : id; }
+  function fmt2(v){ return v === null || v === undefined ? '' : n(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  /** Un número como lo escribe la gente: "1.234,5", "1234,5", "1234.5" o "30.744" (miles). null si está vacío; NaN si no es un número. */
+  function numeroEscrito(t){
+    t = String(t === null || t === undefined ? '' : t).replace(/\$|\s/g, '');
+    if(t === '') return null;
+    if(t.indexOf(',') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+    else if(/\.\d{3}$/.test(t) || (t.match(/\./g) || []).length > 1) t = t.replace(/\./g, '');
+    return Number(t);
+  }
+
+  function selectProveedor(x){
+    var elegido = proveedorDe(x.cod), cot = S.r.cotizados || {}, provs = S.r.proveedores || [];
+    var arriba = provs.filter(function(p){ return cot[p.id]; }), resto = provs.filter(function(p){ return !cot[p.id]; });
+    var op = function(p){ return '<option value="' + esc(p.id) + '"' + (p.id === elegido ? ' selected' : '') + '>' + esc(p.nombre) + '</option>'; };
+    return '<select class="cm-prov" data-cod="' + esc(x.cod) + '"><option value="">— elegir —</option>' +
+      (arriba.length ? '<optgroup label="Se les pidió cotización">' + arriba.map(op).join('') + '</optgroup><optgroup label="Otros">' + resto.map(op).join('') + '</optgroup>'
+                     : resto.map(op).join('')) +
+      (elegido && !provs.some(function(p){ return p.id === elegido; }) ? '<option value="' + esc(elegido) + '" selected>' + esc(elegido) + '</option>' : '') + '</select>';
+  }
+
   function tablaNecesidad(l, o){
     var de = function(x){ return o ? x.of[o.id] : x.total; };
-    var ver = l.filter(function(x){ var y = de(x); return S.todos ? (y.consumo || y.existencia || y.necesidad) : (y.necesidad > 0 || y.aMano); });
+    var ver = l.filter(function(x){
+      var y = de(x);
+      return S.todos ? (y.consumo || y.existencia || y.necesidad || precioDe(x.cod) !== null) : (y.necesidad > 0 || y.aMano || (precioDe(x.cod) !== null && y.necesidad > 0) || (!o && (precioDe(x.cod) !== null || proveedorDe(x.cod))));
+    });
     var h = ['<div class="cm-bloque">'];
     if(o) h.push(tituloOficina(o));
     var meses = n(S.r.meses);
     h.push('<div class="tablewrap on cm-tabla"><table><thead><tr><th class="name">Producto</th><th>Consumo en ' + fmt(meses) + (meses === 1 ? ' mes' : ' meses') + '</th><th>Existencia</th>' +
-           '<th class="cm-nec">Necesidad</th><th>Precio última compra</th></tr></thead><tbody>');
-    if(!ver.length) h.push('<tr><td colspan="5" class="name cm-vacio">' + (S.buscar ? 'Nada con eso.' : 'No hace falta comprar nada para ' + fmt(meses) + (meses === 1 ? ' mes.' : ' meses.')) + '</td></tr>');
-    var total = 0, conPrecio = 0;
+           '<th class="cm-nec">Necesidad</th><th>Precio última compra</th><th class="cm-pr">Precio unitario</th><th class="cm-pr">Precio total</th><th class="cm-pr">Proveedor</th></tr></thead><tbody>');
+    if(!ver.length) h.push('<tr><td colspan="8" class="name cm-vacio">' + (S.buscar ? 'Nada con eso.' : 'No hace falta comprar nada para ' + fmt(meses) + (meses === 1 ? ' mes.' : ' meses.')) + '</td></tr>');
+    var estimado = 0, conUltimo = 0, cargado = 0, porProv = {};
     ver.forEach(function(x){
-      var y = de(x), k = (o ? o.id : 'T') + '|' + x.cod;
-      if(x.precio !== null){ total += y.necesidad * x.precio; conPrecio++; }
+      var y = de(x), k = (o ? o.id : 'T') + '|' + x.cod, pu = precioDe(x.cod), prov = proveedorDe(x.cod);
+      var pt = pu === null ? null : Math.round(pu * y.necesidad * 100) / 100;
+      if(x.precio !== null){ estimado += y.necesidad * x.precio; conUltimo++; }
+      if(pt !== null) cargado += pt;
+      if(y.necesidad > 0){
+        var g = porProv[prov] = porProv[prov] || { n: 0, total: 0, sinPrecio: 0 };
+        g.n++; if(pt === null) g.sinPrecio++; else g.total += pt;
+      }
       var marca = y.aMano ? '<button type="button" class="cm-amano" data-cm-volver="' + esc(k) + '" title="Cambiado a mano' +
         (o && y.quien ? ' por ' + esc(y.quien) : '') + '. Calculado: ' + fmt(y.calculada) + '. Tocá para volver a lo calculado.">✏️ ↺</button>' : '';
       h.push('<tr' + (y.aMano ? ' class="cm-mano"' : '') + '>' + celdaProducto(x) + '<td>' + fmt(redondo(y.consumo * meses)) + '</td><td>' + fmt(y.existencia) + '</td>' +
-             '<td class="cm-nec">' + marca + '<input class="ajuste cm-in" type="text" inputmode="decimal" autocomplete="off" data-k="' + esc(k) + '" value="' + esc(fmt(y.necesidad)) + '"></td>' +
-             '<td' + (x.precio === null ? ' class="zero"' : '') + '>' + (x.precio === null ? '—' : plata(x.precio)) + '</td></tr>');
+             '<td class="cm-nec">' + marca + '<input class="ajuste cm-campo cm-in" type="text" inputmode="decimal" autocomplete="off" data-k="' + esc(k) + '" value="' + esc(fmt(y.necesidad)) + '"></td>' +
+             '<td' + (x.precio === null ? ' class="zero"' : '') + '>' + (x.precio === null ? '—' : plata(x.precio)) + '</td>' +
+             '<td class="cm-pr"><input class="ajuste cm-campo cm-pu" type="text" inputmode="decimal" autocomplete="off" data-k="pu:' + esc(k) + '" value="' + esc(fmt2(pu)) + '" placeholder="$"></td>' +
+             '<td class="cm-pr"><input class="ajuste cm-campo cm-pt" type="text" inputmode="decimal" autocomplete="off" data-k="pt:' + esc(k) + '" value="' + esc(fmt2(pt)) + '" placeholder="$"></td>' +
+             '<td class="cm-pr">' + selectProveedor(x) + '</td></tr>');
     });
     h.push('</tbody>');
     if(ver.length) h.push('<tfoot><tr><td class="name">' + ver.length + ' productos</td><td></td><td></td><td></td><td>' +
-      (conPrecio ? '≈ ' + plata(total) : '') + '</td></tr></tfoot>');
+      (conUltimo ? '≈ ' + plata(estimado) : '') + '</td><td></td><td>' + (cargado ? plata(cargado) : '') + '</td><td></td></tr></tfoot>');
     h.push('</table></div>');
-    if(ver.length && conPrecio) h.push('<p class="cm-pie">≈ necesidad × precio de la última compra' + (conPrecio < ver.length ? (ver.length - conPrecio === 1 ? ' (sin 1 que no tiene precio)' : ' (sin los ' + (ver.length - conPrecio) + ' que no tienen precio)') : '') + '.</p>');
+    if(ver.length && conUltimo) h.push('<p class="cm-pie">≈ necesidad × precio de la última compra' + (conUltimo < ver.length ? (ver.length - conUltimo === 1 ? ' (sin 1 que no tiene precio)' : ' (sin los ' + (ver.length - conUltimo) + ' que no tienen precio)') : '') + '.</p>');
+    var provs = Object.keys(porProv).sort(function(a, b){ return !a ? 1 : !b ? -1 : nombreProveedor(a).localeCompare(nombreProveedor(b), 'es'); });
+    if(provs.some(function(p){ return p; })) h.push('<p class="cm-pie cm-porprov"><b>Por proveedor:</b> ' + provs.map(function(p){
+      var g = porProv[p];
+      return (p ? esc(nombreProveedor(p)) : '<i>sin proveedor</i>') + ': ' + g.n + (g.n === 1 ? ' producto' : ' productos') + (g.total ? ', ' + plata(g.total) : '') +
+             (g.sinPrecio && p ? ' (' + g.sinPrecio + ' sin precio)' : '');
+    }).join(' · ') + '</p>');
     h.push('</div>');
     return h.join('');
   }
 
   function conectar(){
-    var rec = $('cmrecargar'), bus = $('cmbuscar'), tod = $('cmtodos'), mes = $('cmmeses'), bor = $('cmborrar');
+    var rec = $('cmrecargar'), bus = $('cmbuscar'), tod = $('cmtodos'), mes = $('cmmeses'), bor = $('cmborrar'), borp = $('cmborrarp');
     if(rec) rec.onclick = cargar;
     [].forEach.call(document.querySelectorAll('[data-cm-parte]'), function(x){
       x.onclick = function(){ S.parte = x.getAttribute('data-cm-parte'); guardarVista(); pintar(); };
@@ -261,8 +310,8 @@
       mes.onfocus = function(){ mes.select(); };
       mes.onkeydown = function(e){ if(e.key === 'Enter'){ e.preventDefault(); mes.blur(); } };
       mes.onchange = function(){
-        var m = Number(String(mes.value).trim().replace(',', '.'));
-        if(!isFinite(m) || m <= 0 || m > 24){ mes.value = fmt(S.r.meses); alert('Los meses tienen que ser entre 0,5 y 24.'); return; }
+        var m = numeroEscrito(mes.value);
+        if(m === null || !isFinite(m) || m <= 0 || m > 24){ mes.value = fmt(S.r.meses); alert('Los meses tienen que ser entre 0,5 y 24.'); return; }
         m = Math.round(m * 2) / 2 || 0.5;
         if(m === n(S.r.meses)){ mes.value = fmt(m); return; }
         guardar({ meses: m }, function(){ S.r.meses = m; });
@@ -271,8 +320,12 @@
     if(bor) bor.onclick = function(){
       var k = Object.keys(S.r.necesidad || {}).length;
       if(!confirm('¿Borrar lo cambiado a mano (' + k + (k === 1 ? ' producto' : ' productos') + ')? Vuelve a lo calculado para todos los admins.')) return;
-      var antes = JSON.parse(JSON.stringify(S.r.necesidad || {}));
-      guardar(null, function(){ S.r.necesidad = {}; }, true, antes);
+      guardar(null, function(){ S.r.necesidad = {}; }, 'necesidad');
+    };
+    if(borp) borp.onclick = function(){
+      var k = Object.keys(S.r.precios || {}).length;
+      if(!confirm('¿Borrar los precios y proveedores cargados (' + k + (k === 1 ? ' producto' : ' productos') + ')? Se borran para todos los admins y no se pueden recuperar.')) return;
+      guardar(null, function(){ S.r.precios = {}; }, 'precios');
     };
     var cot = $('cmcotizar');
     if(cot) cot.onclick = abrirCotizar;
@@ -280,21 +333,33 @@
     [].forEach.call(document.querySelectorAll('[data-cm-volver]'), function(x){
       x.onclick = function(){ cambiarNecesidad(x.getAttribute('data-cm-volver'), null); };
     });
-    var ins = [].slice.call(document.querySelectorAll('input.cm-in'));
-    ins.forEach(function(inp, i){
-      inp.addEventListener('focus', function(){ inp.select(); });
-      inp.addEventListener('change', function(){ tomar(inp); });
-      inp.addEventListener('keydown', function(e){
-        var paso = e.key === 'ArrowDown' || e.key === 'Enter' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
-        if(!paso) return;
-        e.preventDefault();
-        var otro = ins[i + paso];
-        S.foco = otro ? otro.dataset.k : null;
-        if(!tomar(inp)){ var y = otro || inp; S.foco = null; y.focus(); y.select(); y.scrollIntoView({ block: 'nearest' }); }
+    [].forEach.call(document.querySelectorAll('select.cm-prov'), function(x){
+      x.onchange = function(){
+        var cod = x.dataset.cod, prod = productoDe('T|' + cod);
+        guardar({ precios: [{ codigo: cod, producto: prod ? prod.insumo : '', proveedor: x.value }] }, function(){
+          var p = S.r.precios[cod] = S.r.precios[cod] || { precio: null, proveedor: '' };
+          p.proveedor = x.value;
+        });
+      };
+    });
+    // Cada columna con su ↓ / Enter / ↑ (la necesidad, el unitario y el total)
+    ['cm-in', 'cm-pu', 'cm-pt'].forEach(function(cl){
+      var ins = [].slice.call(document.querySelectorAll('input.' + cl));
+      ins.forEach(function(inp, i){
+        inp.addEventListener('focus', function(){ inp.select(); });
+        inp.addEventListener('change', function(){ tomar(inp); });
+        inp.addEventListener('keydown', function(e){
+          var paso = e.key === 'ArrowDown' || e.key === 'Enter' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+          if(!paso) return;
+          e.preventDefault();
+          var otro = ins[i + paso];
+          S.foco = otro ? otro.dataset.k : null;
+          if(!tomar(inp)){ var y = otro || inp; S.foco = null; y.focus(); y.select(); y.scrollIntoView({ block: 'nearest' }); }
+        });
       });
     });
     if(S.foco){
-      var f = ins.filter(function(x){ return x.dataset.k === S.foco; })[0];
+      var f = [].filter.call(document.querySelectorAll('input.cm-campo'), function(x){ return x.dataset.k === S.foco; })[0];
       S.foco = null;
       if(f){ f.focus(); f.select(); f.scrollIntoView({ block: 'nearest' }); }
     }
@@ -302,13 +367,32 @@
 
   // Lo escrito en un casillero; true si cambió algo (se vuelve a pintar)
   function tomar(inp){
-    var t = String(inp.value).trim(), v = t === '' ? 0 : Number(t.replace(/\./g, '').replace(',', '.'));
-    if(!isFinite(v) || v < 0){ inp.value = ''; alert('La necesidad tiene que ser un número de 0 para arriba.'); return false; }
-    var x = productoDe(inp.dataset.k);
+    var k = inp.dataset.k, tipo = /^pu:/.test(k) ? 'pu' : /^pt:/.test(k) ? 'pt' : 'nec';
+    if(tipo !== 'nec') k = k.slice(3);
+    var v = numeroEscrito(inp.value);
+    if(v !== null && (!isFinite(v) || v < 0)){ alert('Tiene que ser un número de 0 para arriba.'); inp.value = ''; return false; }
+    var x = productoDe(k);
     if(!x) return false;
-    var ofi = inp.dataset.k.split('|')[0], ahora = ofi === 'T' ? x.total.necesidad : x.of[ofi].necesidad;
-    if(redondo(v) === redondo(ahora)) return false;
-    cambiarNecesidad(inp.dataset.k, v);
+    var ofi = k.split('|')[0], nec = ofi === 'T' ? x.total.necesidad : x.of[ofi].necesidad;
+    if(tipo === 'nec'){
+      if(v === null) v = 0;
+      if(redondo(v) === redondo(nec)) return false;
+      cambiarNecesidad(k, v);
+      return true;
+    }
+    var antes = precioDe(x.cod), pu;
+    if(tipo === 'pu') pu = v;
+    else {
+      if(v === null) pu = null;
+      else if(!(nec > 0)){ alert('Para cargar el precio total, primero tiene que haber necesidad. Cargá el precio unitario.'); inp.value = ''; return false; }
+      else pu = Math.round(v / nec * 10000) / 10000;
+      if(v !== null && antes !== null && fmt2(Math.round(antes * nec * 100) / 100) === fmt2(v)) return false;
+    }
+    if(tipo === 'pu' && (pu === null ? antes === null : antes !== null && fmt2(pu) === fmt2(antes))) return false;
+    guardar({ precios: [{ codigo: x.cod, producto: x.insumo, precio: pu }] }, function(){
+      var p = S.r.precios[x.cod] = S.r.precios[x.cod] || { precio: null, proveedor: '' };
+      p.precio = pu;
+    });
     return true;
   }
 
@@ -326,27 +410,29 @@
       else cambios.push({ oficina: 'JM', codigo: x.cod, producto: x.insumo, v: jmParaTotal(x, v) });
     } else cambios.push({ oficina: ofi, codigo: x.cod, producto: x.insumo, v: v });
     if(!cambios.length) return;
-    var antes = JSON.parse(JSON.stringify(S.r.necesidad || {}));
-    cambios.forEach(function(c){
-      var kk = c.oficina + '|' + c.codigo;
-      if(c.v === null) delete S.r.necesidad[kk]; else S.r.necesidad[kk] = { v: c.v, quien: 'vos', cuando: new Date().toISOString() };
+    guardar({ necesidad: cambios }, function(){
+      cambios.forEach(function(c){
+        var kk = c.oficina + '|' + c.codigo;
+        if(c.v === null) delete S.r.necesidad[kk]; else S.r.necesidad[kk] = { v: c.v, quien: 'vos', cuando: new Date().toISOString() };
+      });
     });
-    guardar({ necesidad: cambios }, null, false, antes);
   }
 
-  /* Manda al servidor; mientras, la pantalla ya muestra el cambio. borrar: "Borrar lo cambiado a mano". */
-  async function guardar(c, alGuardar, borrar, antes){
-    var antesMeses = S.r.meses;
+  function copia(o){ return JSON.parse(JSON.stringify(o || {})); }
+
+  /* Manda al servidor; mientras, la pantalla ya muestra el cambio (alGuardar). borrar: 'necesidad' o 'precios'. */
+  async function guardar(c, alGuardar, borrar){
+    var antes = { meses: S.r.meses, necesidad: copia(S.r.necesidad), precios: copia(S.r.precios) };
+    if(!S.r.precios) S.r.precios = {};
     if(alGuardar) alGuardar();
     S.guardando++; pintar();
-    var r = borrar ? await api('borrarCompraStock') : await api('guardarCompraStock', c);
+    var r = borrar ? await api('borrarCompraStock', borrar) : await api('guardarCompraStock', c);
     S.guardando--;
     if(r && r.ok !== false && r.necesidad){
-      S.r.necesidad = r.necesidad; S.r.meses = r.meses; S.error = '';
+      S.r.necesidad = r.necesidad; S.r.meses = r.meses; if(r.precios) S.r.precios = r.precios; S.error = '';
       try { localStorage.setItem(GUARDA, JSON.stringify(S.r)); } catch(e){}
     } else {
-      if(antes) S.r.necesidad = antes;
-      S.r.meses = antesMeses;
+      S.r.meses = antes.meses; S.r.necesidad = antes.necesidad; S.r.precios = antes.precios;
       S.error = r && r.sinConexion ? 'Hace falta señal para guardar el cambio: no se guardó.' : 'No se guardó el cambio: ' + ((r && r.error) || '');
     }
     pintar();
@@ -458,14 +544,19 @@
     });
   }
 
-  /** La planilla para el proveedor (base64). */
+  /** La planilla para el proveedor (base64). Feli (13/11): sin código ni unidad; el precio total sale solo del unitario
+      (cantidad × precio unitario). Si el vendedor escribe el total, pisa la fórmula: la app saca el unitario al cargarlo. */
   async function armarExcel(prods){
     var X = await cargarXlsx(), hoy = new Date();
     var fecha = hoy.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    var filas = [['Pedido de cotización · ' + fecha], [], ['Código', 'Producto', 'Unidad', 'Cantidad', 'Precio unitario', 'Precio total']];
-    prods.forEach(function(x){ filas.push([x.cod, x.insumo, x.unidad || '', x.total.necesidad, null, null]); });
-    var hoja = X.utils.aoa_to_sheet(filas);
-    hoja['!cols'] = [{ wch: 12 }, { wch: 46 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 16 }];
+    var filas = [['Pedido de cotización · ' + fecha], [], ['Producto', 'Cantidad', 'Precio unitario', 'Precio total']];
+    prods.forEach(function(x){ filas.push([x.insumo, x.total.necesidad, null, null]); });
+    filas.push(['Total', null, null, null]);
+    var hoja = X.utils.aoa_to_sheet(filas), primera = 4, ultima = 3 + prods.length, plata = '#,##0.00';
+    // Con un valor de arranque (vacío o 0): sin eso la librería no guarda la fórmula. Excel la recalcula al escribir el unitario.
+    for(var r = primera; r <= ultima; r++) hoja['D' + r] = { t: 's', v: '', f: 'IF(C' + r + '="","",B' + r + '*C' + r + ')', z: plata };
+    hoja['D' + (ultima + 1)] = { t: 'n', v: 0, f: 'SUM(D' + primera + ':D' + ultima + ')', z: plata };
+    hoja['!cols'] = [{ wch: 50 }, { wch: 10 }, { wch: 16 }, { wch: 18 }];
     var libro = X.utils.book_new();
     X.utils.book_append_sheet(libro, hoja, 'Cotización');
     return { nombre: 'Pedido de cotizacion ' + fecha.replace(/\//g, '-') + '.xlsx', base64: X.write(libro, { bookType: 'xlsx', type: 'base64' }) };
@@ -507,5 +598,5 @@
     if(viejo) cargar();
   }
 
-  window.ConsumoMensual = { abrir: abrir, calcular: calcular, necesidadCalculada: necesidadCalculada, jmParaTotal: jmParaTotal };
+  window.ConsumoMensual = { abrir: abrir, calcular: calcular, necesidadCalculada: necesidadCalculada, jmParaTotal: jmParaTotal, numeroEscrito: numeroEscrito };
 })();

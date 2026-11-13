@@ -693,6 +693,12 @@
   .cm-tabla tfoot td{font-weight:650;border-top:1.5px solid var(--line-strong);padding:8px 10px;text-align:right}
   .cm-tabla tfoot td.name{text-align:left}
   .cm-pie{margin:6px 2px 0;font-size:12px;color:var(--ink-soft)}
+  .cm-tabla th.cm-pr,.cm-tabla td.cm-pr{background:var(--write)}
+  .cm-tabla th.cm-pr{border-left:1.5px solid var(--line-strong)}
+  .cm-tabla input.cm-pu,.cm-tabla input.cm-pt{width:104px}
+  .cm-tabla select.cm-prov{font:inherit;font-size:12.5px;max-width:170px;padding:3px 4px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:var(--ink)}
+  .cm-porprov{line-height:1.6}
+  @media (max-width:1180px){ .cm-tabla{overflow-x:auto} }
   .cm-cot h3{margin:0 0 10px}
   .cm-cot-p{margin-bottom:14px}
   .cm-cot-p > .field{margin:8px 0 6px}
@@ -706,7 +712,8 @@
   .cm-cot .btn[disabled]{opacity:.6;cursor:default}
   @media (max-width:700px){
     .cm-tabla{overflow-x:auto}
-    .cm-tabla table{min-width:520px}
+    .cm-tabla table{min-width:860px}
+    .cm-tabla input.cm-pu,.cm-tabla input.cm-pt{width:84px;font-size:16px}
     .cm-tabla tbody td.name{min-width:150px;position:sticky;left:0;background:var(--panel);z-index:1}
     .cm-tabla thead th{position:static}
     .cm-tabla thead th.name{position:sticky;top:auto;left:0;z-index:6}
