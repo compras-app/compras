@@ -391,10 +391,29 @@
         <select id="ct-cuenta" aria-label="Cuenta"><option value="">Todas las cuentas</option></select>
         <label class="pa-check"><input type="checkbox" id="ct-sinorden"> Sin orden de compra</label>
         <button type="button" class="btn-chico" id="ct-hist-b" aria-pressed="false">📚 Historial</button>
+        <button type="button" class="btn-chico" id="ct-imprimir-b" hidden>🖨️ Imprimir facturas</button>
         <button type="button" class="refrescar" id="ct-refrescar" aria-label="Actualizar"><span class="ic">↻</span></button>
       </div>
       <p class="nota ad-estado" id="ct-estado" role="status" aria-live="polite"></p>
       <div class="ct-cols" id="ct-cols"></div>
+    </section>
+    <!-- Fase 7, Paso 1 (Feli, 13/11): 🖨️ Imprimir facturas, solo en la compu (contabilidad.js) -->
+    <section id="s-cimprimir" hidden>
+      <div class="ct-filtros">
+        <select id="ci-imp" aria-label="Impresas o no"><option value="no">No impresas</option><option value="si">Ya impresas</option><option value="">Impresas y no impresas</option></select>
+        <label class="ci-fecha">Desde <input type="date" id="ci-desde"></label>
+        <label class="ci-fecha">Hasta <input type="date" id="ci-hasta"></label>
+        <select id="ci-prov" aria-label="Proveedor"><option value="">Todos los proveedores</option></select>
+        <select id="ci-donde" aria-label="Dónde está"><option value="">Todas las columnas</option><option>Comprado</option><option>Recibido</option><option>Factura cargada</option><option>Historial</option></select>
+      </div>
+      <p class="nota">Se imprime solo el original de cada factura, con una línea arriba: la orden de compra, el sitio, la cuenta y la referencia de Albor. La fecha es la de la factura.</p>
+      <div class="ci-barra">
+        <label class="pa-check"><input type="checkbox" id="ci-todas" checked> Todas</label>
+        <span class="nota" id="ci-cuantas"></span>
+        <button type="button" class="btn" id="ci-imprimir">🖨️ Imprimir</button>
+      </div>
+      <p class="nota ad-estado" id="ci-nota" role="status" aria-live="polite"></p>
+      <div class="ci-lista" id="ci-lista"></div>
     </section>
     <section id="s-ctarjeta" hidden>
       <p class="nota ad-estado" id="cx-estado" role="status" aria-live="polite"></p>

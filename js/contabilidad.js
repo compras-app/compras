@@ -119,7 +119,8 @@ function htmlTarjetaCt(t) {
                  // Fase 6-bis (Feli, 30/10): cómo dio la lectura de la IA
                  ({ grave: ' <span class="ct-fac-e grave">⛔ No coincide</span>', aviso: ' <span class="ct-fac-e aviso">⚠️ Revisar</span>',
                     ok: ' <span class="ct-fac-e ok">✅</span>', sinLeer: ' <span class="ct-fac-e">Sin leer</span>' }[t.factura.estado] || '') +
-                 (t.factura.albor && t.factura.albor.estado === 'Cargada' ? ' <span class="ct-fac-e ok">en Albor</span>' : '') + '</div>' : '') +
+                 (t.factura.albor && t.factura.albor.estado === 'Cargada' ? ' <span class="ct-fac-e ok">en Albor</span>' : '') +
+                 (t.factura.impresa ? ' <span class="ct-imp" title="' + esc(textoImpresa(t.factura.impresa)) + '">🖨️</span>' : '') + '</div>' : '') +
     '<div class="ct-recep">' + esc(recep) + '</div></div>';
 }
 
@@ -345,6 +346,7 @@ function htmlFacturaCt(t, l) {
      : al.estado === 'Probada' ? '🧪 Se probó en Albor (no se guardó)' : '⚠️ No quedó cargada en Albor') + '</b>' +
     (al.motivo && al.estado !== 'Cargada' ? '<div>' + esc(al.motivo) + '</div>' : '') +
     '<small class="nota">' + esc(al.quien || '') + ' · ' + esc(new Date(al.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</small></div>';
+  if (t.factura.impresa) h += '<p class="nota">' + esc(textoImpresa(t.factura.impresa)) + '</p>';      // Fase 7, Paso 1 (Feli, 13/11)
   return h + '<div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
     (f ? '<button type="button" class="btn2" id="cx-fac-corregir">✏️ Corregir</button>' : '') +
     // La que se cargó a mano en Albor (sin orden de compra, o si la extensión no pudo): la marca la persona
@@ -541,4 +543,227 @@ async function sacarFactura() {
   if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: probá de nuevo en un rato.' : x.error, 'bad');
   aviso('Listo: se sacó la factura.');
   cargarTarjetaContable(); cargarContable();
+}
+
+/* ============================================================
+   FASE 7, PASO 1: 🖨️ IMPRIMIR FACTURAS (Feli, 13/11; entra en la Fase 6-bis)
+   Solo en la compu (con mouse). La lista de las facturas adjuntadas (de todas las columnas y del Historial), con filtros;
+   "Imprimir" junta en un solo PDF el original de cada una (las hojas que dicen ORIGINAL, hasta la primera que dice
+   DUPLICADO; si no dice ninguna, entera y con aviso), le suma arriba una línea con la orden, el sitio, la cuenta y la
+   referencia de Albor, abre la ventana de imprimir y pregunta "¿Se imprimieron bien?": recién ahí las marca Impresa.
+   ============================================================ */
+pantalla('cimprimir', { titulo: 'Imprimir facturas', tab: 'contabilidad', alMostrar: mostrarImprimir });
+const CI = { lista: null, fuera: {} };                 // fuera: las que se destildaron a mano (las demás a la vista van)
+const PDF_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+
+function conMouse() { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } }
+$('ct-imprimir-b').hidden = !conMouse();               // Feli (13/11): en el celular el botón no está
+$('ct-imprimir-b').addEventListener('click', function () { abrir('cimprimir'); });
+
+async function mostrarImprimir() {
+  CI.fuera = {};
+  pintarImprimir();
+  if (!CI.lista) notaAd('ci-nota', 'Cargando…');
+  const r = await api('getFacturasImprimir');
+  if (!r.ok) { notaAd('ci-nota', r.sinConexion ? '📶 Hace falta señal para ver las facturas.' : r.error); return; }
+  CI.lista = r.facturas;
+  notaAd('ci-nota', '');
+  const sel = $('ci-prov'), v = sel.value;
+  sel.innerHTML = '<option value="">Todos los proveedores</option>' +
+    unicosTexto(CI.lista.map(function (f) { return f.proveedor || 'Sin proveedor'; })).map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('');
+  sel.value = v;
+  pintarImprimir();
+}
+
+function unicosTexto(l) { const out = []; l.forEach(function (x) { if (out.indexOf(x) === -1) out.push(x); }); return out; }
+function fechaDia(aaaammdd) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(aaaammdd || ''); return m ? Number(m[3]) + '/' + Number(m[2]) + '/' + m[1] : ''; }
+
+function facturasALaVista() {
+  const imp = $('ci-imp').value, desde = $('ci-desde').value, hasta = $('ci-hasta').value, prov = $('ci-prov').value, donde = $('ci-donde').value;
+  return (CI.lista || []).filter(function (f) {
+    if (imp === 'no' && f.impresa) return false;
+    if (imp === 'si' && !f.impresa) return false;
+    if (desde && (!f.fecha || f.fecha < desde)) return false;
+    if (hasta && (!f.fecha || f.fecha > hasta)) return false;
+    if (prov && (f.proveedor || 'Sin proveedor') !== prov) return false;
+    return !donde || f.donde === donde;
+  });
+}
+
+function textoImpresa(i) {
+  return i ? '🖨️ Impresa el ' + new Date(i.cuando).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) + ' por ' + i.quien + (i.veces > 1 ? ' (' + i.veces + ' veces)' : '') : '';
+}
+
+function pintarImprimir() {
+  const l = facturasALaVista(), elegidas = l.filter(function (f) { return !CI.fuera[f.id]; });
+  $('ci-todas').checked = l.length > 0 && elegidas.length === l.length;
+  $('ci-cuantas').textContent = CI.lista ? elegidas.length + ' de ' + l.length + ' elegidas' : '';
+  $('ci-imprimir').textContent = '🖨️ Imprimir' + (elegidas.length ? ' (' + elegidas.length + ')' : '');
+  $('ci-imprimir').disabled = !elegidas.length;
+  $('ci-lista').innerHTML = !CI.lista ? '' : l.map(function (f) {
+    return '<div class="ci-fila"><label><input type="checkbox" data-ci="' + esc(f.id) + '"' + (CI.fuera[f.id] ? '' : ' checked') + '>' +
+      '<span><span class="ci-t">' + (f.prueba ? '🧪 ' : '') + '<b>' + esc(f.proveedor || 'Sin proveedor') + '</b> · ' + esc(f.numero ? 'Factura ' + f.numero : f.nombre) +
+        (f.fecha ? ' · ' + esc(fechaDia(f.fecha)) : '') + ' · ' + esc(f.orden ? 'OC ' + f.orden : 'Sin orden de compra') + '</span>' +
+      '<span class="ci-s">' + esc([f.sitio, f.cuenta, f.donde, f.albor ? 'Albor: ' + f.albor : '', textoImpresa(f.impresa)].filter(Boolean).join(' · ')) + '</span></span></label>' +
+      '<button type="button" class="btn2" data-ci-ver="' + esc(f.archivo) + '">Ver</button></div>';
+  }).join('') || '<p class="nota">No hay facturas con estos filtros.</p>';
+  $('ci-lista').querySelectorAll('[data-ci]').forEach(function (c) {
+    c.addEventListener('change', function () { if (c.checked) delete CI.fuera[c.dataset.ci]; else CI.fuera[c.dataset.ci] = 1; pintarImprimir(); });
+  });
+  $('ci-lista').querySelectorAll('[data-ci-ver]').forEach(function (b) { b.addEventListener('click', function () { verArchivo(b.dataset.ciVer); }); });
+}
+
+['ci-imp', 'ci-desde', 'ci-hasta', 'ci-prov', 'ci-donde'].forEach(function (id) { $(id).addEventListener('change', pintarImprimir); });
+$('ci-todas').addEventListener('change', function () {
+  const marcar = $('ci-todas').checked;
+  facturasALaVista().forEach(function (f) { if (marcar) delete CI.fuera[f.id]; else CI.fuera[f.id] = 1; });
+  pintarImprimir();
+});
+$('ci-imprimir').addEventListener('click', imprimirFacturas);
+
+function cargarPdfLib() {
+  if (window.PDFLib) return Promise.resolve();
+  return new Promise(function (listo, mal) {
+    const sc = document.createElement('script');
+    sc.src = PDF_LIB;
+    sc.onload = function () { listo(); };
+    sc.onerror = function () { mal(new Error('Hace falta señal para armar el PDF.')); };
+    document.head.appendChild(sc);
+  });
+}
+
+/** Los bytes de la factura: del depósito de archivos (rápido); si no se puede, por el servidor, como el visor. */
+async function bajarFactura(f) {
+  if (VISOR.cache[f.archivo]) return VISOR.cache[f.archivo].bytes;
+  try {
+    const r = await fetch(urlMiniatura(f.archivo));
+    if (r.ok) return new Uint8Array(await r.arrayBuffer());
+  } catch (e) { /* sigue por el servidor */ }
+  const x = await apiLenta('verArchivo', f.archivo);
+  if (!x.ok) throw new Error(x.error || 'No se pudo abrir');
+  const bin = atob(x.datos), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/** Las hojas del original: desde la primera que dice ORIGINAL hasta antes de la primera que dice DUPLICADO (null: no dice). */
+function hojasDelOriginal(textos) {
+  const dup = textos.map(function (t) { return /DUPLICADO|TRIPLICADO|CUADRUPLICADO/.test(t); });
+  const ini = textos.findIndex(function (t, i) { return /ORIGINAL/.test(t) && !dup[i]; });
+  if (ini === -1) return null;
+  const out = [];
+  for (let i = ini; i < textos.length && !dup[i]; i++) out.push(i);
+  return out;
+}
+
+async function textosDeHojas(bytes) {
+  const pdf = await window.pdfjsLib.getDocument({ data: bytes.slice() }).promise, out = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const tc = await (await pdf.getPage(i)).getTextContent();
+    out.push(tc.items.map(function (x) { return x.str; }).join(' ').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''));
+  }
+  return out;
+}
+
+/** La línea de arriba (Feli, 6/11): orden, sitio, cuenta y referencia de Albor. La letra del PDF solo tiene los caracteres de Windows. */
+function lineaDeFactura(f) {
+  return [f.orden ? 'OC ' + f.orden : 'Sin orden de compra', f.sitio, f.cuenta, f.albor ? 'Albor: ' + f.albor : '']
+    .filter(Boolean).join('  ·  ').replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
+}
+
+/** Agrega una franja arriba de la hoja (sin tapar nada de la factura) con la línea. Una hoja girada queda sin línea. */
+function ponerLinea(pag, fuente, texto) {
+  if (pag.getRotation().angle % 360 !== 0) return;
+  const cb = pag.getCropBox(), mb = pag.getMediaBox(), alto = 16;
+  pag.setMediaBox(mb.x, mb.y, mb.width, Math.max(mb.y + mb.height, cb.y + cb.height + alto) - mb.y);
+  pag.setCropBox(cb.x, cb.y, cb.width, cb.height + alto);
+  let tam = 7.5;
+  while (tam > 5 && fuente.widthOfTextAtSize(texto, tam) > cb.width - 28) tam -= 0.5;
+  while (texto.length > 10 && fuente.widthOfTextAtSize(texto, tam) > cb.width - 28) texto = texto.slice(0, -2);
+  pag.drawText(texto, { x: cb.x + 14, y: cb.y + cb.height + 5, size: tam, font: fuente, color: window.PDFLib.rgb(0, 0, 0) });
+}
+
+/** Suma la factura al PDF. Devuelve {entera} si no se pudo saber cuál es el original. */
+async function sumarFactura(doc, fuente, f, bytes) {
+  const L = window.PDFLib, linea = lineaDeFactura(f);
+  const esPdf = bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;   // %PDF
+  if (!esPdf) {                                      // una foto: una hoja A4 con la foto entera
+    const png = bytes[0] === 0x89 && bytes[1] === 0x50, jpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
+    if (!png && !jpg) throw new Error('No es un PDF ni una foto');
+    const img = png ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+    const pag = doc.addPage([595, 842]), esc2 = Math.min(567 / img.width, 790 / img.height);
+    pag.drawImage(img, { x: (595 - img.width * esc2) / 2, y: 20, width: img.width * esc2, height: img.height * esc2 });
+    pag.drawText(linea, { x: 14, y: 826, size: 7.5, font: fuente, color: L.rgb(0, 0, 0) });
+    return { entera: true };
+  }
+  let hojas = null;
+  try { hojas = hojasDelOriginal(await textosDeHojas(bytes)); } catch (e) { hojas = null; }
+  const src = await L.PDFDocument.load(bytes, { ignoreEncryption: true });
+  const indices = hojas || src.getPageIndices();
+  const copias = await doc.copyPages(src, indices);
+  copias.forEach(function (p, i) { doc.addPage(p); if (i === 0) ponerLinea(p, fuente, linea); });
+  return { entera: !hojas };
+}
+
+/** Abre la ventana de imprimir con el PDF. En Chrome y Edge, directo; en otro navegador, abre el PDF para imprimirlo desde ahí. */
+async function mandarAImprimir(blob) {
+  const url = URL.createObjectURL(blob);
+  if (!window.chrome) {
+    await dialogo({ titulo: 'El PDF está listo', texto: 'Abrilo e imprimilo desde ahí.',
+                    botones: [{ texto: 'Abrir el PDF', clase: 'btn', valor: function () { window.open(url, '_blank'); return true; } }] });
+    return;
+  }
+  const viejo = $('ci-marco');
+  if (viejo) viejo.remove();
+  const fr = document.createElement('iframe');
+  fr.id = 'ci-marco';
+  fr.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
+  await new Promise(function (listo) {
+    fr.onload = function () { setTimeout(function () { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) { window.open(url, '_blank'); } listo(); }, 300); };
+    fr.src = url;
+    document.body.appendChild(fr);
+  });
+}
+
+async function imprimirFacturas() {
+  const l = facturasALaVista().filter(function (f) { return !CI.fuera[f.id]; });
+  if (!l.length) return;
+  const b = $('ci-imprimir');
+  b.disabled = true;
+  try {
+    notaAd('ci-nota', 'Preparando…');
+    await Promise.all([cargarPdfLib(), cargarPdfJs()]);
+    const doc = await window.PDFLib.PDFDocument.create(), fuente = await doc.embedFont(window.PDFLib.StandardFonts.Helvetica);
+    const enteras = [], fallaron = [];
+    for (let i = 0; i < l.length; i++) {
+      notaAd('ci-nota', 'Juntando ' + (i + 1) + ' de ' + l.length + '…');
+      try { if ((await sumarFactura(doc, fuente, l[i], await bajarFactura(l[i]))).entera) enteras.push(l[i]); }
+      catch (e) { fallaron.push(l[i]); }
+    }
+    notaAd('ci-nota', '');
+    const nombre = function (f) { return (f.proveedor || 'Sin proveedor') + ' ' + (f.numero || f.nombre); };
+    if (!doc.getPageCount()) return aviso('No se pudo abrir ninguna de las facturas elegidas. Probá de nuevo en un rato.', 'bad');
+    await mandarAImprimir(new Blob([await doc.save()], { type: 'application/pdf' }));
+    const salieron = l.filter(function (f) { return fallaron.indexOf(f) === -1; });
+    const texto = [salieron.length + (salieron.length === 1 ? ' factura' : ' facturas') + ' en el PDF.',
+      enteras.length ? '⚠️ Se imprimieron enteras porque no dicen ORIGINAL: ' + enteras.map(nombre).join(', ') + '.' : '',
+      fallaron.length ? 'No se pudieron abrir (no se imprimieron): ' + fallaron.map(nombre).join(', ') + '.' : ''].filter(Boolean).join(' ');
+    const si = await dialogo({ titulo: '¿Se imprimieron bien?', texto: texto,
+                               botones: [{ texto: 'No', valor: false }, { texto: 'Sí, marcarlas', clase: 'btn', valor: true }] });
+    if (!si) return;
+    const r = await api('marcarFacturasImpresas', salieron.map(function (f) { return f.id; }));
+    if (!r.ok) return aviso(r.sinConexion ? '📶 Poca señal: no se pudieron marcar. Probá «Sí, marcarlas» de nuevo en un rato.' : r.error, 'bad');
+    (CI.lista || []).forEach(function (f) {
+      if (r.impresas.indexOf(f.id) !== -1) f.impresa = { quien: r.quien, cuando: r.cuando, veces: ((f.impresa && f.impresa.veces) || 0) + 1 };
+    });
+    CI.fuera = {};
+    pintarImprimir();
+    aviso('🖨️ ' + r.impresas.length + (r.impresas.length === 1 ? ' factura marcada impresa.' : ' facturas marcadas impresas.'));
+  } catch (e) {
+    notaAd('ci-nota', '');
+    aviso(e.message || 'No se pudo armar el PDF.', 'bad');
+  } finally {
+    b.disabled = false;
+    pintarImprimir();
+  }
 }
