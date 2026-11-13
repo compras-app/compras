@@ -57,7 +57,9 @@ function mostrarReportes() {
 }
 
 function pintarPestanasRp() {
-  $('rp-pestanas').innerHTML = RP_PESTANAS.map(function (p) {
+  // Feli (13/11): Consumo mensual pasó a Transferencias; acá queda solo para abrir un mes guardado que lo tiene
+  if (RP.pestana === 'stock' && !RP.guardado) RP.pestana = 'resumen';
+  $('rp-pestanas').innerHTML = RP_PESTANAS.filter(function (p) { return p.id !== 'stock' || RP.guardado; }).map(function (p) {
     return '<button type="button" class="rp-pest' + (p.id === RP.pestana ? ' on' : '') + '" data-p="' + p.id + '">' + esc(p.nombre) + '</button>';
   }).join('');
   $('rp-tablero-l').hidden = RP.pestana !== 'flujo';
@@ -522,7 +524,6 @@ function htmlResumen(r) {
     caja('flujo', dias(pap.mediana), 'de punta a punta', 'lo normal, ' + nro(pap.n || 0) + ' entregados') +
     caja('flujo', dias(urg.mediana), 'las urgentes', 'de punta a punta') +
     caja('flujo', nro(r.trabadas), 'trabadas ahora', r.traba ? 'donde más tardan: ' + r.traba : '') +
-    caja('stock', '—', 'qué falta en las oficinas', 'en Consumo mensual') +
     '</div>';
 }
 

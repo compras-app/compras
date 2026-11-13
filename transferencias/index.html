@@ -669,6 +669,40 @@
                                    border:1px solid var(--line-strong);border-radius:6px;padding:7px 9px;resize:vertical}
   @media (max-width:700px){ .hresultado{overflow-x:auto} .hresultado table{min-width:560px} }
 
+  /* Consumo mensual (Fase 6-ter, Paso 1; Feli, 13/11) */
+  .cm-cab .fila{gap:6px 18px}
+  .cm-cab .sep{flex:1}
+  .cm-seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden}
+  .cm-seg button{appearance:none;font:inherit;font-size:13px;font-weight:600;cursor:pointer;padding:6px 12px;border:0;background:var(--panel);color:var(--ink-soft)}
+  .cm-seg button + button{border-left:1px solid var(--line-strong)}
+  .cm-seg button.on{background:var(--accent);color:var(--btn-ink)}
+  #cmmeses{width:56px;text-align:right}
+  .cm-bloque{margin-bottom:18px}
+  .cm-of{margin:4px 2px 8px;font-size:14px;font-weight:650}
+  .cm-of span{font-weight:400;font-size:12.5px;color:var(--ink-soft);margin-left:6px}
+  .cm-tabla tbody td.name{min-width:200px}
+  .cm-cod{display:block;font-size:11.5px;color:var(--ink-faint)}
+  .cm-tabla tr.cm-grupo td{text-align:left;font-weight:650;font-size:12px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);background:var(--head)}
+  .cm-tabla tr.cm-grupo.falta td{color:#c2410c}
+  .cm-tabla td.cm-vacio{color:var(--ink-faint);font-style:italic}
+  .cm-tabla td.cm-neg{color:#c2410c;font-weight:650}
+  .cm-tabla td.cm-pos{color:var(--accent)}
+  .cm-tabla th.cm-nec,.cm-tabla td.cm-nec{background:var(--write)}
+  .cm-tabla tr.cm-mano td.cm-nec{box-shadow:inset 3px 0 0 var(--accent)}
+  .cm-amano{appearance:none;border:0;background:none;cursor:pointer;font-size:11.5px;color:var(--accent);padding:0 6px 0 0}
+  .cm-tabla tfoot td{font-weight:650;border-top:1.5px solid var(--line-strong);padding:8px 10px;text-align:right}
+  .cm-tabla tfoot td.name{text-align:left}
+  .cm-pie{margin:6px 2px 0;font-size:12px;color:var(--ink-soft)}
+  @media (max-width:700px){
+    .cm-tabla{overflow-x:auto}
+    .cm-tabla table{min-width:520px}
+    .cm-tabla tbody td.name{min-width:150px;position:sticky;left:0;background:var(--panel);z-index:1}
+    .cm-tabla thead th{position:static}
+    .cm-tabla thead th.name{position:sticky;top:auto;left:0;z-index:6}
+    .cm-tabla input.cm-in{width:52px;font-size:16px}
+    #cmbuscar{width:100%}
+  }
+
   /* ---------- Ajustes ---------- */
   #panel-ajustes .excl{margin-bottom:16px}
   #panel-ajustes h4{margin:14px 0 6px;font-size:13px}
@@ -777,6 +811,7 @@
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-pedido" data-admin>Transferir<span class="badge" id="badgepedidos"></span></button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-egresos" data-admin>Egresos</button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-historial">Historial</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="panel-consumo" data-admin>Consumo mensual</button>
     <button class="tab" role="tab" aria-selected="false" data-panel="panel-ajustes" data-admin>Ajustes</button>
   </div>
   <span class="sep"></span>
@@ -1142,6 +1177,13 @@
     <div class="hresultado" id="hresultado"></div>
   </section>
 
+  <!-- Consumo mensual (Fase 6-ter, Paso 1; Feli, 13/11): faltantes, sobrantes y necesidad de compra, por oficina.
+       Lo arma consumo.js. Solo admins. -->
+  <section id="panel-consumo" class="panel">
+    <div class="error" id="cmerror"></div>
+    <div id="cm"></div>
+  </section>
+
   <!-- Ajustes (Feli, 2026-10-02): todo lo que se configura, en un solo lugar.
        Se guarda en la planilla (App_Config) y vale para todos los admins. -->
   <section id="panel-ajustes" class="panel">
@@ -1300,6 +1342,7 @@
 
 <script src="../js/base.js"></script>
 <script src="albor.js"></script>
+<script src="consumo.js"></script>
 <script>
 /* Sin sesión de la app: a entrar (la app trae de vuelta acá después del código). */
 (function(){
@@ -6258,6 +6301,7 @@
     if(idPanel === 'panel-pedido'){ refrescarRecibidos(); existenciasDelServidor(); }
     if(idPanel === 'panel-ajustes'){ pintarAjustes(); }
     if(idPanel === 'panel-historial'){ llenarGranjasHistorial(); buscarHistorial(); }
+    if(idPanel === 'panel-consumo' && window.ConsumoMensual) window.ConsumoMensual.abrir();
   }
   [].forEach.call(document.querySelectorAll('.tab'), function(b){
     b.addEventListener('click', function(){ irA(this.getAttribute('data-panel')); });

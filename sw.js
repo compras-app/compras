@@ -5,7 +5,7 @@
 // se recarga sola la próxima vez que se vuelve a ella (js/base.js).
 // Lo que va a Google (datos) no pasa por acá: siempre va directo.
 // El formulario (pedido/) y Transferencias (transferencias/) también son parte de la app.
-const VERSION = 'app-07e487a1b6';
+const VERSION = 'app-382b771819';
 const ARCHIVOS = [
   './', './index.html', './css/app.css',
   './js/base.js', './js/login.js', './js/pantallas.js', './js/envio-pedidos.js', './js/tablero.js', './js/cotizar.js', './js/recepcion.js', './js/chats.js', './js/presupuestos.js', './js/cuadro.js', './js/tareas.js', './js/servicios.js', './js/notificaciones.js', './js/buscar.js', './js/admin.js', './js/cuentas.js', './js/reportes.js', './js/contabilidad.js',
@@ -14,7 +14,7 @@ const ARCHIVOS = [
   './pedido/', './pedido/index.html', './pedido/formulario.css', './pedido/formulario.js',
   './pedido/manifest.webmanifest', './pedido/icono-180.png', './pedido/icono-192.png', './pedido/icono-512.png',
   // Transferencias (Fase extra): el Programa de Compras dentro de la app
-  './transferencias/', './transferencias/index.html', './transferencias/albor.js'
+  './transferencias/', './transferencias/index.html', './transferencias/albor.js', './transferencias/consumo.js'
 ];
 const FUENTES = /^https:\/\/fonts\.(googleapis|gstatic)\.com\//;
 const EN_PRUEBA = self.location.hostname === 'localhost';   // en la compu de Claude: siempre lo último
