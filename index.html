@@ -489,12 +489,12 @@
         <div class="campo"><label for="ma-razon">Razón <small>(opcional)</small></label><input type="text" id="ma-razon" maxlength="2000" autocomplete="off" placeholder="Ej: obra nueva, reposición del mes…"></div>
         <!-- Feli (13/11): los productos desde una lista (PDF, foto o texto pegado): la app la lee y los busca en el padrón (admin.js) -->
         <div class="campo" id="ma-lista-c"><label>Productos <small>(opcional)</small></label>
-          <p class="nota">Si tenés la lista de materiales, cargala: la app lee cada renglón y busca el producto en el padrón. Después revisás la tabla.</p>
+          <p class="nota">Si tenés la lista de materiales, cargala: la app lee cada renglón y busca el producto en el padrón. Después revisás la tabla. O cargalos a mano, uno por uno.</p>
           <div class="ma-lista-b"><button type="button" class="btn-chico" id="ma-lista-archivo">📄 Cargar lista (PDF o foto)</button>
-            <button type="button" class="btn-chico" id="ma-lista-pegar">📋 Pegar el texto</button></div>
+            <button type="button" class="btn-chico" id="ma-lista-pegar">📋 Pegar el texto</button>
+            <button type="button" class="btn-chico" id="ma-lista-mano">✍️ Cargar a mano</button></div>
           <input type="file" id="ma-lista-f" accept="image/*,application/pdf" hidden>
           <div id="ma-lista"></div></div>
-        <datalist id="ma-padron-dl"></datalist>
         <div class="campo"><label for="ma-desc">Descripción</label>
           <textarea id="ma-desc" rows="10" maxlength="20000" placeholder="Pegá acá los productos como los tengas, o lo que haga falta explicar."></textarea></div>
         <div class="campo"><label>Compartir con</label>

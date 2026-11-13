@@ -40,7 +40,7 @@ function dinero(n, moneda) {
   if (n === null || n === undefined || n === '' || isNaN(Number(n))) return '';
   return (moneda && moneda !== 'ARS' ? moneda + ' ' : '$ ') + Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-function fechaCorta(iso) { return iso ? new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) : ''; }
+function fechaCt(iso) { return iso ? new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) : ''; }
 
 /* ============================================================
    EL TABLERO
@@ -103,7 +103,7 @@ function htmlTarjetaCt(t) {
       '<div class="pie"><span>' + esc(emojiUrgencia(t.urgencia)) + '</span><span class="ct-col-c">' + esc(t.columna) + '</span>' +
       '<span>' + (t.masivo ? 'Pedido masivo: se compra del presupuesto' : t.productos + (t.productos === 1 ? ' producto' : ' productos') + ' sin comprar') + '</span></div></div>';
   }
-  const recep = t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCorta(t.fechaRetiro) : '') : ' · ' + t.columna)
+  const recep = t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : ' · ' + t.columna)
                            : '⏳ ' + t.columna;
   return '<div class="tarjeta ct-t" data-id="' + esc(t.id) + '" role="button" tabindex="0">' + prueba +
     // Paso 5 (Feli, 29/10): el número de la orden arriba de la tarjeta, chiquito; sin número, en rojo (con "pendiente" si se está armando).
@@ -137,8 +137,8 @@ function pintarContable() {
       '<small class="nota">Las compras que pasaron 7 días en Factura cargada, y las recibidas sin orden de compra que pasaron 7 días en Recibido.</small></div>' +
       (CT.historial === null ? '<p class="nota">Cargando…</p>' :
        '<div class="ct-hist">' + (l.map(function (t) {
-         return htmlTarjetaCt(t).replace(/<\/div>$/, '<div class="ct-hist-f">' + (t.enFactura ? 'Factura cargada desde el ' + esc(fechaCorta(t.enFactura))
-                                                                                 : 'Recibido sin orden de compra desde el ' + esc(fechaCorta(t.sinOrdenDesde))) + '</div></div>');
+         return htmlTarjetaCt(t).replace(/<\/div>$/, '<div class="ct-hist-f">' + (t.enFactura ? 'Factura cargada desde el ' + esc(fechaCt(t.enFactura))
+                                                                                 : 'Recibido sin orden de compra desde el ' + esc(fechaCt(t.sinOrdenDesde))) + '</div></div>');
        }).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>');
   } else {
     $('ct-cols').innerHTML = COLUMNAS_CT.map(function (c) {
@@ -212,7 +212,7 @@ function htmlPedidoCt(p, conTitulo) {
   return '<div class="caja cx-pedido">' + (conTitulo ? '<h3>' + esc(p.titulo || p.ref) + (p.prueba ? ' · 🧪 ' + esc(p.prueba) : '') + '</h3>' : '') +
     htmlCuentaPedido(p) +
     '<dl class="ad-datos"><dt>Sitio</dt><dd>' + esc(p.sitio || '—') + '</dd><dt>Pidió</dt><dd>' + esc(p.solicitante || '—') + '</dd>' +
-    '<dt>Razón</dt><dd>' + esc(p.razon || '—') + '</dd><dt>Pedido</dt><dd>' + esc(p.ref) + ' · ' + esc(fechaCorta(p.fecha)) + '</dd></dl></div>';
+    '<dt>Razón</dt><dd>' + esc(p.razon || '—') + '</dd><dt>Pedido</dt><dd>' + esc(p.ref) + ' · ' + esc(fechaCt(p.fecha)) + '</dd></dl></div>';
 }
 
 function htmlPresupuestosCt(l) {
@@ -277,9 +277,9 @@ function pintarTarjetaContable() {
       '<div class="caja"><h3>Compra</h3>' + (t.entero ? '<p class="nota">Este pedido pasó entero a Entregas, sin una compra hecha en la app: no tiene proveedor ni precios.</p>' : '') +
         '<dl class="ad-datos">' + (t.entero ? '' : '<dt>Proveedor</dt><dd>' + esc(t.proveedor || '—') + '</dd><dt>CUIT</dt><dd>' + esc(t.cuit || 'No está cargado') + '</dd>') +
         (t.total !== null ? '<dt>Total</dt><dd><b>' + esc(dinero(t.total, t.moneda)) + '</b></dd>' : '') +
-        (c && c.quien ? '<dt>Compró</dt><dd>' + esc(c.quien) + (c.fecha ? ' · ' + esc(fechaCorta(c.fecha)) : '') + '</dd>' : '') +
+        (c && c.quien ? '<dt>Compró</dt><dd>' + esc(c.quien) + (c.fecha ? ' · ' + esc(fechaCt(c.fecha)) : '') + '</dd>' : '') +
         (c && c.condiciones && c.condiciones.pago ? '<dt>Forma de pago</dt><dd>' + esc(c.condiciones.pago) + '</dd>' : '') +
-        '<dt>Recepción</dt><dd>' + esc(t.recibido ? 'Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCorta(t.fechaRetiro) : '') : ' · ' + t.columna) : 'Todavía no llegó (' + t.columna + ')') + '</dd></dl>' +
+        '<dt>Recepción</dt><dd>' + esc(t.recibido ? 'Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : ' · ' + t.columna) : 'Todavía no llegó (' + t.columna + ')') + '</dd></dl>' +
         (c && c.archivo ? '<button type="button" class="btn2" data-ver="' + esc(c.archivo) + '">📄 Ver el presupuesto</button>' : '') +
         (c && c.productos && c.productos.length ? '<table class="cx-tabla"><thead><tr><th>Producto</th><th>Cant.</th><th>Total</th></tr></thead><tbody>' +
           c.productos.map(function (x) { return '<tr><td>' + esc(x.nombre) + '</td><td>' + esc(x.cantidad) + '</td><td>' + esc(x.total === null ? '' : dinero(x.total, c.moneda)) + '</td></tr>'; }).join('') +
@@ -556,8 +556,8 @@ pantalla('cimprimir', { titulo: 'Imprimir facturas', tab: 'contabilidad', alMost
 const CI = { lista: null, fuera: {} };                 // fuera: las que se destildaron a mano (las demás a la vista van)
 const PDF_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
 
-function conMouse() { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } }
-$('ct-imprimir-b').hidden = !conMouse();               // Feli (13/11): en el celular el botón no está
+function hayMouse() { try { return matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) { return false; } }
+$('ct-imprimir-b').hidden = !hayMouse();               // Feli (13/11): en el celular el botón no está
 $('ct-imprimir-b').addEventListener('click', function () { abrir('cimprimir'); });
 
 async function mostrarImprimir() {

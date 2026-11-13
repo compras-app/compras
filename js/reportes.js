@@ -41,8 +41,8 @@ function nro(n, dec) {
   return Number(n).toLocaleString('es-AR', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec === undefined ? 1 : dec });
 }
 function dias(n) { return n === null || n === undefined ? '—' : nro(n, 1) + (Number(n) === 1 ? ' día' : ' días'); }
-function plata(t, moneda) { return (moneda === 'USD' ? 'US$ ' : '$ ') + nro(t, 0); }
-function fechaCorta(iso) { if (!iso) return '—'; const d = String(iso).slice(0, 10).split('-'); return d[2] + '/' + d[1] + '/' + d[0].slice(2); }
+function plataRp(t, moneda) { return (moneda === 'USD' ? 'US$ ' : '$ ') + nro(t, 0); }
+function fechaRp(iso) { if (!iso) return '—'; const d = String(iso).slice(0, 10).split('-'); return d[2] + '/' + d[1] + '/' + d[0].slice(2); }
 
 function mostrarReportes() {
   if (!RP.filtros) {
@@ -208,8 +208,8 @@ function tablasFlujo(r) {
     filas: (r.porUsuario || []).map(function (u) {
       return [u.quien, nro(u.n), nro(u.parte) + '%', u.cadaDias === null || u.cadaDias === undefined ? '—' : nro(u.cadaDias) + (u.cadaDias === 1 ? ' día hábil' : ' días hábiles')]
         .concat(conPedido ? [u.productos === null || u.productos === undefined ? '—' : nro(u.productos, 1),
-                             u.costo ? plata(u.costo, 'ARS') + (u.conCompra < u.n ? ' (' + nro(u.conCompra) + ' con compra)' : '') : '—'] : [])
-        .concat([u.ultima ? fechaCorta(u.ultima) : '—']);
+                             u.costo ? plataRp(u.costo, 'ARS') + (u.conCompra < u.n ? ' (' + nro(u.conCompra) + ' con compra)' : '') : '—'] : [])
+        .concat([u.ultima ? fechaRp(u.ultima) : '—']);
     }), vacio: 'No entró ninguna tarjeta en estas fechas.' };
   const DIAS_SEM = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   const maxDia = Math.max.apply(null, (r.diaSemana || []).map(function (d) { return d.n; }).concat([1]));
@@ -269,36 +269,36 @@ function tablasFlujo(r) {
       vacio: 'No se pidieron cotizaciones en estas fechas.' },
     { titulo: 'Uso de la app', nota: 'Cada vez que alguien la abre o vuelve a ella después de 10 minutos o más. ' + nro(r.uso.dias) + ' días en el período.',
       cab: ['Quién', 'Veces', 'Días que la usó', 'Veces por día que la usó', 'Última vez'],
-      filas: r.uso.usuarios.map(function (u) { return [u.usuario, nro(u.veces), nro(u.dias) + ' de ' + nro(r.uso.dias), nro(u.veces / Math.max(1, u.dias)), u.ultima ? fechaCorta(u.ultima) + ' ' + u.ultima.slice(11, 13) + ' h' : '—']; }),
+      filas: r.uso.usuarios.map(function (u) { return [u.usuario, nro(u.veces), nro(u.dias) + ' de ' + nro(r.uso.dias), nro(u.veces / Math.max(1, u.dias)), u.ultima ? fechaRp(u.ultima) + ' ' + u.ultima.slice(11, 13) + ' h' : '—']; }),
       vacio: 'Todavía no hay datos (se anotan desde el 10/10).' }
   ]);
 }
 
 function tablasPlata(r) {
-  const tot = r.totales.map(function (t) { return plata(t.total, t.moneda) + ' en ' + nro(t.compras) + (t.compras === 1 ? ' compra' : ' compras'); }).join(' · ');
-  const ah = r.ahorro.totales.map(function (t) { return plata(t.ahorrado, t.moneda) + ' (' + nro(t.porcentaje, 1) + '%)'; }).join(' · ');
+  const tot = r.totales.map(function (t) { return plataRp(t.total, t.moneda) + ' en ' + nro(t.compras) + (t.compras === 1 ? ' compra' : ' compras'); }).join(' · ');
+  const ah = r.ahorro.totales.map(function (t) { return plataRp(t.ahorrado, t.moneda) + ' (' + nro(t.porcentaje, 1) + '%)'; }).join(' · ');
   const grupo = function (titulo, lista) {
     return { titulo: titulo, cab: [titulo.replace('Por ', ''), 'Moneda', 'Total', 'Compras'],
-             filas: lista.map(function (g) { return [g.grupo || '—', g.moneda, plata(g.total, g.moneda), nro(g.compras)]; }), vacio: 'Sin compras.' };
+             filas: lista.map(function (g) { return [g.grupo || '—', g.moneda, plataRp(g.total, g.moneda), nro(g.compras)]; }), vacio: 'Sin compras.' };
   };
   return [
     { titulo: 'Compras', nota: (tot || 'Ninguna compra en estas fechas.') + ' Las confirmadas a mano en el chat no se cuentan.',
       // Feli (30/10): primero el proveedor y después la fecha
       cab: ['Proveedor', 'Fecha', 'Total', 'Productos', 'Pedidos', 'Granjas', 'Compró'],
-      filas: r.compras.map(function (c) { return [c.proveedor, fechaCorta(c.fecha), plata(c.total, c.moneda), nro(c.productos), c.pedidos, c.granjas || '', c.quien || '']; }), vacio: '' },
+      filas: r.compras.map(function (c) { return [c.proveedor, fechaRp(c.fecha), plataRp(c.total, c.moneda), nro(c.productos), c.pedidos, c.granjas || '', c.quien || '']; }), vacio: '' },
     grupo('Por granja', r.porGranja), grupo('Por rubro', r.porRubro), grupo('Por mes', r.porMes),
     { titulo: 'Ahorro', nota: (ah ? 'Ahorrado: ' + ah + '. ' : '') + 'El precio elegido contra el promedio de los presupuestos, solo cuando hubo 2 o más del mismo producto. Precios sin IVA, por nuestra unidad.',
       cab: ['Pedido', 'Producto', 'Proveedor', 'Elegido', 'Promedio', 'Presupuestos', 'Ahorro'], abrir: 0,
-      filas: r.ahorro.detalle.map(function (a) { return [a.ref, a.producto, a.proveedor, plata(a.elegido, a.moneda), plata(a.promedio, a.moneda), nro(a.ofertas), plata(a.ahorrado, a.moneda)]; }),
+      filas: r.ahorro.detalle.map(function (a) { return [a.ref, a.producto, a.proveedor, plataRp(a.elegido, a.moneda), plataRp(a.promedio, a.moneda), nro(a.ofertas), plataRp(a.ahorrado, a.moneda)]; }),
       vacio: 'Ninguna compra tuvo 2 o más presupuestos del mismo producto.' },
     // Feli (30/10): el último precio pagado de cada producto, con su especificación (sale del historial de abajo)
     { titulo: 'Último precio', nota: 'Por producto y su especificación, lo último que se pagó por nuestra unidad, sin IVA.',
       cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'En pesos'],
-      filas: ultimosPrecios(r.precios).map(function (p) { return [p.producto, fechaCorta(p.fecha), p.proveedor, plata(p.unitario, p.moneda), plata(p.enPesos, 'ARS')]; }),
+      filas: ultimosPrecios(r.precios).map(function (p) { return [p.producto, fechaRp(p.fecha), p.proveedor, plataRp(p.unitario, p.moneda), plataRp(p.enPesos, 'ARS')]; }),
       vacio: 'Sin precios todavía.' },
     { titulo: 'Historial de precios', nota: 'Por producto y su especificación (Feli, 30/10: así no se mezclan, por ejemplo, las mangueras de media con las gruesas), lo que se pagó por nuestra unidad, sin IVA, en la moneda en que vino y convertido con el dólar oficial del Banco Nación, venta, de ese día.',
       cab: ['Producto', 'Fecha', 'Proveedor', 'Precio', 'Dólar del día', 'En pesos', 'En dólares'],
-      filas: r.precios.map(function (p) { return [p.producto, fechaCorta(p.fecha), p.proveedor, plata(p.unitario, p.moneda), p.dolar ? '$ ' + nro(p.dolar, 0) : '—', plata(p.enPesos, 'ARS'), p.enDolares === null ? '—' : 'US$ ' + nro(p.enDolares, 2)]; }),
+      filas: r.precios.map(function (p) { return [p.producto, fechaRp(p.fecha), p.proveedor, plataRp(p.unitario, p.moneda), p.dolar ? '$ ' + nro(p.dolar, 0) : '—', plataRp(p.enPesos, 'ARS'), p.enDolares === null ? '—' : 'US$ ' + nro(p.enDolares, 2)]; }),
       vacio: 'Sin precios todavía.' }
   ];
 }
@@ -311,7 +311,7 @@ function ultimosPrecios(precios) {
 }
 
 function tablasProveedores(r) {
-  const gasto = function (g) { return Object.keys(g || {}).map(function (m) { return plata(g[m], m); }).join(' + ') || '—'; };
+  const gasto = function (g) { return Object.keys(g || {}).map(function (m) { return plataRp(g[m], m); }).join(' + ') || '—'; };
   return [
     { titulo: 'Cada proveedor', nota: 'Contestó = respondió el pedido de cotización por WhatsApp. Entrega = de la compra a Entregado.',
       cab: ['Proveedor', 'Pedidos de cotización', 'Contestó', 'Tarda en contestar', 'Presupuestos', 'Ganó', 'Gasto', 'Tarda en entregar', '"No recibió"'],
@@ -323,7 +323,7 @@ function tablasProveedores(r) {
     { titulo: 'Rubros con un solo proveedor', nota: 'Si ese proveedor falla, no hay a quién pedirle.',
       cab: ['Rubro', 'Proveedor'], filas: r.unSoloProveedor.map(function (x) { return [x.rubro, x.proveedor || '(ninguno)']; }), vacio: 'Todos los rubros tienen 2 proveedores o más.' },
     { titulo: 'Proveedores que se llevan casi todo un rubro', nota: '70% o más de lo comprado en el rubro (con 2 compras o más).',
-      cab: ['Rubro', 'Proveedor', 'Parte', 'Total'], filas: r.concentrado.map(function (x) { return [x.rubro, x.proveedor, nro(x.porcentaje, 0) + '%', plata(x.total, x.moneda)]; }),
+      cab: ['Rubro', 'Proveedor', 'Parte', 'Total'], filas: r.concentrado.map(function (x) { return [x.rubro, x.proveedor, nro(x.porcentaje, 0) + '%', plataRp(x.total, x.moneda)]; }),
       vacio: 'Ningún rubro depende de un solo proveedor.' }
   ];
 }
@@ -359,7 +359,7 @@ function tablasPadron(r) {
       }), vacio: 'Ningún pedido en estas fechas.' },
     { titulo: 'Pedidos que se repiten', nota: 'Familia y granja con 3 pedidos o más: cada cuánto se pide y cuándo tocaría el próximo. Sirve para tenerlo en la oficina o adelantarse. Tocá una para ver la línea de tiempo.',
       cab: ['Familia', 'Granja', 'Pedidos', 'Cada', 'Parejo', 'Último', 'Próximo'], linea: true,
-      filas: r.repetidos.map(function (x) { return [x.familia, x.granja || '—', nro(x.pedidos), dias(x.cadaDias), x.parejo ? 'Sí' : 'No', fechaCorta(x.ultimo), fechaCorta(x.proximo)]; }),
+      filas: r.repetidos.map(function (x) { return [x.familia, x.granja || '—', nro(x.pedidos), dias(x.cadaDias), x.parejo ? 'Sí' : 'No', fechaRp(x.ultimo), fechaRp(x.proximo)]; }),
       vacio: 'Todavía ninguna familia se pidió 3 veces desde la misma granja.' },
     { titulo: 'Fuera del padrón, una y otra vez', nota: 'Candidatos a sumar al padrón.',
       cab: ['Lo que escribieron', 'Pedidos', 'Granjas'], filas: r.fueraDelPadron.map(function (x) { return [x.texto, nro(x.veces), x.granjas || '']; }), vacio: 'Nada repetido fuera del padrón.' },
@@ -389,7 +389,7 @@ function tablasEgresos(r) {
     { titulo: 'Por granja y cuenta', cab: ['Granja', 'Cuenta', 'Comprobantes', 'Productos', 'Precio total'],
       filas: r.porGranja.map(function (g) { return [g.granja, g.cuenta, nro(g.comprobantes), nro(g.productos), '$ ' + nro(g.importe || 0, 2)]; }), vacio: '' },
     { titulo: 'Comprobantes', cab: ['Fecha', 'Comprobante', 'Granja', 'Cuenta', 'Renglones', 'Cargó'],
-      filas: r.comprobantes.map(function (c) { return [fechaCorta(c.dia), c.comprobante, c.granja, c.cuenta, nro(c.renglones), c.quien || '']; }), vacio: '' }
+      filas: r.comprobantes.map(function (c) { return [fechaRp(c.dia), c.comprobante, c.granja, c.cuenta, nro(c.renglones), c.quien || '']; }), vacio: '' }
   ];
 }
 
@@ -483,7 +483,7 @@ function pintarCuerpoRp() {
       '<p class="nota rp-de">' + subtituloStock(r) + '</p>' + notaBusqueda(r) + RP.tablas.map(htmlTabla).join('');
     return;
   }
-  const cab = '<p class="nota rp-de">Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta) +
+  const cab = '<p class="nota rp-de">Del ' + fechaRp(r.desde) + ' al ' + fechaRp(r.hasta) +
               ' · armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) + '</p>';
   if (cual === 'resumen') { cuerpo.innerHTML = cab + htmlResumen(r); return; }
   RP.tablas = cual === 'egresos' && RP.buscar.trim() ? tablasDe(cual, conBusqueda(r)).slice(0, 1) : tablasDe(cual, r);   // buscando: solo "Por producto"
@@ -493,15 +493,15 @@ function pintarCuerpoRp() {
 /** Consumo mensual: de qué mes son los egresos y de cuándo la existencia. */
 function subtituloStock(r) {
   const p = r.periodo || {};
-  return 'Egresos del ' + fechaCorta(p.desde) + ' al ' + fechaCorta(p.hasta) +
+  return 'Egresos del ' + fechaRp(p.desde) + ' al ' + fechaRp(p.hasta) +
     (r.existencias ? ' · existencias de Albor del ' + new Date(r.existencias.fecha).toLocaleDateString('es-AR') : '') +
     ' · armado ' + new Date(r.armado).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function htmlResumen(r) {
-  const comp = (r.compras || []).map(function (t) { return plata(t.total, t.moneda); }).join(' + ') || '$ 0';
+  const comp = (r.compras || []).map(function (t) { return plataRp(t.total, t.moneda); }).join(' + ') || '$ 0';
   const nComp = (r.compras || []).reduce(function (n, t) { return n + t.compras; }, 0);
-  const ah = (r.ahorro || []).map(function (t) { return plata(t.ahorrado, t.moneda); }).join(' + ') || '—';
+  const ah = (r.ahorro || []).map(function (t) { return plataRp(t.ahorrado, t.moneda); }).join(' + ') || '—';
   const eg = r.egresos || {};
   const pap = r.puntaApunta || {}, urg = r.urgentesPuntaApunta || {};
   const caja = function (ir, num, que, sub) {
@@ -510,7 +510,7 @@ function htmlResumen(r) {
   return '<div class="rp-cajas">' +
     caja('flujo', nro(r.pedidos), 'pedidos', nro(r.urgentes) + ' urgentes' + (r.servicios ? ' · ' + nro(r.servicios) + ' servicios' : '')) +
     caja('plata', comp, 'Compras', nro(nComp) + (nComp === 1 ? ' compra' : ' compras')) +
-    caja('egresos', plata(eg.importe || 0), 'Gastos en egresos', nro(eg.productos || 0) + ' productos egresados de las granjas' +
+    caja('egresos', plataRp(eg.importe || 0), 'Gastos en egresos', nro(eg.productos || 0) + ' productos egresados de las granjas' +
          (eg.sinPrecio ? ' (' + nro(eg.sinPrecio) + ' sin precio)' : '')) +
     caja('plata', ah, 'ahorrado', 'contra el promedio de los presupuestos') +
     caja('flujo', dias(pap.mediana), 'de punta a punta', 'lo normal, ' + nro(pap.n || 0) + ' entregados') +
@@ -559,9 +559,9 @@ function svgLinea(x) {
   const px = function (t) { return m + (b === a ? 0 : (t - a) / (b - a)) * (w - 2 * m); };
   return '<svg class="rp-linea" viewBox="0 0 ' + w + ' 56" role="img" aria-label="Línea de tiempo de los pedidos">' +
     '<line x1="' + m + '" y1="24" x2="' + (w - m) + '" y2="24" />' +
-    fechas.map(function (t, i) { return '<circle cx="' + px(t) + '" cy="24" r="5"><title>' + fechaCorta(x.fechas[i]) + '</title></circle>'; }).join('') +
-    '<circle class="prox" cx="' + px(prox) + '" cy="24" r="6"><title>Próximo: ' + fechaCorta(x.proximo) + '</title></circle>' +
-    '<text x="' + m + '" y="50">' + fechaCorta(x.fechas[0]) + '</text><text x="' + (w - m) + '" y="50" text-anchor="end">Próximo: ' + fechaCorta(x.proximo) + '</text></svg>';
+    fechas.map(function (t, i) { return '<circle cx="' + px(t) + '" cy="24" r="5"><title>' + fechaRp(x.fechas[i]) + '</title></circle>'; }).join('') +
+    '<circle class="prox" cx="' + px(prox) + '" cy="24" r="6"><title>Próximo: ' + fechaRp(x.proximo) + '</title></circle>' +
+    '<text x="' + m + '" y="50">' + fechaRp(x.fechas[0]) + '</text><text x="' + (w - m) + '" y="50" text-anchor="end">Próximo: ' + fechaRp(x.proximo) + '</text></svg>';
 }
 
 /* ---------- Excel ---------- */
@@ -587,7 +587,7 @@ $('rp-excel').addEventListener('click', async function () {
   tablas.forEach(function (t) {
     const cab = t.cab.filter(function (c, i) { return !(t.barra === i); });
     const filas = t.filas.map(function (f) { return f.filter(function (c, i) { return !(t.barra === i); }); });
-    const sub = 'Del ' + fechaCorta(r.desde) + ' al ' + fechaCorta(r.hasta);
+    const sub = 'Del ' + fechaRp(r.desde) + ' al ' + fechaRp(r.hasta);
     const hoja = XLSX.utils.aoa_to_sheet([[t.titulo], [sub], []].concat([cab]).concat(filas));
     let nombre = t.titulo.replace(/[\\/?*[\]:]/g, '').slice(0, 28) || 'Hoja';
     while (usados[nombre]) nombre = nombre.slice(0, 26) + ' ' + (Object.keys(usados).length + 1);

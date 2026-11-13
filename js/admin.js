@@ -698,15 +698,26 @@ function pintarArchivos() {
    "📄 Cargar lista" (PDF o foto) o "📋 Pegar el texto": el servidor lee los renglones (la IA solo copia) y busca cada producto en
    el padrón. Acá se revisa: producto del padrón (de la lista, o se escribe otro), especificación, cantidad y unidad; arriba,
    "¿Para cuántos galpones?" multiplica todas las cantidades. Lo que queda sin producto del padrón va "fuera del padrón". */
-const ML = { padron: null };
+const ML = { padron: null, nombres: [] };
 async function padronParaLista() {
   if (ML.padron) return ML.padron;
   const d = await datosProductos();
   ML.padron = {};
   ((d && d.familias) || []).forEach(function (f) { ML.padron[f[0]] = f[1] || ''; });
-  $('ma-padron-dl').innerHTML = Object.keys(ML.padron).sort(function (a, b) { return a.localeCompare(b, 'es'); })
-    .map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('');
+  ML.nombres = Object.keys(ML.padron).sort(function (a, b) { return a.localeCompare(b, 'es'); });
   return ML.padron;
+}
+/* Feli (13/11): cargar los productos a mano, uno por uno, en la misma tabla que la lista leída */
+$('ma-lista-mano').addEventListener('click', async function () {
+  const m = AD.masivo;
+  await padronParaLista();
+  if (!m.lista) m.lista = { renglones: [], galpones: 1, aclaracion: '' };
+  m.lista.renglones.push(renglonVacio());
+  pintarListaMasivo(m.lista.renglones.length - 1);
+  revisarMasivo();
+});
+function renglonVacio() {
+  return { n: 0, cantidad: '', cantidadTexto: '', unidad: '', texto: '', nota: '', familia: '', rubro: '', especificacion: '', como: 'mano', deLista: false };
 }
 $('ma-lista-archivo').addEventListener('click', function () { $('ma-lista-f').click(); });
 $('ma-lista-f').addEventListener('change', async function () {
@@ -735,7 +746,7 @@ async function leerListaMasivoUI(d) {
   const [r] = await Promise.all([apiLenta('leerListaMasivo', d), padronParaLista()]);
   if (!r.ok) { $('ma-lista').innerHTML = ''; return aviso(r.sinConexion ? '📶 Hace falta señal para leer la lista.' : r.error, 'bad'); }
   if (!r.renglones.length) { $('ma-lista').innerHTML = ''; return aviso('No encontré productos en esa lista.', 'bad'); }
-  m.lista = { renglones: r.renglones.map(function (x) { return Object.assign({}, x, { cantidad: x.cantidad === null ? '' : x.cantidad }); }),
+  m.lista = { renglones: r.renglones.map(function (x) { return Object.assign({}, x, { cantidad: x.cantidad === null ? '' : x.cantidad, deLista: true }); }),
               galpones: 1, aclaracion: r.aclaracion || '' };
   if (!$('ma-titulo').value.trim() && r.titulo) $('ma-titulo').value = r.titulo.charAt(0) + r.titulo.slice(1).toLowerCase();
   pintarListaMasivo();
@@ -743,46 +754,75 @@ async function leerListaMasivoUI(d) {
 }
 
 function numLista(v) { const n = Number(String(v === undefined || v === null ? '' : v).replace(',', '.')); return isFinite(n) ? n : NaN; }
-function pintarListaMasivo() {
+/** foco: el renglón que se acaba de sumar a mano (va al producto). */
+function pintarListaMasivo(foco) {
   const m = AD.masivo, L = m.lista;
   if (!L) { $('ma-lista').innerHTML = ''; return; }
   const pd = ML.padron || {};
-  const fuera = L.renglones.filter(function (x) { return !pd.hasOwnProperty(x.familia); }).length;
+  const en = function (x) { return pd.hasOwnProperty(x.familia); };
+  // Feli (13/11): como en el formulario, lo que no está en el padrón se usa con «No está en el padrón: usar …» y queda fuera
+  const libres = L.renglones.filter(function (x) { return !en(x) && x.familia; }).length;
+  const sinElegir = L.renglones.filter(function (x) { return !en(x) && !x.familia; }).length;
   $('ma-lista').innerHTML =
     '<div class="ml-cab"><label for="ml-galpones">¿Para cuántos galpones?</label><input type="text" inputmode="decimal" id="ml-galpones" value="' + esc(String(L.galpones)) + '">' +
     '<span class="nota">' + (L.aclaracion ? 'La lista dice: «' + esc(L.aclaracion) + '». ' : '') + 'Cada cantidad se multiplica por este número.</span>' +
-    '<button type="button" class="link-gris" id="ml-sacar">Sacar la lista</button></div>' +
-    '<p class="nota"><b>' + L.renglones.length + ' productos</b>' + (fuera ? ' · <span class="ml-mal">⚠️ ' + fuera + ' sin producto del padrón: elegilo o escribilo (si no, queda fuera del padrón y no se puede cotizar)</span>' : ' · ✅ todos en el padrón') + '</p>' +
+    '<button type="button" class="link-gris" id="ml-sacar">Sacar todos</button></div>' +
+    '<p class="nota"><b>' + L.renglones.length + (L.renglones.length === 1 ? ' producto' : ' productos') + '</b>' +
+      (sinElegir ? ' · <span class="ml-mal">⚠️ ' + sinElegir + ' sin producto: buscalo en el padrón o usá «No está en el padrón»</span>' : '') +
+      (libres ? ' · <span class="ml-mal">✋ ' + libres + ' fuera del padrón (no se pueden cotizar hasta pasarlos al padrón desde la tarjeta)</span>' : '') +
+      (!sinElegir && !libres ? ' · ✅ todos en el padrón' : '') + '</p>' +
     '<div class="ml-tabla">' + L.renglones.map(function (x, i) {
-      const en = pd.hasOwnProperty(x.familia), c = numLista(x.cantidad), tot = c * (numLista(L.galpones) || 1);
-      return '<div class="ml-fila' + (en ? '' : ' fuera') + '" data-i="' + i + '">' +
-        '<div class="ml-dice"><span class="ml-marca">' + (!en ? '⚠️ No lo encontré' : x.como === 'ia' ? '🤖 Lo propuso la IA: revisalo' : '✅ Del padrón') + '</span> ' +
-        'En la lista: «' + esc(x.texto) + '»' + (x.nota ? ' · <i>' + esc(x.nota) + '</i>' : '') + '</div>' +
+      const ok = en(x), c = numLista(x.cantidad), tot = c * (numLista(L.galpones) || 1);
+      const marca = ok ? (x.como === 'ia' ? '🤖 Lo propuso la IA: revisalo' : '✅ Del padrón')
+                  : x.familia ? '✋ Fuera del padrón: va como «' + esc(x.familia) + '»'
+                  : x.deLista ? '⚠️ No lo encontré' : '✍️ Buscá el producto';
+      return '<div class="ml-fila' + (ok ? '' : ' fuera') + '" data-i="' + i + '">' +
+        '<div class="ml-dice"><span class="ml-marca">' + marca + '</span>' +
+        (x.deLista ? ' En la lista: «' + esc(x.texto) + '»' : '') + (x.nota ? ' · <i>' + esc(x.nota) + '</i>' : '') + '</div>' +
         '<div class="ml-campos">' +
-          '<input type="text" class="ml-cant" inputmode="decimal" value="' + esc(String(x.cantidad)) + '" aria-label="Cantidad">' +
+          '<input type="text" class="ml-cant" inputmode="decimal" value="' + esc(String(x.cantidad)) + '" placeholder="Cant." aria-label="Cantidad">' +
           '<select class="ml-uni" aria-label="Unidad">' + UNIDADES_PEDIDO.map(function (u) { return '<option value="' + u[0] + '"' + (u[0] === x.unidad ? ' selected' : '') + '>' + esc(u[1]) + '</option>'; }).join('') + '</select>' +
-          '<input type="text" class="ml-fam" list="ma-padron-dl" value="' + esc(x.familia || '') + '" placeholder="Producto del padrón" aria-label="Producto del padrón">' +
+          '<div class="ml-famc"><input type="text" class="ml-fam" autocomplete="off" value="' + esc(x.familia || '') + '" placeholder="Buscá el producto en el padrón" aria-label="Producto">' +
+            '<div class="sugerencias ml-sug" hidden></div></div>' +
           '<input type="text" class="ml-esp" value="' + esc(x.especificacion || '') + '" placeholder="Especificación" aria-label="Especificación">' +
           '<span class="ml-tot">' + (numLista(L.galpones) > 1 && c > 0 ? '= ' + esc(String(Math.round(tot * 1000) / 1000).replace('.', ',')) : '') + '</span>' +
           '<button type="button" class="icono ml-x" aria-label="Sacar este producto">×</button></div></div>';
-    }).join('') + '</div>';
-  $('ml-galpones').addEventListener('change', function () { L.galpones = this.value.trim() || 1; pintarListaMasivo(); });
+    }).join('') + '</div>' +
+    '<button type="button" class="btn-chico ml-mas" id="ml-mas">＋ Agregar un producto</button>';
+  $('ml-galpones').addEventListener('change', function () { L.galpones = this.value.trim() || 1; pintarListaMasivo(); revisarMasivo(); });
   $('ml-sacar').addEventListener('click', function () { m.lista = null; pintarListaMasivo(); revisarMasivo(); });
+  $('ml-mas').addEventListener('click', function () { L.renglones.push(renglonVacio()); pintarListaMasivo(L.renglones.length - 1); revisarMasivo(); });
   $('ma-lista').querySelectorAll('.ml-fila').forEach(function (f) {
-    const x = L.renglones[Number(f.dataset.i)];
+    const i = Number(f.dataset.i), x = L.renglones[i], inp = f.querySelector('.ml-fam'), sug = f.querySelector('.ml-sug');
     f.querySelector('.ml-cant').addEventListener('change', function () { x.cantidad = this.value.trim(); pintarListaMasivo(); revisarMasivo(); });
     f.querySelector('.ml-uni').addEventListener('change', function () { x.unidad = this.value; });
-    f.querySelector('.ml-fam').addEventListener('change', function () {
-      x.familia = this.value.trim(); x.como = pd.hasOwnProperty(x.familia) ? 'mano' : 'no'; pintarListaMasivo();
-    });
+    const ponerProducto = function (v, deLaLista) {
+      x.familia = v; x.como = pd.hasOwnProperty(v) ? 'mano' : 'libre';
+      pintarListaMasivo();
+      revisarMasivo();
+      const nueva = $('ma-lista').querySelector('.ml-fila[data-i="' + i + '"] ' + (pd.hasOwnProperty(v) && deLaLista ? '.ml-esp' : '.ml-cant'));
+      if (nueva && deLaLista) nueva.focus();
+    };
+    conSugerencias(inp, sug, function (q) {
+      if (!q) return [];
+      const l = ML.nombres.filter(function (n) { return coincide(n, q); }).slice(0, 8)
+        .map(function (n) { return { texto: n, sub: pd[n] || '', valor: { fam: n } }; });
+      const t = inp.value.trim();
+      if (t && !pd.hasOwnProperty(t)) l.push({ texto: 'No está en el padrón: usar «' + t + '»', sub: 'Queda fuera del padrón: Compras lo revisa y lo pasa al padrón desde la tarjeta', valor: { libre: t } });
+      return l;
+    }, function (v) { ponerProducto(v.fam || v.libre, true); });
+    inp.addEventListener('blur', function () { setTimeout(function () { sug.hidden = true; }, 150); });
+    // Escribir y salir sin elegir de la lista: lo mismo que «usar» (si coincide con un nombre del padrón, es ese)
+    inp.addEventListener('change', function () { if (this.value.trim() !== x.familia) ponerProducto(this.value.trim(), false); });
     f.querySelector('.ml-esp').addEventListener('change', function () { x.especificacion = this.value.trim(); });
-    f.querySelector('.ml-x').addEventListener('click', function () { L.renglones.splice(Number(f.dataset.i), 1); if (!L.renglones.length) m.lista = null; pintarListaMasivo(); revisarMasivo(); });
+    f.querySelector('.ml-x').addEventListener('click', function () { L.renglones.splice(i, 1); if (!L.renglones.length) m.lista = null; pintarListaMasivo(); revisarMasivo(); });
   });
+  if (foco !== undefined) { const el = $('ma-lista').querySelector('.ml-fila[data-i="' + foco + '"] .ml-fam'); if (el) { el.scrollIntoView({ block: 'nearest' }); el.focus(); } }
 }
 /** ¿Las cantidades de la lista están bien? (todas mayores a 0) */
 function listaMasivoBien() {
   const L = AD.masivo.lista;
-  return !L || (numLista(L.galpones) > 0 && L.renglones.every(function (x) { return numLista(x.cantidad) > 0; }));
+  return !L || (numLista(L.galpones) > 0 && L.renglones.every(function (x) { return numLista(x.cantidad) > 0 && (x.familia || x.texto); }));
 }
 
 $('ma-crear').addEventListener('click', async function () {
@@ -794,9 +834,9 @@ $('ma-crear').addEventListener('click', async function () {
     const pd = ML.padron || {}, g = numLista(m.lista.galpones) || 1;
     d.productos = m.lista.renglones.map(function (x) {
       const en = pd.hasOwnProperty(x.familia);
-      return { texto: en || !x.familia ? x.texto : x.familia, familia: en ? x.familia : '', especificacion: x.especificacion || '',
+      return { texto: (en || !x.familia ? x.texto : x.familia) || x.familia, familia: en ? x.familia : '', especificacion: x.especificacion || '',
                cantidad: Math.round(numLista(x.cantidad) * g * 1000) / 1000, unidad: x.unidad || '',
-               nota: [x.nota, g !== 1 ? x.cantidadTexto + ' por galpón × ' + String(g).replace('.', ',') : ''].filter(String).join(' · ') };
+               nota: [x.nota, g !== 1 ? (x.cantidadTexto || String(x.cantidad).replace('.', ',')) + ' por galpón × ' + String(g).replace('.', ',') : ''].filter(String).join(' · ') };
     });
     const fuera = d.productos.filter(function (x) { return !x.familia; }).length;
     if (fuera) {

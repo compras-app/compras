@@ -3932,9 +3932,9 @@
     $('hresultado').innerHTML = '<div class="cuenta">Buscando…</div>';
     var f = { producto: $('hproducto').value.trim(), desde: $('hdesde').value, hasta: $('hhasta').value,
               granja: conGranja ? $('hgranja').value : '' };
-    var cual = HIST.cual;
+    var cual = HIST.cual, turno = HIST.turno = (HIST.turno || 0) + 1;
     var r = await api('buscarHistorialTransf', cual, f);
-    if(cual !== HIST.cual) return;            // cambiaron de historial mientras buscaba
+    if(cual !== HIST.cual || turno !== HIST.turno) return;     // cambiaron de historial o de filtro mientras buscaba
     if(!r.ok){
       $('hresultado').innerHTML = '';
       errorH(r.sinConexion ? 'Hace falta señal para ver el historial.' : 'No se pudo: ' + (r.error || ''));
@@ -4284,6 +4284,8 @@
     });
   });
   $('hbuscar').addEventListener('click', buscarHistorial);
+  // Feli (13/11): cambiar una fecha o la granja busca solo (antes la lista vieja quedaba a la vista hasta tocar Buscar)
+  ['hdesde', 'hhasta', 'hgranja'].forEach(function(id){ $(id).addEventListener('change', buscarHistorial); });
   $('hproducto').addEventListener('keydown', function(e){ if(e.key === 'Enter') buscarHistorial(); });
   $('hlimpiar').addEventListener('click', function(){
     $('hproducto').value = ''; $('hdesde').value = ''; $('hhasta').value = ''; $('hgranja').value = '';
