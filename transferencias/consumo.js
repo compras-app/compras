@@ -89,7 +89,8 @@
   /* ---------- La pantalla ---------- */
 
   var S = { r: null, cargando: false, error: '', parte: 'faltantes', junto: true, todos: false, buscar: '', foco: null, guardando: 0,
-            cot: null };   // cot: el recuadro de "Pedir cotización" abierto (Paso 2)
+            cot: null,     // cot: el recuadro de "Pedir cotización" abierto (Paso 2)
+            oc: null };    // oc: el de "Realizar órdenes de compra" (Paso 4)
   try { var v0 = JSON.parse(localStorage.getItem(VISTA) || 'null'); if(v0){ S.parte = v0.parte === 'necesidad' ? 'necesidad' : 'faltantes'; S.junto = v0.junto !== false; S.todos = !!v0.todos; } } catch(e){}
   try { S.r = JSON.parse(localStorage.getItem(GUARDA) || 'null'); } catch(e){}
 
@@ -115,7 +116,7 @@
     S.cargando = false;
     if(r && r.ok !== false && r.datos){
       S.r = { datos: r.datos, meses: r.meses, necesidad: r.necesidad || {}, proveedores: r.proveedores || [], msjCotizacion: r.msjCotizacion || '',
-              precios: r.precios || {}, cotizados: r.cotizados || {},
+              precios: r.precios || {}, cotizados: r.cotizados || {}, ordenados: r.ordenados || {}, sinMandar: r.sinMandar || [], msjOrden: r.msjOrden || '',
               llego: new Date().toISOString() };
       try { localStorage.setItem(GUARDA, JSON.stringify(S.r)); } catch(e){}
     } else S.error = r && r.sinConexion ? 'Hace falta señal para traer el consumo.' + (S.r ? ' Ves lo último que llegó.' : '') : 'No se pudo traer el consumo: ' + ((r && r.error) || '');
@@ -165,6 +166,7 @@
       if(hayPrecios) h.push('<button class="linkbtn" id="cmborrarp">Borrar precios y proveedores (' + hayPrecios + ')</button>');
       if(S.guardando) h.push('<span class="contado">guardando…</span>');
       if(!S.cot) h.push('<button class="btn" id="cmcotizar">📤 Pedir cotización</button>');
+      if(!S.oc && (ordenesParaHacer().length || (S.r.sinMandar || []).length)) h.push('<button class="btn" id="cmordenes">🧾 Realizar órdenes de compra</button>');
     }
     h.push('</div>');
     if(S.parte === 'necesidad') h.push('<p class="nota">Necesidad = consumo por mes × meses − existencias de hoy (para arriba, a unidades enteras). ' +
@@ -177,6 +179,7 @@
 
     var l = filas();
     if(S.parte === 'necesidad' && S.cot) h.push(htmlCotizar());
+    if(S.parte === 'necesidad' && S.oc) h.push(htmlOrdenes());
     if(S.parte === 'faltantes') h.push(S.junto ? tablaFaltantes(l, null) : OFICINAS.map(function(o){ return tablaFaltantes(l, o); }).join(''));
     else h.push(S.junto ? tablaNecesidad(l, null) : OFICINAS.map(function(o){ return tablaNecesidad(l, o); }).join(''));
     host.innerHTML = h.join('');
@@ -268,7 +271,9 @@
       }
       var marca = y.aMano ? '<button type="button" class="cm-amano" data-cm-volver="' + esc(k) + '" title="Cambiado a mano' +
         (o && y.quien ? ' por ' + esc(y.quien) : '') + '. Calculado: ' + fmt(y.calculada) + '. Tocá para volver a lo calculado.">✏️ ↺</button>' : '';
-      h.push('<tr' + (y.aMano ? ' class="cm-mano"' : '') + '>' + celdaProducto(x) + '<td>' + fmt(redondo(y.consumo * meses)) + '</td><td>' + fmt(y.existencia) + '</td>' +
+      var ords = (o ? [o] : OFICINAS).map(function(of){ var z = (S.r.ordenados || {})[of.id + '|' + x.cod]; return z ? (o ? '' : of.nombre.replace('Oficina ', '') + ': ') + z.numero : ''; }).filter(String);
+      var ordenado = ords.length ? '<div class="cm-ordenado" title="Ya se ordenó (desde el último «Borrar precios»)">✅ ' + esc(ords.join(' · ')) + '</div>' : '';
+      h.push('<tr' + (y.aMano ? ' class="cm-mano"' : '') + '>' + celdaProducto(x).replace(/<\/td>$/, ordenado + '</td>') + '<td>' + fmt(redondo(y.consumo * meses)) + '</td><td>' + fmt(y.existencia) + '</td>' +
              '<td class="cm-nec">' + marca + '<input class="ajuste cm-campo cm-in" type="text" inputmode="decimal" autocomplete="off" data-k="' + esc(k) + '" value="' + esc(fmt(y.necesidad)) + '"></td>' +
              '<td' + (x.precio === null ? ' class="zero"' : '') + '>' + (x.precio === null ? '—' : plata(x.precio)) + '</td>' +
              '<td class="cm-pr"><input class="ajuste cm-campo cm-pu" type="text" inputmode="decimal" autocomplete="off" data-k="pu:' + esc(k) + '" value="' + esc(fmt2(pu)) + '" placeholder="$"></td>' +
@@ -330,6 +335,9 @@
     var cot = $('cmcotizar');
     if(cot) cot.onclick = abrirCotizar;
     if(S.cot && $('cmcotmandar')) conectarCotizar();
+    var oc = $('cmordenes');
+    if(oc) oc.onclick = abrirOrdenes;
+    if(S.oc && $('cmocok')) conectarOrdenes();
     [].forEach.call(document.querySelectorAll('[data-cm-volver]'), function(x){
       x.onclick = function(){ cambiarNecesidad(x.getAttribute('data-cm-volver'), null); };
     });
@@ -429,7 +437,7 @@
     var r = borrar ? await api('borrarCompraStock', borrar) : await api('guardarCompraStock', c);
     S.guardando--;
     if(r && r.ok !== false && r.necesidad){
-      S.r.necesidad = r.necesidad; S.r.meses = r.meses; if(r.precios) S.r.precios = r.precios; S.error = '';
+      S.r.necesidad = r.necesidad; S.r.meses = r.meses; if(r.precios) S.r.precios = r.precios; if(r.ordenados) S.r.ordenados = r.ordenados; S.error = '';
       try { localStorage.setItem(GUARDA, JSON.stringify(S.r)); } catch(e){}
     } else {
       S.r.meses = antes.meses; S.r.necesidad = antes.necesidad; S.r.precios = antes.precios;
@@ -592,11 +600,239 @@
     pintar();
   }
 
+  /* ---------- Realizar órdenes de compra (Paso 4; Feli, 13/11) ----------
+     Una orden por proveedor y por oficina con lo que tiene precio, proveedor y necesidad (y no se ordenó en esta vuelta).
+     La carga la extensión en Albor ("Orden de Compra de Insumos"; frena antes de guardar); con el número, la app arma la
+     orden para el proveedor (total + IVA = total) y se la manda por WhatsApp, un PDF por orden. Solo en la compu con la
+     extensión. "Probar sin guardar": todo igual, pero no guarda en Albor ni le manda nada al proveedor. */
+  var IVAS = [21, 10.5, 27, 0];
+
+  function nuevoIdOc(){ return 'CO' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 8).toUpperCase(); }
+
+  /** [{clave: "PROV|OFI", proveedor, nombre, oficina, ofi, items: [{codigo, producto, cantidad, precio}], total}] */
+  function ordenesParaHacer(){
+    if(!S.r || !S.r.datos) return [];
+    var por = {}, lista = [];
+    calcular(S.r.datos.productos, S.r.meses, S.r.necesidad).forEach(function(x){
+      var pu = precioDe(x.cod), prov = proveedorDe(x.cod);
+      if(pu === null || !prov) return;
+      OFICINAS.forEach(function(o){
+        var nec = x.of[o.id].necesidad;
+        if(!(nec > 0) || (S.r.ordenados || {})[o.id + '|' + x.cod]) return;
+        var k = prov + '|' + o.id, g = por[k];
+        if(!g){ g = por[k] = { clave: k, proveedor: prov, nombre: nombreProveedor(prov), oficina: o.nombre, ofi: o.id, items: [], total: 0 }; lista.push(g); }
+        g.items.push({ codigo: x.cod, producto: x.insumo, cantidad: nec, precio: pu });
+        g.total += nec * pu;
+      });
+    });
+    lista.forEach(function(g){ g.total = Math.round(g.total * 100) / 100; });
+    return lista.sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es') || OFICINAS.map(function(o){ return o.id; }).indexOf(a.ofi) - OFICINAS.map(function(o){ return o.id; }).indexOf(b.ofi); });
+  }
+
+  function motorOrdenes(){ var m = window.TransfAlbor && window.TransfAlbor.motor(); return m && m.cargar_orden_insumos ? m : null; }
+
+  function abrirOrdenes(){
+    S.oc = { lote: nuevoIdOc(), iva: {}, fuera: {}, texto: S.r.msjOrden || '', guardarTexto: false, prueba: false, corriendo: false, error: '' };
+    pintar();
+    var c = document.querySelector('.cm-oc'); if(c) c.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  function htmlOrdenes(){
+    var C = S.oc, l = ordenesParaHacer(), provs = [], h = ['<div class="paso cm-cot cm-oc"><h3>🧾 Realizar órdenes de compra</h3>'];
+    if(!motorOrdenes()) h.push('<p class="cm-cot-error">Las órdenes se cargan en Albor con la extensión: hace falta la compu con la extensión de Albor (desde el celular no se puede).</p>');
+    var sm = S.r.sinMandar || [];
+    if(sm.length){
+      h.push('<div class="cm-cot-p"><b>Guardadas en Albor, sin mandar al proveedor</b><ul class="cm-cot-res">' + sm.map(function(o){
+        return '<li>' + esc(o.numero) + ' · ' + esc(o.nombre) + ' · ' + esc((OFICINAS.filter(function(x){ return x.id === o.oficina; })[0] || {}).nombre || o.oficina) +
+               (o.error ? ' <span class="cm-cod-i">(' + esc(o.error) + ')</span>' : '') + ' <button class="linkbtn" data-oc-remandar="' + esc(o.id) + '">mandar de nuevo</button></li>';
+      }).join('') + '</ul></div>');
+    }
+    if(!l.length) h.push('<p class="nota">No hay nada para ordenar: hace falta precio, proveedor y necesidad (y que no se haya ordenado ya).</p>');
+    l.forEach(function(g){ if(provs.indexOf(g.proveedor) < 0) provs.push(g.proveedor); });
+    provs.forEach(function(p){
+      var gs = l.filter(function(g){ return g.proveedor === p; }), iva = C.iva[p] === undefined ? 21 : C.iva[p];
+      h.push('<div class="cm-cot-p cm-oc-prov"><b>' + esc(nombreProveedor(p)) + '</b> <label class="field">IVA <select data-oc-iva="' + esc(p) + '">' +
+             IVAS.map(function(v){ return '<option value="' + v + '"' + (v === iva ? ' selected' : '') + '>' + String(v).replace('.', ',') + ' %</option>'; }).join('') + '</select></label>');
+      gs.forEach(function(g){
+        h.push('<label class="check"><input type="checkbox" data-oc-orden="' + esc(g.clave) + '"' + (C.fuera[g.clave] ? '' : ' checked') + '> ' + esc(g.oficina) + ': ' +
+               g.items.length + (g.items.length === 1 ? ' producto' : ' productos') + ' · ' + plata(g.total) + ' + IVA' +
+               ' <span class="cm-cod-i">' + esc(g.items.map(function(i){ return fmt(i.cantidad) + ' ' + i.producto; }).join(', ')) + '</span></label>');
+      });
+      h.push('</div>');
+    });
+    h.push('<div class="cm-cot-p"><b>El mensaje</b> <span class="contado">va con cada orden en PDF; {numero} = el de Albor, {mail} = el de las facturas de esa empresa</span>');
+    h.push('<textarea id="cmoctexto" rows="2">' + esc(C.texto) + '</textarea>');
+    h.push('<label class="check"><input type="checkbox" id="cmocguardar"' + (C.guardarTexto ? ' checked' : '') + '> Usar este texto también las próximas veces</label>');
+    h.push('<label class="check"><input type="checkbox" id="cmocprueba"' + (C.prueba ? ' checked' : '') + '> 🧪 Probar sin guardar: la extensión arma cada orden en Albor y frena; no guarda nada ni le manda nada al proveedor</label></div>');
+    if(C.error) h.push('<p class="cm-cot-error">' + esc(C.error) + '</p>');
+    h.push('<div class="fila"><button class="btn" id="cmocok"' + (C.corriendo || !motorOrdenes() ? ' disabled' : '') + '></button>' +
+           '<button class="linkbtn" id="cmoccerrar">' + (C.corriendo ? '' : 'cancelar') + '</button></div></div>');
+    return h.join('');
+  }
+
+  function elegidasOrdenes(){ return ordenesParaHacer().filter(function(g){ return !S.oc.fuera[g.clave]; }); }
+
+  function contarOrdenes(){
+    var n = elegidasOrdenes().length, b = $('cmocok');
+    if(b) b.textContent = S.oc.corriendo ? 'Cargando en Albor…' : (S.oc.prueba ? '🧪 Probar ' : 'Realizar ') + n + (n === 1 ? ' orden' : ' órdenes');
+  }
+
+  function conectarOrdenes(){
+    var C = S.oc, txt = $('cmoctexto'), gua = $('cmocguardar'), pru = $('cmocprueba');
+    contarOrdenes();
+    [].forEach.call(document.querySelectorAll('[data-oc-iva]'), function(x){ x.onchange = function(){ C.iva[x.dataset.ocIva] = Number(x.value); }; });
+    [].forEach.call(document.querySelectorAll('[data-oc-orden]'), function(x){
+      x.onchange = function(){ if(x.checked) delete C.fuera[x.dataset.ocOrden]; else C.fuera[x.dataset.ocOrden] = true; contarOrdenes(); };
+    });
+    [].forEach.call(document.querySelectorAll('[data-oc-remandar]'), function(x){ x.onclick = function(){ remandarOrden(x.dataset.ocRemandar); }; });
+    if(txt) txt.oninput = function(){ C.texto = txt.value; };
+    if(gua) gua.onchange = function(){ C.guardarTexto = gua.checked; };
+    if(pru) pru.onchange = function(){ C.prueba = pru.checked; contarOrdenes(); };
+    $('cmoccerrar').onclick = function(){ if(C.corriendo) return; S.oc = null; pintar(); };
+    $('cmocok').onclick = realizarOrdenes;
+  }
+
+  async function realizarOrdenes(){
+    var C = S.oc, TA = window.TransfAlbor, m = motorOrdenes();
+    if(C.corriendo || !m) return;
+    if(TA.cargando()){ C.error = 'Ya hay una carga en Albor en curso: esperá a que termine.'; pintar(); return; }
+    var l = elegidasOrdenes();
+    C.error = '';
+    if(!l.length){ C.error = 'Elegí al menos una orden.'; pintar(); return; }
+    if(!String(C.texto).trim()){ C.error = 'Falta el mensaje.'; pintar(); return; }
+    if(!confirm((C.prueba ? '🧪 Probar (sin guardar) ' : '¿Cargar en Albor y mandar ') + l.length + (l.length === 1 ? ' orden' : ' órdenes') + '?\n\n' +
+                l.map(function(g){ return '• ' + g.nombre + ' · ' + g.oficina + ' · ' + plata(g.total) + ' + IVA ' + String(C.iva[g.proveedor] === undefined ? 21 : C.iva[g.proveedor]).replace('.', ',') + ' %'; }).join('\n') +
+                (C.prueba ? '' : '\n\nLa extensión frena antes de guardar cada una.'))) return;
+    C.corriendo = true; pintar();
+    TA.abrir(C.prueba ? '🧪 Órdenes de compra (prueba, sin guardar)' : 'Órdenes de compra de insumos');
+    var lineas = [], todoBien = true;
+    for(var i = 0; i < l.length; i++){
+      var g = l[i], iva = C.iva[g.proveedor] === undefined ? 21 : C.iva[g.proveedor], etiqueta = g.nombre + ' · ' + g.oficina;
+      TA.log('— ' + (i + 1) + ' de ' + l.length + ': ' + etiqueta + ' —');
+      var p = await api('prepararOrdenStock', { lote: C.lote, proveedor: g.proveedor, oficina: g.ofi, iva: iva, prueba: C.prueba, items: g.items });
+      if(!p || p.ok === false){ todoBien = false; lineas.push('<li>❌ ' + esc(etiqueta) + ': ' + esc((p && p.error) || 'sin señal') + '</li>'); TA.log('   no se pudo: ' + ((p && p.error) || 'sin señal')); continue; }
+      if(p.estado === 'Mandada'){ lineas.push('<li>✅ ' + esc(etiqueta) + ': ya estaba hecha (' + esc(p.numero) + ')</li>'); continue; }
+      var numero = p.numero;
+      if(p.estado !== 'Guardada'){
+        var r = await m.cargar_orden_insumos(Object.assign({}, p.orden, { dejarAbierta: i < l.length - 1 }));
+        if(!r || !r.ok){
+          todoBien = false;
+          lineas.push('<li>❌ ' + esc(etiqueta) + ': ' + esc((r && r.motivo) || 'no se cargó') + '</li>');
+          if(r && r.cancelado){ lineas.push('<li>Las que seguían no se cargaron.</li>'); break; }
+          continue;
+        }
+        if(r.prueba){ lineas.push('<li>🧪 ' + esc(etiqueta) + ': armada en Albor, sin guardar</li>'); continue; }
+        numero = r.numero;
+        if(!numero){ todoBien = false; lineas.push('<li>⚠️ ' + esc(etiqueta) + ': quedó en Albor pero no leí el número. Mandala desde «Guardadas sin mandar».</li>'); continue; }
+      }
+      var ok = await mandarUna(p.orden.id, numero, etiqueta, lineas);
+      if(!ok) todoBien = false;
+    }
+    TA.terminar({ ok: todoBien, motivo: todoBien ? '' : 'Algunas órdenes no terminaron: mirá el detalle.' }, lineas);
+    C.corriendo = false;
+    if(!C.prueba) C.lote = nuevoIdOc();
+    await cargar();
+    if(todoBien && !C.prueba){ S.oc = null; pintar(); }
+  }
+
+  /** Con la orden guardada en Albor: el PDF para el proveedor y el WhatsApp. true si salió. */
+  async function mandarUna(id, numero, etiqueta, lineas){
+    var TA = window.TransfAlbor, C = S.oc || { texto: S.r.msjOrden, guardarTexto: false };
+    var g = await api('ordenStockGuardada', id, numero);
+    if(!g || g.ok === false){
+      lineas.push('<li>⚠️ ' + esc(etiqueta) + ': guardada en Albor (' + esc(numero) + '), pero no pude anotarla: ' + esc((g && g.error) || 'sin señal') + '. Avisale a Claude.</li>');
+      return false;
+    }
+    var pdf;
+    try { TA.log('   armo la orden para el proveedor…'); pdf = await armarOrdenStockPDF(g.pdf); }
+    catch(e){ lineas.push('<li>⚠️ ' + esc(etiqueta) + ' (' + esc(numero) + '): no pude armar el PDF (' + esc(e.message || e) + '). Mandala desde «Guardadas sin mandar».</li>'); return false; }
+    TA.log('   se la mando por WhatsApp…');
+    var mm = await apiLenta('mandarOrdenStock', id, { pdf: { nombre: 'Orden de compra ' + numero + '.pdf', base64: pdf }, texto: C.texto, guardarTexto: C.guardarTexto });
+    if(!mm || mm.ok === false){
+      lineas.push('<li>⚠️ ' + esc(etiqueta) + ' (' + esc(numero) + '): guardada en Albor, pero el WhatsApp no salió: ' + esc((mm && mm.error) || 'sin señal') + '. Mandala desde «Guardadas sin mandar».</li>');
+      return false;
+    }
+    lineas.push('<li>✅ ' + esc(etiqueta) + ': ' + esc(numero) + ', mandada' + (mm.orden && mm.orden.mail === 'pendiente' ? ' (el mail a Consultores queda pendiente)' : '') + '</li>');
+    return true;
+  }
+
+  async function remandarOrden(id){
+    var o = (S.r.sinMandar || []).filter(function(x){ return x.id === id; })[0];
+    if(!o || S.oc.corriendo) return;
+    S.oc.corriendo = true; pintar();
+    var lineas = [];
+    window.TransfAlbor.abrir('Mandar la orden ' + o.numero);
+    var ok = await mandarUna(id, o.numero, o.nombre, lineas);
+    window.TransfAlbor.terminar({ ok: ok, motivo: ok ? '' : 'No salió.' }, lineas);
+    S.oc.corriendo = false;
+    await cargar();
+  }
+
+  /* La orden para el proveedor (base64), como la de las compras del tablero (armarOrdenPDF de Compras). d = datosPdfOrdenStock_. */
+  var _logoLQ = null;
+  function logoLQ(){
+    if(!_logoLQ) _logoLQ = fetch('../img/logo-la-quimera.jpg').then(function(r){ if(!r.ok) throw new Error('sin logo'); return r.blob(); })
+      .then(function(b){ return new Promise(function(ok){ var fr = new FileReader(); fr.onload = function(){ ok(fr.result); }; fr.readAsDataURL(b); }); })
+      .catch(function(){ _logoLQ = null; return null; });
+    return _logoLQ;
+  }
+  function txtPdf(v){ return String(v == null ? '' : v).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—−]/g, '-').replace(/[^\u0000-ÿ]/g, ''); }
+  function numPdf(v, dec){ return v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString('es-AR', { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+
+  async function armarOrdenStockPDF(d){
+    var jsPDF = await window.TransfAlbor.librosPDF(), logo = d.logo ? await logoLQ() : null;
+    var doc = new jsPDF({ unit: 'mm', format: 'a4' }), azul = [27, 36, 64], gris = [110, 110, 110], ancho = 210, m = 15;
+    var fecha = new Date(d.fecha || Date.now()).toLocaleDateString('es-AR');
+    if(logo) doc.addImage(logo, 'JPEG', m, 8, 32, 32);
+    doc.setTextColor.apply(doc, azul); doc.setFont('helvetica', 'bold'); doc.setFontSize(22);
+    doc.text('Orden de compra', ancho - m, 22, { align: 'right' });
+    doc.setFontSize(13); doc.text(txtPdf('N° ' + d.numero), ancho - m, 30, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor.apply(doc, gris);
+    doc.text(txtPdf('Fecha: ' + fecha), ancho - m, 36, { align: 'right' });
+    var y = 50;
+    function bloque(x, titulo, lineas){
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul); doc.text(titulo, x, y);
+      doc.setDrawColor.apply(doc, azul); doc.setLineWidth(0.5); doc.line(x, y + 1.5, x + 85, y + 1.5);
+      doc.setTextColor(30, 30, 30);
+      var yy = y + 7;
+      lineas.filter(Boolean).forEach(function(l, i){ doc.setFont('helvetica', i ? 'normal' : 'bold'); doc.text(txtPdf(l), x, yy, { maxWidth: 85 }); yy += 5.5; });
+      return yy;
+    }
+    var e = d.empresa || {}, p = d.proveedor || {};
+    y = Math.max(bloque(m, 'PEDIDO POR', [e.nombre, e.cuit ? 'CUIT ' + e.cuit : '', e.mail]), bloque(110, 'PROVEEDOR', [p.nombre, p.cuit ? 'CUIT ' + p.cuit : '', p.mail])) + 4;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul);
+    doc.text('DETALLE DE LA ORDEN', m, y); doc.line(m, y + 1.5, ancho - m, y + 1.5);
+    doc.autoTable({ startY: y + 3, theme: 'plain', margin: { left: m }, tableWidth: 120, styles: { fontSize: 10, cellPadding: 1.4, textColor: [30, 30, 30] },
+                    columnStyles: { 0: { textColor: gris, cellWidth: 45 } },
+                    body: [['N° de orden', d.numero], ['Fecha', fecha], ['Entregar en', d.oficina], ['Moneda', 'Pesos']].map(function(r){ return [txtPdf(r[0]), txtPdf(r[1])]; }) });
+    y = doc.lastAutoTable.finalY + 8;
+    doc.setFont('helvetica', 'bold'); doc.setTextColor.apply(doc, azul); doc.text('PRODUCTOS', m, y);
+    doc.autoTable({ startY: y + 3, margin: { left: m, right: m }, head: [['Descripción', 'Cantidad', 'Precio unitario', 'Total']],
+                    body: (d.renglones || []).map(function(r){ return [txtPdf(r.texto), numPdf(r.cantidad, 0), '$ ' + numPdf(r.precio, 2), '$ ' + numPdf(r.importe, 2)]; }),
+                    styles: { fontSize: 10, cellPadding: 2, lineColor: [215, 215, 215], lineWidth: 0.2 }, headStyles: { fillColor: azul, textColor: 255, fontStyle: 'bold' },
+                    columnStyles: { 1: { halign: 'right', cellWidth: 25 }, 2: { halign: 'right', cellWidth: 35 }, 3: { halign: 'right', cellWidth: 35, fontStyle: 'bold' } },
+                    didParseCell: function(c){ if(c.section === 'head' && c.column.index > 0) c.cell.styles.halign = 'right'; } });
+    y = doc.lastAutoTable.finalY + 6;
+    [['Subtotal (sin IVA)', d.subtotal], ['IVA ' + String(d.ivaPorc).replace('.', ',') + ' %', d.iva], ['Total', d.total]].forEach(function(t, i){
+      var ult = i === 2;
+      doc.setFont('helvetica', ult ? 'bold' : 'normal'); doc.setFontSize(ult ? 12 : 10); doc.setTextColor(30, 30, 30);
+      doc.text(txtPdf(t[0]), ancho - m - 45, y, { align: 'right' }); doc.text('$ ' + numPdf(t[1], 2), ancho - m, y, { align: 'right' });
+      y += ult ? 9 : 6;
+    });
+    if(y > 255){ doc.addPage(); y = 20; }
+    doc.setFillColor(240, 242, 247); doc.setDrawColor.apply(doc, azul); doc.rect(m, y, ancho - 2 * m, 16, 'FD');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor.apply(doc, azul);
+    doc.text(txtPdf('Por favor, indicá en la factura el N° de orden ' + d.numero + (d.mailFacturas ? ' y enviala a ' + d.mailFacturas + '.' : '.')), m + 4, y + 9.5, { maxWidth: ancho - 2 * m - 8 });
+    y += 24;
+    if(d.autorizo){ doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30, 30, 30); doc.text(txtPdf('Autorizó: ' + d.autorizo), m, y); }
+    return doc.output('datauristring').split(',')[1];
+  }
+
   function abrir(){
     pintar();
     var viejo = !S.r || !S.r.llego || Date.now() - new Date(S.r.llego).getTime() > 60000;
     if(viejo) cargar();
   }
 
-  window.ConsumoMensual = { abrir: abrir, calcular: calcular, necesidadCalculada: necesidadCalculada, jmParaTotal: jmParaTotal, numeroEscrito: numeroEscrito };
+  window.ConsumoMensual = { abrir: abrir, calcular: calcular, necesidadCalculada: necesidadCalculada, jmParaTotal: jmParaTotal, numeroEscrito: numeroEscrito, armarOrdenStockPDF: armarOrdenStockPDF };
 })();

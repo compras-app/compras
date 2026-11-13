@@ -710,6 +710,11 @@
   .cm-cot-error{color:#c2410c;font-size:13px;margin:0 0 8px}
   .cm-cot-res{margin:0 0 10px 18px;padding:0;font-size:13px}
   .cm-cot .btn[disabled]{opacity:.6;cursor:default}
+  .cm-oc-prov{border-top:1px solid var(--line);padding-top:10px}
+  .cm-oc-prov .field{display:inline-flex;margin-left:10px}
+  .cm-oc-prov .check{margin-top:6px;align-items:flex-start}
+  .cm-oc select{font:inherit;padding:3px 6px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:var(--ink)}
+  .cm-ordenado{font-size:11.5px;color:var(--accent);margin-top:2px}
   @media (max-width:700px){
     .cm-tabla{overflow-x:auto}
     .cm-tabla table{min-width:860px}
@@ -1180,6 +1185,7 @@
       <button type="button" class="hb" data-hist="pedidos">Armado de pedido</button>
       <button type="button" class="hb" data-hist="transferencias">Transferencias</button>
       <button type="button" class="hb" data-hist="egresos" data-admin>Egresos</button>
+      <button type="button" class="hb" data-hist="consumo" data-admin>Consumo mensual</button>
     </div>
     <div class="paso hfiltros">
       <div class="fila">
@@ -3979,7 +3985,7 @@
 
   async function buscarHistorial(){
     errorH('');
-    var conGranja = HIST.cual !== 'conteos';
+    var conGranja = HIST.cual !== 'conteos' && HIST.cual !== 'consumo';
     $('hgranjalbl').hidden = !conGranja;
     $('hnota').textContent = !ES_ADMIN ? {
       pedidos: 'Los pedidos de tus granjas, y en qué quedaron. Tocá uno para ver qué se pidió, qué se mandó y qué quedó pendiente.',
@@ -3988,7 +3994,8 @@
       conteos: 'Los conteos guardados con "Guardar en el historial", con sus comentarios y observaciones. Cada uno puede llevar una nota (abrilo); el buscador también encuentra palabras de las notas.',
       pedidos: 'Los pedidos que mandaron las granjas desde Armar pedido, y en qué quedaron.',
       transferencias: 'Las transferencias cargadas en Albor desde acá. Cada una puede llevar una nota (abrila); el buscador también encuentra palabras de las notas.',
-      egresos: 'Los egresos cargados en Albor desde acá. Cada uno puede llevar una nota (abrilo); el buscador también encuentra palabras de las notas.'
+      egresos: 'Los egresos cargados en Albor desde acá. Cada uno puede llevar una nota (abrilo); el buscador también encuentra palabras de las notas.',
+      consumo: 'Lo que salió de Consumo mensual: cada pedido de cotización y cada orden de compra, uno por proveedor (y por oficina). Tocá uno para ver los productos y el archivo que se mandó.'
     }[HIST.cual];
     $('hresultado').innerHTML = '<div class="cuenta">Buscando…</div>';
     var f = { producto: $('hproducto').value.trim(), desde: $('hdesde').value, hasta: $('hhasta').value,
@@ -4023,11 +4030,20 @@
     conteos: ['Fecha', 'Responsable', 'Insumos', 'Con diferencia', 'Comentarios'],
     pedidos: ['Fecha', 'Granja', 'Quién lo armó', 'Estado', 'Insumos'],
     transferencias: ['Fecha', 'Comprobante', 'Sale de', 'Va a', 'Cargó', 'Insumos', 'Unidades'],    // Cargó: quién la hizo (Feli, 21/10)
-    egresos: ['Fecha', 'Comprobante', 'Granja', 'Cuenta', 'Centro', 'Insumos', 'Unidades']
+    egresos: ['Fecha', 'Comprobante', 'Granja', 'Cuenta', 'Centro', 'Insumos', 'Unidades'],
+    consumo: ['Fecha', 'Qué', 'Proveedor', 'Oficina', 'N° de orden', 'Productos', 'Total sin IVA']     // Fase 6-ter (Feli, 13/11)
   };
 
   function filaHistorial(x){
     var c = HIST.cual;
+    if(c === 'consumo')
+      return ['<td>' + fechaCorta(x.dia) + coinciden(x) + '</td>',
+              '<td>' + (x.tipo === 'Orden' ? '🧾 Orden de compra' : '📤 Pedido de cotización') +
+                (x.estado !== 'Enviado' && x.estado !== 'Mandada' ? ' <span class="estado-c">(' + esc(x.estado === 'Guardada' ? 'guardada, sin mandar' : x.estado) + ')</span>' : '') +
+                (x.mail === 'pendiente' ? '<div class="notah">📧 Mail a Consultores: pendiente</div>' : '') + '</td>',
+              '<td>' + esc(x.proveedor) + '</td>', '<td>' + esc(x.oficina || '—') + '</td>', '<td>' + esc(x.numero || '—') + '</td>',
+              '<td class="num">' + x.productos + '</td>',
+              '<td class="num">' + (x.total === null || x.total === undefined ? '—' : '$ ' + fmt(x.total)) + '</td>'];
     if(c === 'conteos')
       return ['<td>' + fechaCorta(x.dia) + coinciden(x) + notaFila(x) + '</td>', '<td>' + esc(x.responsable || x.quien) + '</td>',
               '<td class="num">' + x.insumos + (x.noContados ? ' <span class="nocont" title="Sin contar">(+' + x.noContados + ' sin contar)</span>' : '') + '</td>',
@@ -4099,6 +4115,21 @@
 
   function detalleHistorial(cual, x, r){
     var h = [];
+    if(cual === 'consumo'){                                   // Fase 6-ter (Feli, 13/11)
+      var e = r.envio || {}, ps = r.productos || [], orden = e.tipo === 'Orden';
+      h.push('<b>' + (orden ? 'Orden de compra ' + esc(e.numero || '(sin número)') + ' · ' + esc(e.oficina) : 'Pedido de cotización') + '</b> · ' +
+             esc(e.proveedor) + ' · ' + esc(e.quien) + ' · ' + esc(e.estado) + (orden && e.iva !== undefined ? ' · IVA ' + esc(String(e.iva).replace('.', ',')) + ' %' : ''));
+      h.push(tablaSimple(orden ? ['Producto', 'Cantidad', 'Precio unitario', 'Total'] : ['Producto', 'Cantidad'], ps.map(function(p){
+        var f = [esc(p.producto || p.codigo), fmt(Number(p.cantidad) || 0)];
+        if(orden) f.push('$ ' + fmt(Number(p.precio) || 0), '$ ' + fmt(Math.round((Number(p.cantidad) || 0) * (Number(p.precio) || 0) * 100) / 100));
+        return f;
+      })));
+      if(e.texto) h.push('<div class="obs"><b>Mensaje:</b> ' + esc(e.texto) + '</div>');
+      if(e.mail === 'pendiente') h.push('<div class="obs">📧 El mail a Consultores Asociados queda pendiente hasta que la app tenga el permiso de Gmail.</div>');
+      if(e.error) h.push('<div class="obs estado-c">No salió: ' + esc(e.error) + '</div>');
+      if(e.url) h.push('<div class="acciones"><a class="btn" href="' + esc(e.url) + '" target="_blank" rel="noopener">Bajar ' + esc(e.archivo || 'el archivo') + '</a></div>');
+      return h.join('');
+    }
     if(cual === 'conteos'){
       HIST.conteo = { r: r, editando: false, filtro: HIST.conteo && HIST.conteo.r && HIST.conteo.r.conteo.id === r.conteo.id ? HIST.conteo.filtro : '' };
       h.push('<div id="hconteo">' + htmlConteoHist() + '</div>');
@@ -4717,7 +4748,8 @@
     leer_albor: window.AlborExt.api.leer_albor && conRegistro(window.AlborExt.api.leer_albor, function(t){ alborLog(t); }),
     programar_existencias: window.AlborExt.api.programar_existencias,
     estado_existencias: window.AlborExt.api.estado_existencias,
-    cerrar_esta_pestana: window.AlborExt.api.cerrar_esta_pestana
+    cerrar_esta_pestana: window.AlborExt.api.cerrar_esta_pestana,
+    cargar_orden_insumos: window.AlborExt.api.cargar_orden_insumos && conRegistro(window.AlborExt.api.cargar_orden_insumos, function(t){ alborLog(t); })   // Fase 6-ter, Paso 4
   } : null;
 
   function motor(){ return MOTOR.vivo ? MOTOR_API : null; }
@@ -5960,6 +5992,11 @@
     log.scrollTop = log.scrollHeight;
   }
   window.__alborLog = alborLog;
+  /* Consumo mensual (consumo.js; Fase 6-ter, Paso 4): las órdenes de compra de insumos usan este mismo recuadro de Albor. */
+  window.TransfAlbor = {
+    motor: function(){ return motor(); }, abrir: function(t){ abrirAlbor(t); }, terminar: function(r, l){ terminarAlbor(r, l || []); },
+    log: function(t){ alborLog(t); }, cargando: function(){ return CARGANDO; }, librosPDF: function(){ return librosPDF(); }
+  };
 
   /* Minimizar (Feli, 30/10): queda la barrita de arriba; una pausa nueva o el final lo vuelven a abrir */
   function achicarAlbor(si){
@@ -6404,7 +6441,7 @@
     [].forEach.call(document.querySelectorAll('.tab[data-admin]'), function(t){ t.hidden = !ES_ADMIN; });
     // El Historial de un encargado (Feli, 2/11): Armado de pedido y Transferencias, de sus granjas
     [].forEach.call(document.querySelectorAll('.hb[data-admin]'), function(b){ b.hidden = !ES_ADMIN; });
-    if(!ES_ADMIN && (HIST.cual === 'conteos' || HIST.cual === 'egresos')){
+    if(!ES_ADMIN && (HIST.cual === 'conteos' || HIST.cual === 'egresos' || HIST.cual === 'consumo')){
       HIST.cual = 'pedidos';
       [].forEach.call(document.querySelectorAll('.hb'), function(x){ x.classList.toggle('on', x.getAttribute('data-hist') === 'pedidos'); });
     }
