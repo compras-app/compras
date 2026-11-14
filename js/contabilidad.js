@@ -777,7 +777,7 @@ async function imprimirFacturas() {
    la muestra, "en serio" y "Traer ahora" solo los ve Feli (puede).
    ============================================================ */
 pantalla('cfacturas', { titulo: 'Facturas', tab: 'cfacturas', alMostrar: mostrarMails });
-const MF = { datos: null, cargando: false, textos: {}, abiertos: {} };
+const MF = { datos: null, cargando: false, textos: {}, abiertos: {}, detalle: {} };
 
 async function mostrarMails() {
   pintarMails();
@@ -898,6 +898,8 @@ function htmlLecturaAdj(a) {
          (f.fecha ? ' · ' + esc(f.fecha) : '') + (f.total !== null && f.total !== undefined ? ' · <b>' + esc(dinero(f.total, f.moneda)) + '</b>' : '');
     if (a.ordenCompra) h += ' · OC ' + esc(a.ordenCompra);
     if (a.original && a.paginas > 1) h += '<br><span class="nota">Original: página' + (a.original.paginas.length > 1 ? 's ' : ' ') + esc(a.original.paginas.join(', ')) + ' de ' + a.paginas + '</span>';
+    if (f.detalle) h += '<br><button type="button" class="link-gris" data-det="' + esc(a.id) + '">' + (MF.detalle[a.id] ? 'Esconder el detalle' : 'Ver el detalle (' + f.renglones + ' renglón' + (f.renglones === 1 ? '' : 'es') + ', IVA y percepciones)') + '</button>';
+    if (f.detalle && MF.detalle[a.id]) h += htmlDetalleFacturaMail(f);
   } else if (!sinIA) h += ' <span class="nota">· no es factura</span>';
   if (a.resumenMail) h += '<br><span class="nota">💬 ' + esc(a.resumenMail) + '</span>';
   (a.avisos || []).forEach(function (x) { h += '<br><span class="mf-aviso">⚠️ ' + esc(x) + '</span>'; });
@@ -907,6 +909,25 @@ function htmlLecturaAdj(a) {
          : '<button type="button" class="btn2" data-rev="' + esc(a.id) + '" data-ok="1">✅ Bien</button><button type="button" class="btn2" data-rev="' + esc(a.id) + '" data-ok="0">❌ Mal</button>') + '</div>';
   }
   return h + '</div>';
+}
+
+/** Todo lo que leyó de la factura: los renglones, el neto, el IVA de cada tasa, las percepciones y el total. */
+function htmlDetalleFacturaMail(f) {
+  const d = f.detalle, m = f.moneda;
+  const num = function (n) { return n === null || n === undefined ? '' : Number(n).toLocaleString('es-AR', { maximumFractionDigits: 4 }); };
+  let h = '<div class="mf-det"><table><thead><tr><th>Producto</th><th>Cant.</th><th>Precio unit.</th><th>Importe</th><th>IVA</th></tr></thead><tbody>' +
+    d.renglones.map(function (r) {
+      return '<tr><td>' + esc(r.texto || '') + '</td><td>' + esc(num(r.cant) + (r.unidad ? ' ' + r.unidad : '')) + '</td><td>' + esc(dinero(r.precio, m)) + '</td><td>' + esc(dinero(r.importe, m)) + '</td><td>' +
+             esc(r.iva === null || r.iva === undefined ? '' : num(r.iva) + ' %') + '</td></tr>';
+    }).join('') + '</tbody></table><div class="mf-det-tot">';
+  const fila = function (t, v) { return v === null || v === undefined || v === '' ? '' : '<div><span>' + esc(t) + '</span><b>' + esc(v) + '</b></div>'; };
+  h += fila('Neto gravado', dinero(f.neto, m));
+  d.ivas.forEach(function (x) { h += fila('IVA ' + (x.tasa === null || x.tasa === undefined ? '' : num(x.tasa) + ' %'), dinero(x.importe, m)); });
+  d.percepciones.forEach(function (x) { h += fila(x.nombre || 'Percepción', dinero(x.importe, m)); });
+  h += fila('Total', dinero(f.total, m));
+  h += '</div><p class="nota">' + [d.cae ? 'CAE ' + d.cae : '', d.vencimiento ? 'Vence el ' + d.vencimiento : '', d.cliente ? 'A nombre de ' + d.cliente + (d.cuitCliente ? ' (' + d.cuitCliente + ')' : '') : '',
+                                   m && m !== 'ARS' ? 'Moneda ' + m + (d.cotizacion ? ', cotización ' + num(d.cotizacion) : '') : ''].filter(String).map(esc).join(' · ') + '</p></div>';
+  return h;
 }
 
 function htmlBancoMails(b) {
@@ -1081,4 +1102,5 @@ $('s-cfacturas').addEventListener('click', function (e) {
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
   else if (b.dataset.texto) verTextoMail(b.dataset.texto);
   else if (b.dataset.rev) revisarLecturaUI(b.dataset.rev, b.dataset.ok);
+  else if (b.dataset.det) { MF.detalle[b.dataset.det] = !MF.detalle[b.dataset.det]; pintarMails(); }
 });
