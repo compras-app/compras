@@ -898,7 +898,7 @@ function htmlLecturaAdj(a) {
          (f.fecha ? ' · ' + esc(f.fecha) : '') + (f.total !== null && f.total !== undefined ? ' · <b>' + esc(dinero(f.total, f.moneda)) + '</b>' : '');
     if (a.ordenCompra) h += ' · OC ' + esc(a.ordenCompra);
     if (a.original && a.paginas > 1) h += '<br><span class="nota">Original: página' + (a.original.paginas.length > 1 ? 's ' : ' ') + esc(a.original.paginas.join(', ')) + ' de ' + a.paginas + '</span>';
-    if (f.detalle) h += '<br><button type="button" class="link-gris" data-det="' + esc(a.id) + '">' + (MF.detalle[a.id] ? 'Esconder el detalle' : 'Ver el detalle (' + f.renglones + ' renglón' + (f.renglones === 1 ? '' : 'es') + ', IVA y percepciones)') + '</button>';
+    if (f.detalle) h += '<br><button type="button" class="btn2 mf-det-b" data-det="' + esc(a.id) + '">' + (MF.detalle[a.id] ? 'Esconder los renglones' : '🔎 Ver los renglones y el IVA (' + f.renglones + ' renglón' + (f.renglones === 1 ? '' : 'es') + ')') + '</button>';
     if (f.detalle && MF.detalle[a.id]) h += htmlDetalleFacturaMail(f);
   } else if (!sinIA) h += ' <span class="nota">· no es factura</span>';
   if (a.resumenMail) h += '<br><span class="nota">💬 ' + esc(a.resumenMail) + '</span>';
