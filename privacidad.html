@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacidad · App de compras</title>
+<style>
+  :root { --fondo:#1c1d21; --texto:#e8e6e3; --suave:#a9a6a2; --color:#d08a93; }
+  body { margin:0; background:var(--fondo); color:var(--texto); font:16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:32px 16px 48px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  h2 { font-size:1.15rem; margin:28px 0 6px; color:var(--color); }
+  p, li { color:var(--texto); }
+  .sub { color:var(--suave); margin:0 0 24px; }
+  a { color:var(--color); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Política de privacidad</h1>
+  <p class="sub">App de compras · uso interno de la empresa</p>
+
+  <p>La App de compras es una aplicación interna de la empresa para gestionar pedidos, compras y facturas. No es una app para el público: solo la usan personas de la empresa.</p>
+
+  <h2>Qué hace con la cuenta de Gmail</h2>
+  <p>Con el permiso de la cuenta de Gmail de la empresa donde llegan las facturas de los proveedores, la app:</p>
+  <ul>
+    <li>lee los mails que traen archivos adjuntos (facturas, remitos y otros comprobantes) para cargarlos en la app;</li>
+    <li>les pone una etiqueta propia ("App: leída") para no cargar dos veces el mismo mail, y los pasa a la carpeta "Adjuntadas en la app" cuando la factura quedó en su compra;</li>
+    <li>manda desde esa cuenta las órdenes de compra a quien corresponde.</li>
+  </ul>
+  <p>Nunca borra mails ni cambia si están leídos o no.</p>
+
+  <h2>Dónde quedan los datos</h2>
+  <p>Los mails y sus archivos se guardan en la base de datos de la app (Supabase), a la que solo accede la app con su propia clave. No se venden, no se comparten con terceros y no se usan para publicidad. Para leer los datos de una factura, la app puede enviar el archivo a un servicio de inteligencia artificial (OpenAI) solo con ese fin.</p>
+  <p>El uso de la información recibida de las API de Google cumple con la <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de datos del usuario de los servicios de las API de Google</a>, incluidos los requisitos de uso limitado.</p>
+
+  <h2>Cómo quitar el permiso</h2>
+  <p>El permiso se puede quitar en cualquier momento desde la cuenta de Google: <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+
+  <h2>Contacto</h2>
+  <p>Por cualquier consulta, escribir a la cuenta de la empresa que dio el permiso.</p>
+
+  <p class="sub">Última actualización: 14 de noviembre de 2026.</p>
+</main>
+</body>
+</html>
