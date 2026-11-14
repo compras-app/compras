@@ -1266,3 +1266,8 @@ body[data-pantalla="cfacturas"] .contenido{max-width:900px}
 .mf-det-tot span{color:var(--muted)}
 .mf-det .nota{margin:6px 0 0;font-size:12px}
 .mf-det-b{width:auto;flex:0 0 auto;padding:4px 10px;font-size:13px;margin-top:4px}
+/* Fase 7, Paso 3-bis (Feli, 14/11): la impresora sola */
+body[data-pantalla="cimpresora"] .contenido{max-width:700px}
+.ip-estado{font-size:18px;font-weight:600;margin:0 0 4px}
+.ip-lista{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.ip-fila{font-size:13px;border-bottom:1px solid var(--line);padding:4px 0}

@@ -409,7 +409,7 @@
         <label class="ci-fecha">Desde <input type="date" id="ci-desde"></label>
         <label class="ci-fecha">Hasta <input type="date" id="ci-hasta"></label>
         <select id="ci-prov" aria-label="Proveedor"><option value="">Todos los proveedores</option></select>
-        <select id="ci-donde" aria-label="Dónde está"><option value="">Todas las columnas</option><option>Comprado</option><option>Recibido</option><option>Factura cargada</option><option>Historial</option></select>
+        <select id="ci-donde" aria-label="Dónde está"><option value="">Todas las columnas</option><option>Comprado</option><option>Recibido</option><option>Factura cargada</option><option>Historial</option><option value="Mail">Llegó por mail</option></select>
       </div>
       <p class="nota">Se imprime solo el original de cada factura, con una línea arriba: la orden de compra, el sitio, la cuenta y la referencia de Albor. La fecha es la de la factura.</p>
       <div class="ci-barra">
@@ -419,6 +419,21 @@
       </div>
       <p class="nota ad-estado" id="ci-nota" role="status" aria-live="polite"></p>
       <div class="ci-lista" id="ci-lista"></div>
+    </section>
+    <!-- Fase 7, Paso 3-bis (Feli, 14/11): la impresora sola, en la compu de la impresora (?ap=contabilidad&impresora=1; contabilidad.js) -->
+    <section id="s-cimpresora" hidden>
+      <div class="caja ip-caja">
+        <p class="ip-estado" id="ip-estado">🖨️ Impresora de facturas</p>
+        <p class="nota" id="ip-detalle"></p>
+        <div class="mf-botones">
+          <button type="button" class="btn2" id="ip-pausa">⏸️ Pausar</button>
+          <button type="button" class="btn2" id="ip-ahora">↻ Mirar ahora</button>
+          <button type="button" class="btn2" id="ip-probar">🧪 Probar la impresora</button>
+          <button type="button" class="link-gris" id="ip-compu">Cambiar el nombre de esta compu</button>
+        </div>
+      </div>
+      <p class="nota">Esta ventana imprime sola cada factura que llega por mail (solo las facturas y solo el original). Puede quedar minimizada, pero no la cierres.</p>
+      <div class="ip-lista" id="ip-lista"></div>
     </section>
     <!-- Fase 7, Paso 2 (Feli, 14/11): 📥 Facturas, los mails con adjuntos de la cuenta de las facturas (contabilidad.js) -->
     <section id="s-cfacturas" hidden>

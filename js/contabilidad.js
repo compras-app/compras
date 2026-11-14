@@ -591,7 +591,8 @@ function facturasALaVista() {
 }
 
 function textoImpresa(i) {
-  return i ? '🖨️ Impresa el ' + new Date(i.cuando).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) + ' por ' + i.quien + (i.veces > 1 ? ' (' + i.veces + ' veces)' : '') : '';
+  return i ? '🖨️ Impresa' + (i.sola ? ' sola' : '') + ' el ' + new Date(i.cuando).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) +
+              (i.sola ? (i.compu ? ' en ' + i.compu : '') : ' por ' + i.quien) + (i.veces > 1 ? ' (' + i.veces + ' veces)' : '') : '';
 }
 
 function pintarImprimir() {
@@ -667,7 +668,9 @@ async function textosDeHojas(bytes) {
 
 /** La línea de arriba (Feli, 6/11): orden, sitio, cuenta y referencia de Albor. La letra del PDF solo tiene los caracteres de Windows. */
 function lineaDeFactura(f) {
-  return [f.orden ? 'OC ' + f.orden : 'Sin orden de compra', f.sitio, f.cuenta, f.albor ? 'Albor: ' + f.albor : '']
+  // Una factura que llegó por mail y todavía no está en una compra (Fase 7): su proveedor y el día que llegó
+  const sinCompra = f.donde === 'Mail' ? (f.proveedor || '') + (f.llego ? '  ·  Llegó por mail el ' + new Date(f.llego).toLocaleDateString('es-AR') : '') : '';
+  return [f.orden ? 'OC ' + f.orden : (sinCompra ? '' : 'Sin orden de compra'), sinCompra, f.sitio, f.cuenta, f.albor ? 'Albor: ' + f.albor : '']
     .filter(Boolean).join('  ·  ').replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
 }
 
@@ -699,6 +702,9 @@ async function sumarFactura(doc, fuente, f, bytes) {
   let hojas = null;
   try { hojas = hojasDelOriginal(await textosDeHojas(bytes)); } catch (e) { hojas = null; }
   const src = await L.PDFDocument.load(bytes, { ignoreEncryption: true });
+  // Fase 7: si el PDF no tiene texto (escaneado), las páginas del original que vio la IA al leerla
+  if (!hojas && f.paginas && f.paginas.length && f.paginas.every(function (n) { return n >= 1 && n <= src.getPageCount(); }))
+    hojas = f.paginas.map(function (n) { return n - 1; });
   const indices = hojas || src.getPageIndices();
   const copias = await doc.copyPages(src, indices);
   copias.forEach(function (p, i) { doc.addPage(p); if (i === 0) ponerLinea(p, fuente, linea); });
@@ -902,6 +908,8 @@ function htmlLecturaAdj(a) {
     if (f.detalle && MF.detalle[a.id]) h += htmlDetalleFacturaMail(f);
   } else if (!sinIA) h += ' <span class="nota">· no es factura</span>';
   if (a.resumenMail) h += '<br><span class="nota">💬 ' + esc(a.resumenMail) + '</span>';
+  if (a.impresa) h += '<br><span class="nota">🖨️ Impresa' + (a.impresa.sola ? ' sola' : '') + ' el ' + esc(new Date(a.impresa.cuando).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })) +
+                      (a.impresa.sola ? (a.impresa.compu ? ' en ' + esc(a.impresa.compu) : '') : ' por ' + esc(a.impresa.quien || '')) + (a.impresa.veces > 1 ? ' (' + a.impresa.veces + ' veces)' : '') + '</span>';
   (a.avisos || []).forEach(function (x) { h += '<br><span class="mf-aviso">⚠️ ' + esc(x) + '</span>'; });
   if (MF.datos && MF.datos.puede && !sinIA) {
     const rv = a.revision;
@@ -1103,4 +1111,110 @@ $('s-cfacturas').addEventListener('click', function (e) {
   else if (b.dataset.texto) verTextoMail(b.dataset.texto);
   else if (b.dataset.rev) revisarLecturaUI(b.dataset.rev, b.dataset.ok);
   else if (b.dataset.det) { MF.detalle[b.dataset.det] = !MF.detalle[b.dataset.det]; pintarMails(); }
+});
+
+
+/* ============================================================
+   FASE 7, PASO 3-BIS (Feli, 14/11): LA IMPRESORA SOLA
+   ------------------------------------------------------------
+   En la compu de la impresora, un Chrome aparte abre la app con
+   ?ap=contabilidad&impresora=1 y con --kiosk-printing (imprime sin
+   preguntar). Cada minuto (y al tocar "Mirar ahora") pregunta qué
+   facturas del mail hay para imprimir; cada una: la toma en el servidor
+   (si otra compu la tomó, la saltea), arma el PDF con el original y la
+   línea de arriba, la imprime y la marca. Lo que falla vuelve a la lista
+   (hasta 3 veces). Solo facturas, solo el original.
+   ============================================================ */
+pantalla('cimpresora', { titulo: 'Impresora de facturas', tab: 'contabilidad', alMostrar: mostrarImpresora });
+const K_COMPU_IMPRESORA = 'compras_impresora_compu';
+const IP = { reloj: null, ocupada: false, pausada: false, hechas: [], esperan: 0, ultima: null, error: '' };
+
+function nombreCompuImpresora() {
+  let n = '';
+  try { n = guardado.leer(K_COMPU_IMPRESORA) || ''; } catch (e) { n = ''; }
+  return n || 'Compu de la impresora';
+}
+
+function mostrarImpresora() {
+  pintarImpresora();
+  if (!IP.reloj) {
+    IP.reloj = setInterval(vueltaImpresora, 60000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) vueltaImpresora(); });
+  }
+  vueltaImpresora();
+}
+
+function pintarImpresora() {
+  $('ip-estado').textContent = IP.pausada ? '⏸️ Impresora de facturas: en pausa' : IP.ocupada ? '🖨️ Imprimiendo…' : '🖨️ Impresora de facturas: encendida';
+  $('ip-pausa').textContent = IP.pausada ? '▶️ Seguir' : '⏸️ Pausar';
+  $('ip-detalle').textContent = [nombreCompuImpresora(), IP.ultima ? 'Miró por última vez a las ' + new Date(IP.ultima).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '',
+    IP.esperan ? IP.esperan + (IP.esperan === 1 ? ' factura espera' : ' facturas esperan') + ' que alguien la elija (no se sabe cuál es el original): se imprimen con «🖨️ Imprimir facturas»' : '',
+    IP.error].filter(Boolean).join(' · ');
+  $('ip-lista').innerHTML = IP.hechas.length ? '<p class="nota">Impresas en esta ventana:</p>' + IP.hechas.slice(0, 50).map(function (h) {
+    return '<div class="ip-fila">' + esc(new Date(h.cuando).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })) + ' · ' + (h.ok ? '✅ ' : '⚠️ ') +
+           esc((h.proveedor || 'Sin proveedor') + ' ' + (h.numero || h.nombre)) + (h.ok ? (h.entera ? ' (entera: no dice ORIGINAL)' : '') : ': ' + esc(h.error || 'no salió')) + '</div>';
+  }).join('') : '<p class="nota">Todavía no imprimió nada en esta ventana.</p>';
+}
+
+/** Una vuelta: lo que hay para imprimir, de a una. */
+async function vueltaImpresora() {
+  if (IP.ocupada || IP.pausada) return;
+  IP.ocupada = true;
+  try {
+    const r = await api('impresoraPendientes');
+    IP.ultima = Date.now();
+    if (!r.ok) { IP.error = r.sinConexion ? '📶 Sin señal: sigue cuando vuelva' : r.error; return; }
+    IP.error = ''; IP.esperan = r.esperan;
+    for (let i = 0; i < r.listas.length && !IP.pausada; i++) await imprimirUnaSola(r.listas[i]);
+  } finally {
+    IP.ocupada = false;
+    pintarImpresora();
+  }
+}
+
+async function imprimirUnaSola(f) {
+  const compu = nombreCompuImpresora();
+  const t = await api('impresoraTomar', f.id, compu);
+  if (!t.ok || !t.tomada) return;                  // otra compu la tomó (o ya salió)
+  pintarImpresora();
+  let ok = false, entera = false, error = '';
+  try {
+    await Promise.all([cargarPdfLib(), cargarPdfJs()]);
+    const doc = await window.PDFLib.PDFDocument.create(), fuente = await doc.embedFont(window.PDFLib.StandardFonts.Helvetica);
+    entera = (await sumarFactura(doc, fuente, f, await bajarFactura(f))).entera;
+    await mandarAImprimir(new Blob([await doc.save()], { type: 'application/pdf' }));
+    await new Promise(function (listo) { setTimeout(listo, 4000); });     // que la impresora la tome antes de la siguiente
+    ok = true;
+  } catch (e) { error = e.message || 'no se pudo armar'; }
+  await api('impresoraLista', f.id, compu, ok, error);
+  IP.hechas.unshift({ cuando: new Date().toISOString(), ok: ok, entera: entera, error: error, proveedor: f.proveedor, numero: f.numero, nombre: f.nombre });
+  pintarImpresora();
+}
+
+$('ip-pausa').addEventListener('click', function () { IP.pausada = !IP.pausada; pintarImpresora(); if (!IP.pausada) vueltaImpresora(); });
+$('ip-ahora').addEventListener('click', vueltaImpresora);
+// Para instalarla (Feli, 14/11): imprime la última factura que llegó por mail, sin marcarla, para ver que sale sola y sin preguntar
+$('ip-probar').addEventListener('click', async function () {
+  const b = $('ip-probar');
+  b.disabled = true;
+  try {
+    const r = await api('getFacturasImprimir');
+    if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad');
+    const f = r.facturas.filter(function (x) { return x.donde === 'Mail'; }).sort(function (a, c) { return String(c.llego).localeCompare(String(a.llego)); })[0];
+    if (!f) return aviso('Todavía no llegó ninguna factura por mail para probar.', 'bad');
+    await Promise.all([cargarPdfLib(), cargarPdfJs()]);
+    const doc = await window.PDFLib.PDFDocument.create(), fuente = await doc.embedFont(window.PDFLib.StandardFonts.Helvetica);
+    await sumarFactura(doc, fuente, f, await bajarFactura(f));
+    await mandarAImprimir(new Blob([await doc.save()], { type: 'application/pdf' }));
+    aviso('🧪 Mandé a imprimir la factura ' + (f.numero || f.nombre) + ' de ' + (f.proveedor || 'un proveedor') + '. Si salió sin abrir ninguna ventana, la impresora está lista. (No queda marcada.)');
+  } catch (e) {
+    aviso(e.message || 'No se pudo imprimir la prueba.', 'bad');
+  } finally { b.disabled = false; }
+});
+$('ip-compu').addEventListener('click', async function () {
+  const campo = document.createElement('input');
+  campo.type = 'text'; campo.maxLength = 60; campo.value = nombreCompuImpresora();
+  const v = await dialogo({ titulo: 'El nombre de esta compu', texto: 'Queda en cada factura impresa («Impresa sola en …»).', cuerpo: campo,
+    alAbrir: function () { campo.select(); }, botones: [{ texto: 'Guardar', clase: 'btn', valor: function () { return campo.value.trim(); } }, { texto: 'Volver', valor: null }] });
+  if (v) { try { guardado.guardar(K_COMPU_IMPRESORA, v); } catch (e) { /* queda el de siempre */ } pintarImpresora(); }
 });

@@ -31,7 +31,7 @@ function mostrarApp() {
   $('t-nuevo').href = FORMULARIO + '?desde=app';
   pintarBarra();
   pintarSinRed();
-  if (modoContable()) ir('contabilidad');
+  if (modoContable()) ir(/[?&]impresora=1\b/.test(location.search) ? 'cimpresora' : 'contabilidad');   // Fase 7, Paso 3-bis: la compu de la impresora
   else if (sinCompras()) ir('cuenta');
   else if (location.hash === '#cuenta') {
     // Viene de "Tu cuenta" en Transferencias: #cuenta no es un pedido (si queda, el tablero lo abría como tarjeta)
