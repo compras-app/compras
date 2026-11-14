@@ -839,9 +839,16 @@ function htmlEstadoGmail(g, puede) {
 }
 
 function mailsALaVista() {
-  const q = $('mf-q').value.trim().toLowerCase();
+  const q = $('mf-q').value.trim().toLowerCase(), ver = $('mf-ver').value;
   return ((MF.datos && MF.datos.mails) || []).filter(function (m) {
+    const as = m.adjuntos;
+    if (ver === 'revisar' && !as.some(function (a) { return a.papel && !a.revision && !/^(Otro archivo|Imagen del mail)$/.test(a.papel); })) return false;
+    if (ver === 'facturas' && !as.some(function (a) { return a.factura; })) return false;
+    if (ver === 'avisos' && !as.some(function (a) { return a.error || (a.avisos && a.avisos.length); })) return false;
+    if (ver === 'noes' && (!as.length || as.some(function (a) { return a.factura || !a.papel; }))) return false;
+    if (ver === 'sinleer' && !as.some(function (a) { return !a.papel; })) return false;
     if (!q) return true;
+    if (as.some(function (a) { return a.factura && ((a.factura.numero + ' ' + a.factura.cuit + ' ' + a.factura.emisor + ' ' + (a.ordenCompra || '')).toLowerCase().indexOf(q) !== -1); })) return true;
     return (m.de + ' ' + m.asunto + ' ' + m.adjuntos.map(function (a) { return a.nombre; }).join(' ')).toLowerCase().indexOf(q) !== -1;
   });
 }
@@ -850,8 +857,10 @@ function htmlMail(m) {
   const adj = m.adjuntos.map(function (a) {
     const ic = /pdf/.test(a.tipo) ? '📄' : /^image\//.test(a.tipo) ? '🖼️' : /zip|compressed/.test(a.tipo) ? '🗜️' : '📎';
     const extra = a.estado ? ' · ⚠️ ' + (a.estado === 'Muy grande' ? 'muy grande, no se guardó' : a.estado.toLowerCase()) : a.repetido ? ' · repetido' : '';
-    return a.archivo ? '<button type="button" class="mf-adj" data-ver="' + esc(a.archivo) + '">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></button>'
-                     : '<span class="mf-adj mf-sin">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></span>';
+    const chip = a.archivo ? '<button type="button" class="mf-adj" data-ver="' + esc(a.archivo) + '">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></button>'
+                           : '<span class="mf-adj mf-sin">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></span>';
+    const lec = htmlLecturaAdj(a);
+    return lec ? '<div class="mf-adjl">' + chip + lec + '</div>' : chip;
   }).join('');
   const abierto = MF.abiertos[m.id], texto = MF.textos[m.id];
   return '<div class="mf-mail" data-id="' + esc(m.id) + '">' +
@@ -868,11 +877,106 @@ function htmlMail(m) {
 
 function pintarMails() {
   const d = MF.datos;
-  $('mf-gmail').innerHTML = d ? htmlEstadoGmail(d.gmail, d.puede) : '';
+  $('mf-gmail').innerHTML = d ? htmlEstadoGmail(d.gmail, d.puede) + (d.puede && d.gmail.conectado ? htmlBancoMails(d.banco) : '') : '';
   $('mf-gmail').hidden = !d;
   const l = mailsALaVista();
   $('mf-lista').innerHTML = !d ? '' : !l.length ? '<p class="nota">' + (d.mails.length ? 'Ningún mail coincide con la búsqueda.' : 'Todavía no entró ningún mail.') + '</p>'
     : '<p class="nota">' + l.length + ' mail' + (l.length === 1 ? '' : 's') + (d.total > d.mails.length ? ' (los ' + d.mails.length + ' más nuevos de ' + d.total + ')' : '') + '</p>' + l.map(htmlMail).join('');
+}
+
+/* ---------- Paso 3 (Feli, 14/11): la lectura de cada adjunto, la prueba y la revisión de Feli ---------- */
+const ICONO_PAPEL = { 'Factura': '🧾', 'Nota de crédito': '↩️', 'Nota de débito': '➕', 'Remito': '📦', 'Recibo': '💵', 'Orden de pago': '💸',
+                      'Resumen de cuenta': '📋', 'Presupuesto': '📝', 'Otro papel': '📄', 'Otro archivo': '🗂️', 'Imagen del mail': '🖼️' };
+
+function htmlLecturaAdj(a) {
+  if (a.leyendo) return '<div class="mf-lec nota">🤖 Leyendo…</div>';
+  if (!a.papel) return a.error ? '<div class="mf-lec mf-mal">⚠️ No se pudo leer: ' + esc(a.error) + '</div>' : '';
+  const sinIA = /^(Otro archivo|Imagen del mail)$/.test(a.papel), f = a.factura;
+  let h = '<div class="mf-lec' + (f ? '' : ' mf-noes') + '"><b>' + (ICONO_PAPEL[a.papel] || '📄') + ' ' + esc(a.papel) + '</b>';
+  if (f) {
+    h += ' ' + esc((f.letra ? f.letra + ' ' : '') + (f.numero || 'sin número')) + ' · ' + esc(f.emisor || 'sin proveedor') + (f.cuit ? ' · ' + esc(f.cuit) : '') +
+         (f.fecha ? ' · ' + esc(f.fecha) : '') + (f.total !== null && f.total !== undefined ? ' · <b>' + esc(dinero(f.total, f.moneda)) + '</b>' : '');
+    if (a.ordenCompra) h += ' · OC ' + esc(a.ordenCompra);
+    if (a.original && a.paginas > 1) h += '<br><span class="nota">Original: página' + (a.original.paginas.length > 1 ? 's ' : ' ') + esc(a.original.paginas.join(', ')) + ' de ' + a.paginas + '</span>';
+  } else if (!sinIA) h += ' <span class="nota">· no es factura</span>';
+  if (a.resumenMail) h += '<br><span class="nota">💬 ' + esc(a.resumenMail) + '</span>';
+  (a.avisos || []).forEach(function (x) { h += '<br><span class="mf-aviso">⚠️ ' + esc(x) + '</span>'; });
+  if (MF.datos && MF.datos.puede && !sinIA) {
+    const rv = a.revision;
+    h += '<div class="mf-rev">' + (rv ? '<span>' + (rv.ok ? '✅ Bien' : '❌ Mal' + (rv.nota ? ': ' + esc(rv.nota) : '')) + '</span> <button type="button" class="link-gris" data-rev="' + esc(a.id) + '" data-ok="">Cambiar</button>'
+         : '<button type="button" class="btn2" data-rev="' + esc(a.id) + '" data-ok="1">✅ Bien</button><button type="button" class="btn2" data-rev="' + esc(a.id) + '" data-ok="0">❌ Mal</button>') + '</div>';
+  }
+  return h + '</div>';
+}
+
+function htmlBancoMails(b) {
+  if (!b) return '';
+  const pc = b.revisados ? Math.round(b.bien / b.revisados * 100) : null;
+  return '<div class="mf-banco"><p><b>🧪 Prueba de lectura</b>: leídos ' + b.conIA + ' de ' + b.tope + ' con la IA' +
+    (b.leidos > b.conIA ? ' (y ' + (b.leidos - b.conIA) + ' sin la IA)' : '') + ' · revisados ' + b.revisados +
+    (b.revisados ? ' (✅ ' + b.bien + ', ❌ ' + b.mal + ': <b>' + pc + ' % bien</b>)' : '') + ' · costó US$ ' + b.costo.toFixed(2).replace('.', ',') + '</p>' +
+    '<p class="nota">La meta: 95 de cada 100 bien. ✅ si están bien qué papel es y, en una factura, el CUIT, la letra, el número, la fecha y el total.</p>' +
+    '<div class="mf-botones">' + (b.conIA < b.tope ? '<button type="button" class="btn" data-mf="leer">🤖 Leer la muestra</button>' : '') +
+    '<button type="button" class="btn2" data-mf="leersolos">' + (b.leer ? '⏸️ Apagar la lectura de los nuevos' : '🤖 Leer solos los mails nuevos') + '</button>' +
+    (b.leer ? '<span class="nota">Los mails nuevos se leen solos.</span>' : '') +
+    (b.costoTotal > b.costo ? '<span class="nota">Total gastado en lecturas: US$ ' + b.costoTotal.toFixed(2).replace('.', ',') + '</span>' : '') + '</div></div>';
+}
+
+/** Lee la muestra de a un archivo (la página repite) hasta el tope de la prueba. */
+async function leerMuestraUI() {
+  let n = 0, fallas = 0;
+  for (let vuelta = 0; vuelta < 120; vuelta++) {
+    notaAd('mf-nota', '🤖 Leyendo la muestra… ' + (n ? n + ' leídos' : ''));
+    const r = await apiLenta('leerMailsAhora', { muestra: true });
+    if (!r.ok) {
+      if (!r.sinConexion && ++fallas <= 3) { await new Promise(function (ok) { setTimeout(ok, 4000); }); continue; }
+      notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
+    }
+    fallas = 0;
+    n += r.r.leidas;
+    if (MF.datos) MF.datos.banco = r.banco;
+    if (vuelta % 3 === 2) { MF.cargando = false; await cargarMails(); }
+    if (!r.r.quedan || r.banco.conIA >= r.banco.tope) { notaAd('mf-nota', '✅ Listo: ' + n + ' leídos. Ahora revisalos con ✅ / ❌ (filtro «Para revisar»).'); break; }
+  }
+  const nota = $('mf-nota').textContent;
+  MF.cargando = false;
+  await cargarMails();
+  notaAd('mf-nota', nota);
+}
+
+async function revisarLecturaUI(id, ok) {
+  let nota = '';
+  if (ok === '') {                                 // "Cambiar": se saca la marca
+    const r = await api('revisarLecturaMail', id, null, '');
+    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+    ponerRevision(id, null);
+    return;
+  }
+  if (ok === '0') {
+    const campo = document.createElement('input');
+    campo.type = 'text'; campo.placeholder = 'Qué está mal (por ejemplo: el total, el número)'; campo.maxLength = 300;
+    const v = await dialogo({ titulo: '❌ Lectura mal', texto: '¿Qué leyó mal? (opcional)', cuerpo: campo, alAbrir: function () { campo.focus(); },
+      botones: [{ texto: 'Guardar', clase: 'btn', valor: function () { return { nota: campo.value.trim() }; } }, { texto: 'Volver', valor: null }] });
+    if (!v) return;
+    nota = v.nota;
+  }
+  const r = await api('revisarLecturaMail', id, ok === '1', nota);
+  if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+  ponerRevision(id, r.revision);
+}
+
+/** Pone la revisión en lo cargado y recalcula el resumen de la prueba sin volver a pedir todo. */
+function ponerRevision(id, rv) {
+  const b = MF.datos.banco;
+  MF.datos.mails.forEach(function (m) {
+    m.adjuntos.forEach(function (a) {
+      if (a.id !== id) return;
+      if (m.muestra && a.revision) { b.revisados--; if (a.revision.ok) b.bien--; else b.mal--; }
+      a.revision = rv;
+      if (m.muestra && rv) { b.revisados++; if (rv.ok) b.bien++; else b.mal++; }
+    });
+  });
+  pintarMails();
 }
 
 async function verTextoMail(id) {
@@ -897,6 +1001,21 @@ async function accionGmail(que) {
     return;
   }
   if (que === 'traer') return traerMailsUI();
+  if (que === 'leer') return leerMuestraUI();
+  if (que === 'leersolos') {
+    const prender = !(MF.datos.banco && MF.datos.banco.leer);
+    if (prender) {
+      const si = await dialogo({ titulo: 'Leer solos los mails nuevos', texto: 'Desde ahora, cada archivo de los mails nuevos lo lee la IA apenas entra ' +
+        '(cada uno cuesta 1 o 2 centavos de dólar). Conviene prenderlo cuando la prueba dé bien.',
+        botones: [{ texto: '🤖 Prender', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+      if (!si) return;
+    }
+    const r = await api('gmailLeer', prender);
+    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+    MF.datos.banco.leer = r.leer;
+    pintarMails();
+    return;
+  }
   let modo = '', desde = '';
   if (que === 'muestra') {
     modo = 'muestra'; desde = $('mf-muestra-desde') ? $('mf-muestra-desde').value : '';
@@ -952,6 +1071,7 @@ async function traerMailsUI() {
 }
 
 $('mf-q').addEventListener('input', pintarMails);
+$('mf-ver').addEventListener('change', pintarMails);
 ['mf-desde', 'mf-hasta'].forEach(function (id) { $(id).addEventListener('change', cargarMails); });
 $('mf-refrescar').addEventListener('click', cargarMails);
 $('s-cfacturas').addEventListener('click', function (e) {
@@ -960,4 +1080,5 @@ $('s-cfacturas').addEventListener('click', function (e) {
   if (b.dataset.mf) accionGmail(b.dataset.mf);
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
   else if (b.dataset.texto) verTextoMail(b.dataset.texto);
+  else if (b.dataset.rev) revisarLecturaUI(b.dataset.rev, b.dataset.ok);
 });

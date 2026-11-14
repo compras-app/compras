@@ -1243,3 +1243,15 @@ body[data-pantalla="cfacturas"] .contenido{max-width:900px}
 .mf-mail .link-gris{margin-top:6px;width:auto}
 .mf-texto{white-space:pre-wrap;font:13px/1.45 inherit;font-family:inherit;background:rgba(0,0,0,.2);border-radius:8px;padding:10px;margin:6px 0 0;max-height:360px;overflow:auto}
 #s-cfacturas .ct-filtros input[type=search]{flex:1 1 220px;min-width:0}
+/* Fase 7, Paso 3 (Feli, 14/11): lo leído de cada adjunto y la prueba */
+.mf-adjs{flex-direction:column;align-items:stretch}
+.mf-adjs>.mf-adj{align-self:flex-start}
+.mf-adjl{display:flex;flex-direction:column;gap:4px;border-left:2px solid var(--line);padding-left:8px}
+.mf-adjl .mf-adj{align-self:flex-start}
+.mf-lec{font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.mf-lec.mf-noes{color:var(--muted)}
+.mf-aviso{color:#fbbf24}
+.mf-rev{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.mf-rev .btn2{width:auto;flex:0 0 auto;padding:4px 10px;font-size:13px}
+.mf-banco{border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.mf-banco p{margin:4px 0}
