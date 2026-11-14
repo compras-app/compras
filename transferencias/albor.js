@@ -3496,9 +3496,38 @@ async function itemDeOrdenInsumos(pg, it, punto, antes, charla){
   await esperar(pg, 8000);
   var nombre = await codigoConNombre(pg, 'ID_Insumo', it.insumo);
   if(!nombre) throw new Error('Albor no encontró el insumo ' + it.insumo);
-  await escribirCampo(pg, '#Cantidad', unidadesAlbor(it.cantidad), { secuencial: false });
-  await escribirCampo(pg, '#Precio_Unitario', unidadesAlbor(it.precio), { secuencial: false });
+  // Feli (13/11, la 2026-OC-499 quedó con los precios de la última compra): Albor pone solo el precio de la última compra
+  // un rato después del nombre, y pisaba el nuestro. Se espera a que llegue, se escribe como una persona (tecla por tecla y
+  // Tab) y se controla que precio, cantidad e importe sean los nuestros antes de Aceptar.
+  var finP = Date.now() + 5000;
+  while(Date.now() < finP){ if(await pg.evaluar(JS_VALOR, '#Precio_Unitario')) break; await pg.esperar(250); }
+  await pg.esperar(500);
+  await esperar(pg, 8000);
+  var esperado = Math.round(it.cantidad * it.precio * 100) / 100;
+  for(var k = 1; ; k++){
+    await escribirCampo(pg, '#Cantidad', unidadesAlbor(it.cantidad));
+    await pg.presionar('Tab');
+    await escribirCampo(pg, '#Precio_Unitario', unidadesAlbor(it.precio));
+    await pg.presionar('Tab');
+    await pg.esperar(700);
+    await esperar(pg, 8000);
+    var pr = numAlbor(await pg.evaluar(JS_VALOR, '#Precio_Unitario')), ca = numAlbor(await pg.evaluar(JS_VALOR, '#Cantidad'));
+    var imp = numAlbor(await pg.evaluar(JS_VALOR, '#Importe'));
+    if(pr !== null && Math.abs(pr - it.precio) < 0.005 && ca !== null && Math.abs(ca - it.cantidad) < 0.0005 && (imp === null || Math.abs(imp - esperado) < 0.05)) break;
+    if(k >= 3) throw new Error('Albor no dejó el precio de ' + it.insumo + ': quedó ' + (ca === null ? '?' : ca) + ' × $ ' + (pr === null ? '?' : plataAlbor(pr)) +
+                               ' y tenía que ser ' + it.cantidad + ' × $ ' + plataAlbor(it.precio));
+    charla.decir('   [!] Albor cambió el precio o la cantidad (' + (ca === null ? '?' : ca) + ' × $ ' + (pr === null ? '?' : plataAlbor(pr)) + '): lo escribo de nuevo.');
+  }
   if(!(await elegirOpcion(pg, '#ID_Punto_Stock', punto, 'Punto de stock', charla))) throw new Error('no pude elegir el punto de stock ' + punto);
+  // El punto de stock no tiene que cambiar el precio, pero se mira de nuevo antes de Aceptar
+  var pr2 = numAlbor(await pg.evaluar(JS_VALOR, '#Precio_Unitario'));
+  if(pr2 === null || Math.abs(pr2 - it.precio) >= 0.005){
+    await escribirCampo(pg, '#Precio_Unitario', unidadesAlbor(it.precio));
+    await pg.presionar('Tab');
+    await pg.esperar(700);
+    pr2 = numAlbor(await pg.evaluar(JS_VALOR, '#Precio_Unitario'));
+    if(pr2 === null || Math.abs(pr2 - it.precio) >= 0.005) throw new Error('Albor cambió el precio de ' + it.insumo + ' al elegir el punto de stock');
+  }
   await pg.loc('#btAceptar_dialog').click({ timeout: 15000 });
   var fin = Date.now() + 20000;
   for(;;){
@@ -3602,6 +3631,10 @@ function cargar_orden_insumos(o){
         var aviso = r.fallados.length ? '\n\n⚠️ No pude cargar ' + r.fallados.length + ' ítem' + (r.fallados.length === 1 ? '' : 's') + ': ' +
                     r.fallados.map(function(i){ return i.insumo + ' (' + i.cantidad + ' × ' + unidadesAlbor(i.precio) + ')'; }).join(', ') + '. Cargalos a mano antes de guardar.' : '';
         if(en.length > o.items.length) aviso += '\n\n⚠️ La grilla tiene ' + en.length + ' renglones y son ' + o.items.length + ': borrá los de más antes de guardar.';
+        // El total de Albor tiene que ser el de la app (Feli, 13/11: Albor había puesto los precios de la última compra)
+        var totAlbor = numAlbor(await pg.evaluar(JS_VALOR, '#Importe_Total'));
+        if(totAlbor !== null && Math.abs(totAlbor - o.total) >= 1)
+          aviso += '\n\n⚠️ El total de Albor ($ ' + plataAlbor(totAlbor) + ') no es el de la app ($ ' + plataAlbor(o.total) + '): revisá los precios de cada renglón antes de guardar.';
         var resumen = 'Revisá la orden de compra de insumos en Albor:\n' +
                       '• Proveedor: ' + prov.nombre + '\n• ' + o.oficina + ' (punto de stock ' + o.puntoNombre + ')\n' +
                       '• ' + r.cargados + ' de ' + o.items.length + ' ítems · total $ ' + plataAlbor(o.total) + ' sin IVA\n' +

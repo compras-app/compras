@@ -709,7 +709,7 @@
     for(var i = 0; i < l.length; i++){
       var g = l[i], iva = C.iva[g.proveedor] === undefined ? 21 : C.iva[g.proveedor], etiqueta = g.nombre + ' · ' + g.oficina;
       TA.log('— ' + (i + 1) + ' de ' + l.length + ': ' + etiqueta + ' —');
-      var p = await api('prepararOrdenStock', { lote: C.lote, proveedor: g.proveedor, oficina: g.ofi, iva: iva, prueba: C.prueba, items: g.items });
+      var p = await conReintentos('prepararOrdenStock', [{ lote: C.lote, proveedor: g.proveedor, oficina: g.ofi, iva: iva, prueba: C.prueba, items: g.items }]);
       if(!p || p.ok === false){ todoBien = false; lineas.push('<li>❌ ' + esc(etiqueta) + ': ' + esc((p && p.error) || 'sin señal') + '</li>'); TA.log('   no se pudo: ' + ((p && p.error) || 'sin señal')); continue; }
       if(p.estado === 'Mandada'){ lineas.push('<li>✅ ' + esc(etiqueta) + ': ya estaba hecha (' + esc(p.numero) + ')</li>'); continue; }
       var numero = p.numero;
@@ -735,10 +735,24 @@
     if(todoBien && !C.prueba){ S.oc = null; pintar(); }
   }
 
+  /** Feli (13/11): si el servidor no contesta (o pide reintentar), se prueba de nuevo hasta 3 veces antes de darse por
+      vencido. Las tres funciones se pueden repetir sin duplicar nada (cada orden tiene su ID). */
+  async function conReintentos(fn, args, lenta){
+    var r;
+    for(var i = 1; i <= 3; i++){
+      r = await (lenta ? apiLenta : api).apply(null, [fn].concat(args));
+      if(r && r.ok !== false) return r;
+      if(!(r && (r.reintentar || r.sinConexion || r.lento))) return r;
+      if(window.TransfAlbor) window.TransfAlbor.log('   (el servidor no contestó: pruebo de nuevo, ' + (i + 1) + ' de 3)');
+      await new Promise(function(ok){ setTimeout(ok, 2000 * i); });
+    }
+    return r;
+  }
+
   /** Con la orden guardada en Albor: el PDF para el proveedor y el WhatsApp. true si salió. */
   async function mandarUna(id, numero, etiqueta, lineas){
     var TA = window.TransfAlbor, C = S.oc || { texto: S.r.msjOrden, guardarTexto: false };
-    var g = await api('ordenStockGuardada', id, numero);
+    var g = await conReintentos('ordenStockGuardada', [id, numero]);
     if(!g || g.ok === false){
       lineas.push('<li>⚠️ ' + esc(etiqueta) + ': guardada en Albor (' + esc(numero) + '), pero no pude anotarla: ' + esc((g && g.error) || 'sin señal') + '. Avisale a Claude.</li>');
       return false;
@@ -747,7 +761,7 @@
     try { TA.log('   armo la orden para el proveedor…'); pdf = await armarOrdenStockPDF(g.pdf); }
     catch(e){ lineas.push('<li>⚠️ ' + esc(etiqueta) + ' (' + esc(numero) + '): no pude armar el PDF (' + esc(e.message || e) + '). Mandala desde «Guardadas sin mandar».</li>'); return false; }
     TA.log('   se la mando por WhatsApp…');
-    var mm = await apiLenta('mandarOrdenStock', id, { pdf: { nombre: 'Orden de compra ' + numero + '.pdf', base64: pdf }, texto: C.texto, guardarTexto: C.guardarTexto });
+    var mm = await conReintentos('mandarOrdenStock', [id, { pdf: { nombre: 'Orden de compra ' + numero + '.pdf', base64: pdf }, texto: C.texto, guardarTexto: C.guardarTexto }], true);
     if(!mm || mm.ok === false){
       lineas.push('<li>⚠️ ' + esc(etiqueta) + ' (' + esc(numero) + '): guardada en Albor, pero el WhatsApp no salió: ' + esc((mm && mm.error) || 'sin señal') + '. Mandala desde «Guardadas sin mandar».</li>');
       return false;
