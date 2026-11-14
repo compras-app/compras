@@ -858,7 +858,8 @@ function htmlMail(m) {
     '<div class="mf-cab"><span class="mf-de">' + esc(m.de.replace(/\s*<[^>]*>\s*$/, '') || m.de) + '</span><span class="mf-fecha">' + esc(horaCorta(m.fecha)) + '</span></div>' +
     '<div class="mf-asunto">' + esc(m.asunto || '(sin asunto)') + (m.muestra ? ' <span class="mf-marca">muestra</span>' : '') + '</div>' +
     (m.resumen ? '<div class="mf-resumen">' + esc(m.resumen.split('\n').filter(String)[0] || '') + '</div>' : '') +
-    '<div class="mf-adjs">' + (adj || '<span class="nota">Sin adjuntos guardados</span>') +
+    (m.noSePudo ? '<p class="mf-mal">⚠️ Este mail no se pudo traer (era muy pesado para el servidor): abrilo en Gmail.</p>' : '') +
+    '<div class="mf-adjs">' + (adj || (m.noSePudo ? '' : '<span class="nota">Sin adjuntos guardados</span>')) +
     (m.fotitos ? '<span class="nota">+ ' + m.fotitos + ' imagen' + (m.fotitos === 1 ? '' : 'es') + ' chica' + (m.fotitos === 1 ? '' : 's') + ' (logos o firmas)</span>' : '') + '</div>' +
     (m.texto ? '<button type="button" class="link-gris" data-texto="' + esc(m.id) + '">' + (abierto ? 'Esconder el mail' : 'Ver el mail') + '</button>' : '') +
     (abierto ? '<pre class="mf-texto">' + esc(texto === undefined ? 'Abriendo…' : texto) + '</pre>' : '') +
@@ -919,14 +920,23 @@ async function accionGmail(que) {
   if (modo) await traerMailsUI();
 }
 
-/** Trae de a tandas hasta que no quede nada (cada tanda, hasta 40 mails o 100 segundos). */
+/** Trae de a tandas hasta que no quede nada (cada tanda, unos pocos mails: Supabase le da poco trabajo a cada pedido). */
 async function traerMailsUI() {
-  let total = 0, etiquetados = 0;
-  for (let vuelta = 0; vuelta < 15; vuelta++) {
+  let total = 0, etiquetados = 0, fallas = 0;
+  for (let vuelta = 0; vuelta < 80; vuelta++) {
     notaAd('mf-nota', '⬇️ Trayendo los mails… ' + (total ? total + ' nuevos hasta ahora' : ''));
     const r = await apiLenta('traerMailsAhora');
-    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break; }
-    if (r.r.ocupado) { notaAd('mf-nota', 'El reloj de la app está trayendo mails en este momento. Probá de nuevo en un minuto.'); break; }
+    if (!r.ok) {
+      // Si el servidor se cayó con un mail pesado, se reintenta: a la tercera, ese mail queda "No se pudo traer" y se sigue
+      if (!r.sinConexion && ++fallas <= 4) { notaAd('mf-nota', '⬇️ Un mail costó más de la cuenta; sigo en unos segundos…'); await new Promise(function (ok) { setTimeout(ok, 5000); }); continue; }
+      notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
+    }
+    fallas = 0;
+    if (r.r.ocupado) {                          // el reloj está trayendo: se espera un poco y se sigue
+      notaAd('mf-nota', '⬇️ El reloj de la app está trayendo mails; sigo en unos segundos…');
+      await new Promise(function (ok) { setTimeout(ok, 15000); });
+      continue;
+    }
     total += r.r.nuevos; etiquetados += r.r.etiquetados;
     if (MF.datos) MF.datos.gmail = r.gmail;
     if (!r.r.quedan) {
