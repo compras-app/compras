@@ -300,6 +300,15 @@ function pintarTarjetaContable() {
   $('cx-cuerpo').querySelectorAll('[data-cambiar]').forEach(function (b) { b.addEventListener('click', function () { cambiarCuentaUI(b.dataset.cambiar); }); });
   ['cx-fac-cargar', 'cx-fac-otra'].forEach(function (id) { if ($(id)) $(id).addEventListener('click', function () { $('cx-factura').click(); }); });
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
+  if ($('cx-fac-deshacer')) $('cx-fac-deshacer').addEventListener('click', async function () {      // Fase 7, Paso 4
+    const si = await dialogo({ titulo: 'Deshacer', texto: 'La factura sale de esta compra y vuelve a 📥 Facturas (y el mail, a Recibidos). No se vuelve a pegar sola.',
+                               botones: [{ texto: 'Deshacer', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+    if (!si) return;
+    const x = await api('deshacerFacturaMail', $('cx-fac-deshacer').dataset.mail);
+    if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
+    aviso('Listo: la factura volvió a 📥 Facturas.');
+    mostrarTarjetaContable();
+  });
   if ($('cx-fac-leer')) $('cx-fac-leer').addEventListener('click', function () { leerFacturaUI(r.tarjeta.id); });
   if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', corregirFacturaUI);
   if ($('cx-fac-amano')) $('cx-fac-amano').addEventListener('click', marcarFacturaEnAlbor);
@@ -347,12 +356,17 @@ function htmlFacturaCt(t, l) {
     (al.motivo && al.estado !== 'Cargada' ? '<div>' + esc(al.motivo) + '</div>' : '') +
     '<small class="nota">' + esc(al.quien || '') + ' · ' + esc(new Date(al.cuando).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</small></div>';
   if (t.factura.impresa) h += '<p class="nota">' + esc(textoImpresa(t.factura.impresa)) + '</p>';      // Fase 7, Paso 1 (Feli, 13/11)
+  // Fase 7, Paso 4 (Feli, 14/11): llegó por mail y se adjuntó sola (o la eligió una persona en 📥 Facturas)
+  if (t.factura.mail) h += '<p class="cx-fac-mail">' + (t.factura.sola ? '🤖 <b>Adjuntada sola</b> desde el mail' + (t.factura.como === 'orden' ? ' (por el número de orden)' : t.factura.como === 'montos' ? ' (coincide en el total y en cada producto)' : '')
+                                                                 : '📥 Adjuntada desde el mail') + '</p>';
   return h + '<div class="ad-acciones"><button type="button" class="btn2" data-ver="' + esc(t.factura.archivo) + '">Ver la factura</button>' +
     (f ? '<button type="button" class="btn2" id="cx-fac-corregir">✏️ Corregir</button>' : '') +
     // La que se cargó a mano en Albor (sin orden de compra, o si la extensión no pudo): la marca la persona
     (!al || al.estado !== 'Cargada' ? '<button type="button" class="btn2" id="cx-fac-amano">Ya la cargué en Albor</button>' : '') +
     '<button type="button" class="btn2" id="cx-fac-leer">' + (f ? '🔁 Leer de nuevo' : '🤖 Leer la factura') + '</button>' +
-    '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button><button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button></div>';
+    '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button>' +
+    (t.factura.mail ? '<button type="button" class="btn2 peligro-btn2" id="cx-fac-deshacer" data-mail="' + esc(t.factura.mail) + '">Deshacer (vuelve a 📥 Facturas)</button>'
+                    : '<button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button>') + '</div>';
 }
 
 /** La IA lee la factura (hasta 150 s) y el servidor la compara con la compra. */
@@ -853,6 +867,9 @@ function mailsALaVista() {
     if (ver === 'avisos' && !as.some(function (a) { return a.error || (a.avisos && a.avisos.length); })) return false;
     if (ver === 'noes' && (!as.length || as.some(function (a) { return a.factura || !a.papel; }))) return false;
     if (ver === 'sinleer' && !as.some(function (a) { return !a.papel; })) return false;
+    if (ver === 'adjuntadas' && !as.some(function (a) { return a.compra && a.compra.estado === 'adjuntada'; })) return false;
+    if (ver === 'elegir' && !as.some(function (a) { return a.compra && (a.compra.estado === 'propuesta' || a.compra.estado === 'no coincide'); })) return false;
+    if (ver === 'sincompra' && !as.some(function (a) { return a.factura && (!a.compra || ['sin compra', 'deshecha', 'ya tiene'].indexOf(a.compra.estado) !== -1); })) return false;
     if (!q) return true;
     if (as.some(function (a) { return a.factura && ((a.factura.numero + ' ' + a.factura.cuit + ' ' + a.factura.emisor + ' ' + (a.ordenCompra || '')).toLowerCase().indexOf(q) !== -1); })) return true;
     return (m.de + ' ' + m.asunto + ' ' + m.adjuntos.map(function (a) { return a.nombre; }).join(' ')).toLowerCase().indexOf(q) !== -1;
@@ -908,6 +925,7 @@ function htmlLecturaAdj(a) {
     if (f.detalle && MF.detalle[a.id]) h += htmlDetalleFacturaMail(f);
   } else if (!sinIA) h += ' <span class="nota">· no es factura</span>';
   if (a.resumenMail) h += '<br><span class="nota">💬 ' + esc(a.resumenMail) + '</span>';
+  if (f) h += htmlPegadoMail(a);
   if (a.impresa) h += '<br><span class="nota">🖨️ Impresa' + (a.impresa.sola ? ' sola' : '') + ' el ' + esc(new Date(a.impresa.cuando).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })) +
                       (a.impresa.sola ? (a.impresa.compu ? ' en ' + esc(a.impresa.compu) : '') : ' por ' + esc(a.impresa.quien || '')) + (a.impresa.veces > 1 ? ' (' + a.impresa.veces + ' veces)' : '') + '</span>';
   (a.avisos || []).forEach(function (x) { h += '<br><span class="mf-aviso">⚠️ ' + esc(x) + '</span>'; });
@@ -938,6 +956,83 @@ function htmlDetalleFacturaMail(f) {
   return h;
 }
 
+/* ---------- Paso 4 (Feli, 14/11): con qué compra se pegó ---------- */
+function htmlCompraCorta(c) {
+  return esc(c.titulo || c.id) + (c.proveedor ? ' · ' + esc(c.proveedor) : '') + (c.total !== null && c.total !== undefined ? ' · ' + esc(dinero(c.total, c.moneda)) + ' sin IVA' : '') +
+         (c.orden ? ' · OC ' + esc(c.orden) : '') + (c.donde ? ' · ' + esc(c.donde) : '');
+}
+function htmlPegadoMail(a) {
+  const c = a.compra;
+  if (!c || !c.estado) return MF.datos && MF.datos.banco && MF.datos.banco.pegar ? '<div class="mf-peg nota">🔎 Buscando su compra…</div>' : '';
+  const puede = true;                                  // contabilidad y Feli (el servidor controla)
+  let h = '<div class="mf-peg">';
+  if (c.estado === 'adjuntada') {
+    h += '<b>🔗 ' + (c.como === 'mano' ? 'Adjuntada' : '🤖 Adjuntada sola') + '</b> a ' + esc(c.titulo || c.id) +
+         (c.como === 'orden' ? ' <span class="nota">(por el número de orden)</span>' : c.como === 'montos' ? ' <span class="nota">(coincide en el total y en cada producto)</span>' : '') +
+         (c.avisos || []).map(function (x) { return '<br><span class="mf-aviso">⚠️ ' + esc(x) + '</span>'; }).join('') +
+         '<div class="mf-rev"><button type="button" class="btn2" data-ctab="' + esc(c.id) + '">Ver la compra</button>' +
+         (puede ? '<button type="button" class="btn2" data-peg="deshacer" data-adj="' + esc(a.id) + '">Deshacer</button>' : '') + '</div>';
+  } else if (c.estado === 'no coincide') {
+    h += '<b>⛔ No coincide con la orden' + (c.orden ? ' ' + esc(c.orden) : '') + '</b> (' + esc(c.titulo || c.id) + '):' +
+         (c.motivos || []).map(function (x) { return '<br><span class="mf-aviso">• ' + esc(x) + '</span>'; }).join('') +
+         '<div class="mf-rev"><button type="button" class="btn2" data-ctab="' + esc(c.id) + '">Ver la compra</button>' +
+         '<button type="button" class="btn2" data-peg="elegir" data-adj="' + esc(a.id) + '" data-w="' + esc(c.id) + '">Adjuntar igual</button></div>';
+  } else if (c.estado === 'propuesta') {
+    h += '<b>❓ ¿Es de alguna de estas compras?</b>' + (c.nota ? ' <span class="nota">' + esc(c.nota) + '</span>' : '') +
+         (c.candidatas || []).map(function (x) {
+           return '<div class="mf-cand"><span>' + htmlCompraCorta(x) + (x.motivos && x.motivos.length ? '<br><span class="mf-aviso">⚠️ ' + x.motivos.map(esc).join(' · ') + '</span>' : '') + '</span>' +
+                  '<button type="button" class="btn2" data-peg="elegir" data-adj="' + esc(a.id) + '" data-w="' + esc(x.id) + '">Sí, es esta</button></div>';
+         }).join('') +
+         '<div class="mf-rev"><button type="button" class="link-gris" data-peg="ninguna" data-adj="' + esc(a.id) + '">No es de ninguna</button></div>';
+  } else if (c.estado === 'ya tiene') {
+    h += '<span class="nota">La compra ' + esc(c.titulo || c.id) + (c.orden ? ' (OC ' + esc(c.orden) + ')' : '') + ' ya tiene su factura adjuntada a mano.</span>';
+  } else if (c.estado === 'deshecha') {
+    h += '<span class="nota">↩️ Se deshizo' + (c.reemplazada ? ' (la reemplazaron en la compra)' : '') + ' por ' + esc(c.quien || '') + '. Queda para la bandeja.</span>';
+  } else {
+    h += '<span class="nota">📭 ' + (c.descartada ? 'No es de ninguna compra de la app' : 'No hay una compra de este proveedor en la app') + ': queda para la bandeja.</span>';
+  }
+  return h + '</div>';
+}
+
+async function accionPegado(b) {
+  const que = b.dataset.peg, id = b.dataset.adj;
+  let r;
+  if (que === 'deshacer') {
+    const si = await dialogo({ titulo: 'Deshacer', texto: 'La factura sale de esa compra y queda en 📥 Facturas (y el mail vuelve a Recibidos). No se vuelve a pegar sola.',
+                               botones: [{ texto: 'Deshacer', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+    if (!si) return;
+    r = await api('deshacerFacturaMail', id);
+  } else {
+    b.disabled = true;
+    notaAd('mf-nota', que === 'ninguna' ? 'Guardando…' : '🔗 Adjuntando… (la compara con la compra)');
+    r = que === 'ninguna' ? await api('elegirCompraMail', id, '') : await apiLenta('elegirCompraMail', id, b.dataset.w);
+  }
+  notaAd('mf-nota', '');
+  if (!r.ok) { b.disabled = false; return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad'); }
+  MF.datos.mails.forEach(function (m) { m.adjuntos.forEach(function (a) { if (a.id === id) a.compra = r.pegado; }); });
+  pintarMails();
+}
+
+/** "🔗 Buscar las compras": de a una factura (la página repite). */
+async function pegarMailsUI() {
+  let n = 0, adj = 0, fallas = 0;
+  for (let vuelta = 0; vuelta < 150; vuelta++) {
+    notaAd('mf-nota', '🔗 Buscando la compra de cada factura… ' + (n ? n + ' hechas' + (adj ? ', ' + adj + ' adjuntadas solas' : '') : ''));
+    const r = await apiLenta('pegarMailsAhora');
+    if (!r.ok) {
+      if (!r.sinConexion && ++fallas <= 3) { await new Promise(function (ok) { setTimeout(ok, 4000); }); continue; }
+      notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
+    }
+    fallas = 0; n += r.r.pegadas; adj += r.r.adjuntadas;
+    if (MF.datos) MF.datos.banco = r.banco;
+    if (!r.r.quedan) { notaAd('mf-nota', '✅ Listo: ' + n + ' facturas miradas, ' + adj + ' adjuntadas solas a su compra.'); break; }
+  }
+  const nota = $('mf-nota').textContent;
+  MF.cargando = false;
+  await cargarMails();
+  notaAd('mf-nota', nota);
+}
+
 function htmlBancoMails(b) {
   if (!b) return '';
   const pc = b.revisados ? Math.round(b.bien / b.revisados * 100) : null;
@@ -947,7 +1042,11 @@ function htmlBancoMails(b) {
     '<p class="nota">La meta: 95 de cada 100 bien. ✅ si están bien qué papel es y, en una factura, el CUIT, la letra, el número, la fecha y el total.</p>' +
     '<div class="mf-botones">' + (b.conIA < b.tope ? '<button type="button" class="btn" data-mf="leer">🤖 Leer la muestra</button>' : '') +
     '<button type="button" class="btn2" data-mf="leersolos">' + (b.leer ? '⏸️ Apagar la lectura de los nuevos' : '🤖 Leer solos los mails nuevos') + '</button>' +
-    (b.leer ? '<span class="nota">Los mails nuevos se leen solos.</span>' : '') +
+    (b.leer ? '<span class="nota">Los mails nuevos se leen solos.</span>' : '') + '</div>' +
+    '<p style="margin-top:12px"><b>🔗 Pegar con las compras</b>: ' + (b.pegar ? 'cada factura nueva busca su compra sola.' : 'apagado.') +
+    (b.paraPegar ? ' Faltan ' + b.paraPegar + '.' : '') + '</p><div class="mf-botones">' +
+    (b.paraPegar ? '<button type="button" class="btn" data-mf="pegar">🔗 Buscar las compras ahora</button>' : '') +
+    '<button type="button" class="btn2" data-mf="pegarsolas">' + (b.pegar ? '⏸️ Apagar el pegado solo' : '🔗 Pegar solas las nuevas') + '</button>' +
     (b.costoTotal > b.costo ? '<span class="nota">Total gastado en lecturas: US$ ' + b.costoTotal.toFixed(2).replace('.', ',') + '</span>' : '') + '</div></div>';
 }
 
@@ -1031,6 +1130,15 @@ async function accionGmail(que) {
   }
   if (que === 'traer') return traerMailsUI();
   if (que === 'leer') return leerMuestraUI();
+  if (que === 'pegar') return pegarMailsUI();
+  if (que === 'pegarsolas') {
+    const prender = !(MF.datos.banco && MF.datos.banco.pegar);
+    const r = await api('gmailPegar', prender);
+    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+    MF.datos.banco.pegar = r.pegar;
+    pintarMails();
+    return;
+  }
   if (que === 'leersolos') {
     const prender = !(MF.datos.banco && MF.datos.banco.leer);
     if (prender) {
@@ -1111,6 +1219,8 @@ $('s-cfacturas').addEventListener('click', function (e) {
   else if (b.dataset.texto) verTextoMail(b.dataset.texto);
   else if (b.dataset.rev) revisarLecturaUI(b.dataset.rev, b.dataset.ok);
   else if (b.dataset.det) { MF.detalle[b.dataset.det] = !MF.detalle[b.dataset.det]; pintarMails(); }
+  else if (b.dataset.peg) accionPegado(b);
+  else if (b.dataset.ctab) abrir('ctarjeta', { id: b.dataset.ctab });
 });
 
 

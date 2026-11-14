@@ -1271,3 +1271,8 @@ body[data-pantalla="cimpresora"] .contenido{max-width:700px}
 .ip-estado{font-size:18px;font-weight:600;margin:0 0 4px}
 .ip-lista{display:flex;flex-direction:column;gap:4px;margin-top:8px}
 .ip-fila{font-size:13px;border-bottom:1px solid var(--line);padding:4px 0}
+/* Fase 7, Paso 4 (Feli, 14/11): con qué compra se pegó cada factura del mail */
+.mf-peg{margin-top:6px;padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.04);font-size:13px}
+.mf-cand{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:6px 0}
+.mf-cand .btn2{width:auto;flex:0 0 auto;padding:4px 10px;font-size:13px}
+.cx-fac-mail{font-size:13px;margin:6px 0}
