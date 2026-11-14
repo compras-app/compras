@@ -45,7 +45,7 @@ aplicarZoomApp();
 window.addEventListener('resize', aplicarZoomApp);           // el zoom del navegador cambia la escala y avisa con un resize
 
 const K_APARTADO = 'compras_apartado';     // el último que se abrió en este dispositivo: la app vuelve a ese
-const VERSION_APP = '5995c634ea';            // subir-pagina.sh pone acá la misma huella que en sw.js
+const VERSION_APP = '50216dfa8f';            // subir-pagina.sh pone acá la misma huella que en sw.js
 const LIMITE_MS = 25000;              // tiempo límite por llamada: nunca queda "cargando" para siempre
 
 // Claves de lo guardado en el dispositivo. compras_token y compras_desde son las
@@ -207,7 +207,7 @@ async function llamar(fn, args, id, opciones) {
 const LECTURAS = { getTablero: 1, getTarjeta: 1, getTarea: 1, getServicios: 1, getTareas: 1, getNotificaciones: 1, getChats: 1, getChat: 1,
   getPersonas: 1, getAjustes: 1, getProveedoresAdmin: 1, getPadronAdmin: 1, buscarPedidos: 1, datosCotizar: 1, datosCompraManual: 1,
   datosTransferencias: 1, listarPedidosGranja: 1, leerPedidoGranja: 1, ultimasExistencias: 1, getConsumoMensual: 1, buscarHistorialTransf: 1, verHistorialTransf: 1, datosProductos: 1,
-  versionChats: 1, versionTablero: 1, audioChat: 1, verArchivo: 1, cuadroComparativo: 1, inicioApp: 1, datosFormulario: 1, getVelocidad: 1, getFacturasImprimir: 1 };
+  versionChats: 1, versionTablero: 1, audioChat: 1, verArchivo: 1, cuadroComparativo: 1, inicioApp: 1, datosFormulario: 1, getVelocidad: 1, getFacturasImprimir: 1, getMailsFacturas: 1 };
 const MSJ_LENTO = 'El servidor está tardando en contestar. Probá de nuevo en un momento.';
 const MSJ_LENTO_CAMBIO = 'El servidor tardó demasiado en contestar. Puede que se haya hecho igual: fijate antes de repetirlo.';
 

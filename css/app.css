@@ -1221,3 +1221,25 @@ body[data-pantalla="cimprimir"] .contenido{max-width:900px}
 .ci-fila input[type=checkbox]{flex:0 0 auto;width:18px;height:18px}
 .ci-fila label>span{flex:1 1 auto;min-width:0}
 .ct-fac .ct-imp{font-size:11px;color:var(--muted);font-weight:400;margin-left:4px}
+
+/* Fase 7, Paso 2 (Feli, 14/11): 📥 Facturas, los mails que entran (contabilidad.js) */
+body[data-pantalla="cfacturas"] .contenido{max-width:900px}
+.mf-gmail p{margin:4px 0}
+.mf-mal{color:#f87171}
+.mf-botones{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.mf-botones .btn,.mf-botones .btn2{width:auto;flex:0 0 auto}
+.mf-lista{display:flex;flex-direction:column;gap:8px}
+.mf-mail{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--col);min-width:0}
+.mf-cab{display:flex;gap:10px;justify-content:space-between;font-size:13px;color:var(--muted)}
+.mf-de{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.mf-fecha{flex:0 0 auto}
+.mf-asunto{font-weight:600;margin-top:2px;overflow-wrap:anywhere}
+.mf-marca{font-size:11px;font-weight:400;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 5px;margin-left:4px}
+.mf-resumen{font-size:13px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mf-adjs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.mf-adj{width:auto;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;background:transparent;color:inherit;cursor:pointer;max-width:100%;overflow-wrap:anywhere;text-align:left}
+.mf-adj small{color:var(--muted)}
+.mf-adj.mf-sin{cursor:default;opacity:.7}
+.mf-mail .link-gris{margin-top:6px;width:auto}
+.mf-texto{white-space:pre-wrap;font:13px/1.45 inherit;font-family:inherit;background:rgba(0,0,0,.2);border-radius:8px;padding:10px;margin:6px 0 0;max-height:360px;overflow:auto}
+#s-cfacturas .ct-filtros input[type=search]{flex:1 1 220px;min-width:0}

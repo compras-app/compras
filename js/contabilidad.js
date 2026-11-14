@@ -767,3 +767,187 @@ async function imprimirFacturas() {
     pintarImprimir();
   }
 }
+
+/* ============================================================
+   FASE 7, PASO 2 (Feli, 14/11): 📥 FACTURAS, LOS MAILS QUE ENTRAN
+   ------------------------------------------------------------
+   Los mails con adjuntos de la cuenta de las facturas, del más nuevo al
+   más viejo, con sus archivos para verlos acá adentro (todavía sin leer:
+   eso es el Paso 3). Arriba, cómo está la conexión con Gmail; conectar,
+   la muestra, "en serio" y "Traer ahora" solo los ve Feli (puede).
+   ============================================================ */
+pantalla('cfacturas', { titulo: 'Facturas', tab: 'cfacturas', alMostrar: mostrarMails });
+const MF = { datos: null, cargando: false, textos: {}, abiertos: {} };
+
+async function mostrarMails() {
+  pintarMails();
+  await cargarMails();
+}
+
+async function cargarMails() {
+  if (MF.cargando) return;
+  MF.cargando = true;
+  if (!MF.datos) notaAd('mf-nota', 'Cargando…');
+  const r = await api('getMailsFacturas', { desde: $('mf-desde').value, hasta: $('mf-hasta').value });
+  MF.cargando = false;
+  if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal para ver los mails.' : r.error); return; }
+  MF.datos = r;
+  notaAd('mf-nota', '');
+  pintarMails();
+}
+
+function lunesDeEstaSemana() {
+  const d = new Date(), dia = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dia);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function tamanoArchivo(b) { return !b ? '' : b < 1024 * 1024 ? Math.max(1, Math.round(b / 1024)) + ' KB' : (b / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB'; }
+function horaCorta(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function htmlEstadoGmail(g, puede) {
+  if (!g) return '';
+  let h = '';
+  if (!g.conectado) {
+    h = '<p><b>📧 El Gmail de las facturas todavía no está conectado.</b></p>';
+    if (puede) h += g.clavesGoogle ? '<p class="nota">Tocá el botón, entrá con la cuenta de las facturas y tocá «Permitir». Google va a decir que la app no está verificada: tocá «Configuración avanzada» → «Ir a App de compras».</p>' +
+                                     '<div class="mf-botones"><button type="button" class="btn" data-mf="conectar">🔗 Conectar el Gmail</button></div>'
+                                   : '<p class="nota">Faltan las claves de Google Cloud en Supabase.</p>';
+    return h;
+  }
+  h = '<p><b>📧 Conectado: ' + esc(g.cuenta) + '</b>' + (g.conecto ? ' <span class="nota">(lo conectó ' + esc(g.conecto) + ' el ' + esc(fechaCt(g.conectoCuando)) + ')</span>' : '') + '</p>';
+  if (g.sinPermiso) h += '<p class="mf-mal">⚠️ Google sacó el permiso (pasa si cambia la contraseña de la cuenta). Los mails nuevos no entran hasta conectarlo de nuevo.</p>';
+  const desde = fechaDia(g.desde);
+  h += '<p>' + (g.modo === 'real' ? '✅ <b>En serio</b> desde el ' + esc(desde) + ': cada 10 minutos entran los mails nuevos y quedan en Gmail con la etiqueta «App: leída».'
+              : g.modo === 'muestra' ? '🔎 <b>Muestra</b> desde el ' + esc(desde) + ': trae los mails con adjuntos sin tocar nada en Gmail.'
+              : '⏸️ <b>Apagado</b>: no entra ningún mail.') + '</p>';
+  const u = g.ultima;
+  if (u) h += '<p class="nota">Última vuelta: ' + esc(horaCorta(u.cuando)) + (u.error ? ' · ⚠️ ' + esc(u.error)
+            : ' · ' + (u.nuevos || 0) + ' nuevo' + (u.nuevos === 1 ? '' : 's') + (u.quedan ? ' · quedan ' + u.quedan + ' para la próxima' : '') + (u.errores ? ' · ' + u.errores + ' con error' : '')) + '</p>';
+  if (!puede) return h;
+  h += '<div class="mf-botones">';
+  if (!g.modo) h += '<label class="ci-fecha">Desde <input type="date" id="mf-muestra-desde" value="' + lunesDeEstaSemana() + '"></label>' +
+                    '<button type="button" class="btn" data-mf="muestra">🔎 Traer la muestra</button>';
+  else h += '<button type="button" class="btn" data-mf="traer">⬇️ Traer ahora</button>';
+  if (g.modo === 'muestra') h += '<button type="button" class="btn2" data-mf="real">✅ Prender en serio</button>';
+  if (g.modo) h += '<button type="button" class="btn2" data-mf="apagar">⏸️ Apagar</button>';
+  h += '<button type="button" class="link-gris" data-mf="conectar">Conectar de nuevo</button></div>';
+  return h;
+}
+
+function mailsALaVista() {
+  const q = $('mf-q').value.trim().toLowerCase();
+  return ((MF.datos && MF.datos.mails) || []).filter(function (m) {
+    if (!q) return true;
+    return (m.de + ' ' + m.asunto + ' ' + m.adjuntos.map(function (a) { return a.nombre; }).join(' ')).toLowerCase().indexOf(q) !== -1;
+  });
+}
+
+function htmlMail(m) {
+  const adj = m.adjuntos.map(function (a) {
+    const ic = /pdf/.test(a.tipo) ? '📄' : /^image\//.test(a.tipo) ? '🖼️' : /zip|compressed/.test(a.tipo) ? '🗜️' : '📎';
+    const extra = a.estado ? ' · ⚠️ ' + (a.estado === 'Muy grande' ? 'muy grande, no se guardó' : a.estado.toLowerCase()) : a.repetido ? ' · repetido' : '';
+    return a.archivo ? '<button type="button" class="mf-adj" data-ver="' + esc(a.archivo) + '">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></button>'
+                     : '<span class="mf-adj mf-sin">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></span>';
+  }).join('');
+  const abierto = MF.abiertos[m.id], texto = MF.textos[m.id];
+  return '<div class="mf-mail" data-id="' + esc(m.id) + '">' +
+    '<div class="mf-cab"><span class="mf-de">' + esc(m.de.replace(/\s*<[^>]*>\s*$/, '') || m.de) + '</span><span class="mf-fecha">' + esc(horaCorta(m.fecha)) + '</span></div>' +
+    '<div class="mf-asunto">' + esc(m.asunto || '(sin asunto)') + (m.muestra ? ' <span class="mf-marca">muestra</span>' : '') + '</div>' +
+    (m.resumen ? '<div class="mf-resumen">' + esc(m.resumen.split('\n').filter(String)[0] || '') + '</div>' : '') +
+    '<div class="mf-adjs">' + (adj || '<span class="nota">Sin adjuntos guardados</span>') +
+    (m.fotitos ? '<span class="nota">+ ' + m.fotitos + ' imagen' + (m.fotitos === 1 ? '' : 'es') + ' chica' + (m.fotitos === 1 ? '' : 's') + ' (logos o firmas)</span>' : '') + '</div>' +
+    (m.texto ? '<button type="button" class="link-gris" data-texto="' + esc(m.id) + '">' + (abierto ? 'Esconder el mail' : 'Ver el mail') + '</button>' : '') +
+    (abierto ? '<pre class="mf-texto">' + esc(texto === undefined ? 'Abriendo…' : texto) + '</pre>' : '') +
+    '</div>';
+}
+
+function pintarMails() {
+  const d = MF.datos;
+  $('mf-gmail').innerHTML = d ? htmlEstadoGmail(d.gmail, d.puede) : '';
+  $('mf-gmail').hidden = !d;
+  const l = mailsALaVista();
+  $('mf-lista').innerHTML = !d ? '' : !l.length ? '<p class="nota">' + (d.mails.length ? 'Ningún mail coincide con la búsqueda.' : 'Todavía no entró ningún mail.') + '</p>'
+    : '<p class="nota">' + l.length + ' mail' + (l.length === 1 ? '' : 's') + (d.total > d.mails.length ? ' (los ' + d.mails.length + ' más nuevos de ' + d.total + ')' : '') + '</p>' + l.map(htmlMail).join('');
+}
+
+async function verTextoMail(id) {
+  MF.abiertos[id] = !MF.abiertos[id];
+  pintarMails();
+  if (!MF.abiertos[id] || MF.textos[id] !== undefined) return;
+  const m = MF.datos.mails.filter(function (x) { return x.id === id; })[0];
+  const r = await api('verArchivo', m.texto);
+  if (!r.ok) { MF.textos[id] = r.sinConexion ? '📶 Hace falta señal para abrirlo.' : r.error; pintarMails(); return; }
+  const bin = atob(r.datos), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  MF.textos[id] = new TextDecoder('utf-8').decode(bytes);
+  pintarMails();
+}
+
+async function accionGmail(que) {
+  if (que === 'conectar') {
+    notaAd('mf-nota', 'Abriendo Google…');
+    const r = await api('gmailConectar');
+    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+    location.href = r.url;
+    return;
+  }
+  if (que === 'traer') return traerMailsUI();
+  let modo = '', desde = '';
+  if (que === 'muestra') {
+    modo = 'muestra'; desde = $('mf-muestra-desde') ? $('mf-muestra-desde').value : '';
+  } else if (que === 'real') {
+    const si = await dialogo({ titulo: 'Prender en serio', texto: 'Desde ahora, cada 10 minutos entran los mails nuevos con adjuntos y cada uno queda en Gmail con la etiqueta «App: leída» ' +
+      '(también los de la muestra). En Gmail no cambia nada más: no se borran, no se mueven y no cambia si están leídos.',
+      botones: [{ texto: '✅ Prender', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+    if (!si) return;
+    modo = 'real';
+  } else if (que === 'apagar') {
+    const si = await dialogo({ titulo: 'Apagar', texto: 'Los mails dejan de entrar a la app hasta que lo prendas de nuevo. Lo que ya entró queda.',
+      botones: [{ texto: '⏸️ Apagar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+    if (!si) return;
+  }
+  notaAd('mf-nota', 'Guardando…');
+  const r = await api('gmailModo', modo, desde);
+  if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+  MF.datos.gmail = r;
+  notaAd('mf-nota', '');
+  pintarMails();
+  if (modo) await traerMailsUI();
+}
+
+/** Trae de a tandas hasta que no quede nada (cada tanda, hasta 40 mails o 100 segundos). */
+async function traerMailsUI() {
+  let total = 0, etiquetados = 0;
+  for (let vuelta = 0; vuelta < 15; vuelta++) {
+    notaAd('mf-nota', '⬇️ Trayendo los mails… ' + (total ? total + ' nuevos hasta ahora' : ''));
+    const r = await apiLenta('traerMailsAhora');
+    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break; }
+    if (r.r.ocupado) { notaAd('mf-nota', 'El reloj de la app está trayendo mails en este momento. Probá de nuevo en un minuto.'); break; }
+    total += r.r.nuevos; etiquetados += r.r.etiquetados;
+    if (MF.datos) MF.datos.gmail = r.gmail;
+    if (!r.r.quedan) {
+      notaAd('mf-nota', '✅ Listo: ' + total + ' mail' + (total === 1 ? '' : 's') + ' nuevo' + (total === 1 ? '' : 's') +
+             (etiquetados ? ' · ' + etiquetados + ' quedaron con la etiqueta en Gmail' : '') + (r.r.errores ? ' · ' + r.r.errores + ' con error (se reintentan solos)' : '') + '.');
+      break;
+    }
+  }
+  MF.cargando = false;
+  const n = $('mf-nota').textContent;
+  await cargarMails();
+  notaAd('mf-nota', n);
+}
+
+$('mf-q').addEventListener('input', pintarMails);
+['mf-desde', 'mf-hasta'].forEach(function (id) { $(id).addEventListener('change', cargarMails); });
+$('mf-refrescar').addEventListener('click', cargarMails);
+$('s-cfacturas').addEventListener('click', function (e) {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.mf) accionGmail(b.dataset.mf);
+  else if (b.dataset.ver) verArchivo(b.dataset.ver);
+  else if (b.dataset.texto) verTextoMail(b.dataset.texto);
+});

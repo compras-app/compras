@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gmail · App de compras</title>
+<!-- Fase 7, Paso 2 (Feli, 14/11): adonde vuelve la persona después de dar el permiso de Gmail (el servidor la manda acá) -->
+<style>
+  :root { --fondo:#1c1d21; --texto:#e8e6e3; --suave:#a9a6a2; --color:#d08a93; --caja:#26272c; }
+  body { margin:0; background:var(--fondo); color:var(--texto); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:520px; margin:0 auto; padding:48px 16px; }
+  .caja { background:var(--caja); border-radius:14px; padding:24px 20px; }
+  h1 { font-size:1.4rem; margin:0 0 10px; }
+  p { margin:8px 0; color:var(--suave); }
+  a.btn { display:inline-block; margin-top:16px; background:var(--color); color:#1c1d21; text-decoration:none; font-weight:600; padding:10px 18px; border-radius:10px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="caja">
+    <h1 id="titulo"></h1>
+    <p id="texto"></p>
+    <a class="btn" href="./?ap=contabilidad">Volver a la app</a>
+  </div>
+</main>
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search), ok = q.get('r') === 'ok', m = q.get('m') || '';
+    document.getElementById('titulo').textContent = ok ? '✅ Listo: el Gmail quedó conectado' : '⚠️ No se pudo conectar el Gmail';
+    document.getElementById('texto').textContent = ok
+      ? 'La app ya puede leer los mails de ' + m + '. Volvé a la app, a Contabilidad → 📥 Facturas, para traer la muestra.'
+      : m || 'Probá de nuevo desde la app.';
+  })();
+</script>
+</body>
+</html>
