@@ -31,7 +31,12 @@ function mostrarApp() {
   $('t-nuevo').href = FORMULARIO + '?desde=app';
   pintarBarra();
   pintarSinRed();
-  if (modoContable()) ir(/[?&]impresora=1\b/.test(location.search) ? 'cimpresora' : 'contabilidad');   // Fase 7, Paso 3-bis: la compu de la impresora
+  if (modoContable()) {
+    // Fase 7, Paso 3-bis: la compu de la impresora. Paso 5 (Feli, 16/11): Contabilidad arranca en Facturas; un link #doc=… abre esa factura
+    ir(/[?&]impresora=1\b/.test(location.search) ? 'cimpresora' : 'cfac');
+    const doc = /^#doc=(.+)$/.exec(location.hash);
+    if (doc) { history.replaceState(null, '', location.pathname + location.search); abrir('cdoc', { id: decodeURIComponent(doc[1]) }); }
+  }
   else if (sinCompras()) ir('cuenta');
   else if (location.hash === '#cuenta') {
     // Viene de "Tu cuenta" en Transferencias: #cuenta no es un pedido (si queda, el tablero lo abría como tarjeta)

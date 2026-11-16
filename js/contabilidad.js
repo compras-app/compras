@@ -16,12 +16,13 @@
 
 const K_CONTABLE = 'compras_contable';      // el último tablero, para abrir sin señal
 const CT = { datos: null, abierta: null, tarjeta: null, cargando: false, verHist: false, historial: null };
+// Fase 7, Paso 5 (Feli, 16/11): el tablero de Pedidos es de facturas (las compras que ya tienen la suya); Pre-compra se sacó
 const COLUMNAS_CT = [
-  { k: 'precompra', t: 'Pre-compra' }, { k: 'comprado', t: 'Comprado' },
-  { k: 'recibido', t: 'Recibido' }, { k: 'factura', t: 'Factura cargada' }     // Feli (31/10): recibido y con la factura cargada en Albor
+  { k: 'comprado', t: 'Compradas' }, { k: 'recibido', t: 'Recibidas' },
+  { k: 'factura', t: 'Finalizado' }      // recibida y con la factura cargada en Albor (Feli, 31/10); a los 7 días, al Historial
 ];
 
-pantalla('contabilidad', { titulo: 'Contabilidad', tab: 'contabilidad', alMostrar: mostrarContable });
+pantalla('contabilidad', { titulo: 'Pedidos', tab: 'contabilidad', alMostrar: mostrarContable });
 pantalla('ctarjeta', { titulo: 'Tarjeta', tab: 'contabilidad', alMostrar: mostrarTarjetaContable });
 
 /** ¿Esta página está en el apartado de Contabilidad? (lo usa pantallas.js) */
@@ -32,7 +33,9 @@ function modoContable() {
 // Reportes (vacía por ahora: se arma cuando contabilidad diga qué datos quiere) y Ajustes, con las cuentas
 // contables y los bienes de uso (Feli, 29/10). En Contabilidad, esas dos pantallas cuelgan de su pestaña Ajustes.
 pantalla('creportes', { titulo: 'Reportes', tab: 'creportes' });
-pantalla('cajustes', { titulo: 'Ajustes', tab: 'cajustes' });
+pantalla('cajustes', { titulo: 'Ajustes', tab: 'cajustes', alMostrar: function () {
+  $('caj-mails').hidden = !(APP.yo && APP.yo.admin && APP.yo.pruebasF6);      // Fase 7 (Feli): el Gmail, la lectura y la impresora, solo Feli
+} });
 if (/[?&]ap=contabilidad\b/.test(location.search)) { PANTALLAS.cuentas.tab = 'cajustes'; PANTALLAS.bienes.tab = 'cajustes'; }
 document.querySelectorAll('#s-cajustes [data-ir]').forEach(function (b) { b.addEventListener('click', function () { abrir(b.dataset.ir); }); });
 
@@ -75,6 +78,16 @@ function armarFiltrosContables() {
   selC.innerHTML = '<option value="">Todas las cuentas</option><option value="-">Sin cuenta contable</option>' +
     (d.cuentasLista || []).map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('');
   selC.value = vc;
+  const selP = $('ct-prov'), vp = selP.value, provs = [];
+  COLUMNAS_CT.forEach(function (c) { (d[c.k] || []).forEach(function (t) { if (t.proveedor && provs.indexOf(t.proveedor) === -1) provs.push(t.proveedor); }); });
+  provs.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+  selP.innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(function (x) { return '<option>' + esc(x) + '</option>'; }).join('');
+  selP.value = vp;
+}
+
+/** ¿Tiene algo para mirar? La factura no coincide o hay que revisarla, sin leer, sin orden de compra o con la orden pendiente. */
+function conAvisosCt(t) {
+  return !!(t.sinOrden || (t.factura && t.factura.estado !== 'ok'));
 }
 
 /** ¿Pasa los filtros? t: un pedido (ref) o una compra (id). */
@@ -82,6 +95,8 @@ function pasaFiltrosContables(t) {
   const q = sinTildes($('ct-q').value.trim()), sitio = $('ct-sitio').value, cuenta = $('ct-cuenta').value;
   const cuentas = t.trabajo ? t.cuentas : [t.cuenta.texto];
   if ($('ct-sinorden').checked && !(t.trabajo && t.sinOrden)) return false;
+  if ($('ct-prov').value && t.proveedor !== $('ct-prov').value) return false;
+  if ($('ct-avisos').checked && !conAvisosCt(t)) return false;
   if (sitio && (t.trabajo ? t.sitios.indexOf(sitio) === -1 : t.sitio !== sitio)) return false;
   if (cuenta === '-' && !cuentas.some(function (c) { return c === 'Sin cuenta contable'; })) return false;
   if (cuenta && cuenta !== '-' && !cuentas.some(function (c) { return c.indexOf(cuenta) === 0; })) return false;
@@ -105,16 +120,20 @@ function htmlTarjetaCt(t) {
   }
   const recep = t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : ' · ' + t.columna)
                            : '⏳ ' + t.columna;
-  return '<div class="tarjeta ct-t" data-id="' + esc(t.id) + '" role="button" tabindex="0">' + prueba +
-    // Paso 5 (Feli, 29/10): el número de la orden arriba de la tarjeta, chiquito; sin número, en rojo (con "pendiente" si se está armando).
-    // La cuenta no se ve en el tablero (Feli, 29/10: estaba muy cargado); está en la tarjeta abierta y en el filtro
+  const pendiente = t.motivo === 'Orden de compra pendiente';
+  return '<div class="tarjeta ct-t' + (pendiente ? ' ct-pend' : '') + '" data-id="' + esc(t.id) + '" role="button" tabindex="0">' + prueba +
+    // Paso 5 (Feli, 29/10): el número de la orden arriba de la tarjeta, chiquito. Fase 7, Paso 5 (Feli, 16/11): sin orden, un aviso
+    // tranquilo; con la orden pendiente, el recuadro rojo (y no se carga en Albor)
     (t.numeroOrden ? '<div class="ct-oc">OC ' + esc(t.numeroOrden) + '</div>'
-                   : t.sinOrden ? '<div class="ct-orden">' + (t.motivo === 'Orden de compra pendiente' ? '⚠️ Orden de compra pendiente' : 'Sin orden de compra') + '</div>' : '') +
+                   : pendiente ? '<div class="ct-orden">⚠️ Orden de compra pendiente</div>'
+                   : t.sinOrden ? '<div class="ct-sinoc">Sin orden de compra</div>' : '') +
     '<div class="t">' + esc(t.titulo) + '</div>' +
+    // Feli (16/11): la cuenta contable, quién la pidió y para qué granja
+    (t.cuentas && t.cuentas.length ? htmlCuentaCt(t.cuentas.join(' / ')) : '') +
     // Feli (31/10): un pedido que pasó entero a Entregas (sin comprar en la app) no tiene proveedor: quién lo pidió
     (t.entero ? '<div class="sub-t">' + esc(['Pasó entero a Entregas', t.solicitante].filter(Boolean).join(' · ')) + '</div>'
               : '<div class="sub-t">🏪 ' + esc(t.proveedor || 'Sin proveedor') + (t.cuit ? ' · CUIT ' + esc(t.cuit) : '') + '</div>') +
-    '<div class="pie"><span>' + esc(t.sitios.join(', ')) + '</span>' + (t.total !== null ? '<span><b>' + esc(dinero(t.total, t.moneda)) + '</b></span>' : '') + '</div>' +
+    '<div class="pie"><span>' + esc([t.solicitante, t.sitios.join(', ')].filter(Boolean).join(' · ')) + '</span>' + (t.total !== null ? '<span><b>' + esc(dinero(t.total, t.moneda)) + '</b></span>' : '') + '</div>' +
     (t.factura ? '<div class="ct-fac">🧾 ' + esc(t.factura.numero ? 'Factura ' + (t.factura.letra ? t.factura.letra + ' ' : '') + t.factura.numero : t.factura.nombre) +
                  // Fase 6-bis (Feli, 30/10): cómo dio la lectura de la IA
                  ({ grave: ' <span class="ct-fac-e grave">⛔ No coincide</span>', aviso: ' <span class="ct-fac-e aviso">⚠️ Revisar</span>',
@@ -134,18 +153,20 @@ function pintarContable() {
     // Historial (Feli, 2/11): lo que pasó 7 días en Factura cargada, con los mismos filtros y el buscador
     const l = (CT.historial || []).filter(pasaFiltrosContables);
     $('ct-cols').innerHTML = '<div class="ct-hist-h"><h3>📚 Historial <span class="n">' + l.length + '</span></h3>' +
-      '<small class="nota">Las compras que pasaron 7 días en Factura cargada, y las recibidas sin orden de compra que pasaron 7 días en Recibido.</small></div>' +
+      '<small class="nota">Las compras que pasaron 7 días en Finalizado.</small></div>' +
       (CT.historial === null ? '<p class="nota">Cargando…</p>' :
        '<div class="ct-hist">' + (l.map(function (t) {
-         return htmlTarjetaCt(t).replace(/<\/div>$/, '<div class="ct-hist-f">' + (t.enFactura ? 'Factura cargada desde el ' + esc(fechaCt(t.enFactura))
-                                                                                 : 'Recibido sin orden de compra desde el ' + esc(fechaCt(t.sinOrdenDesde))) + '</div></div>');
+         return htmlTarjetaCt(t).replace(/<\/div>$/, '<div class="ct-hist-f">' + (t.enFactura ? 'Finalizado desde el ' + esc(fechaCt(t.enFactura)) : '') + '</div></div>');
        }).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>');
   } else {
     $('ct-cols').innerHTML = COLUMNAS_CT.map(function (c) {
       const l = (d[c.k] || []).filter(pasaFiltrosContables);
       return '<div class="ct-col"><h3>' + esc(c.t) + ' <span class="n">' + l.length + '</span></h3>' +
+        // Feli (16/11): arriba de Recibidas, cargar todas en Albor (menos las de orden pendiente)
+        (c.k === 'recibido' && l.length ? '<button type="button" class="btn2 ct-albor-todas" id="ct-albor-todas">🧾 Cargar en Albor</button>' : '') +
         (l.map(htmlTarjetaCt).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>';
     }).join('');
+    if ($('ct-albor-todas')) $('ct-albor-todas').addEventListener('click', cargarTodasEnAlbor);
   }
   document.querySelectorAll('#ct-cols [data-id]').forEach(function (el) {
     const abrirla = function () { abrir('ctarjeta', { id: el.dataset.id }); };
@@ -154,7 +175,7 @@ function pintarContable() {
   });
 }
 
-['ct-q', 'ct-sitio', 'ct-cuenta', 'ct-sinorden'].forEach(function (id) { $(id).addEventListener(id === 'ct-q' ? 'input' : 'change', pintarContable); });
+['ct-q', 'ct-sitio', 'ct-cuenta', 'ct-sinorden', 'ct-prov', 'ct-avisos'].forEach(function (id) { $(id).addEventListener(id === 'ct-q' ? 'input' : 'change', pintarContable); });
 $('ct-refrescar').addEventListener('click', function () {
   cargarContable();
   if (CT.verHist) cargarHistorialContable();
@@ -265,54 +286,103 @@ function pintarTarjetaContable() {
       '<div class="caja"><h3>Productos</h3>' + htmlProductosCt(r.productos) + '</div>' + htmlOrdenesCt(r.ordenes) +
       '<div class="caja"><h3>Presupuestos</h3>' + htmlPresupuestosCt(r.presupuestos) + '</div>';
   } else {
-    const t = r.tarjeta, c = r.compra;
+    // Fase 7, Paso 5 (Feli, 16/11): la compra con su factura. Arriba el proveedor, el CUIT y el número; la orden y si coincide;
+    // la cuenta, quién la pidió y la granja; las notas; lo comprado al lado de lo facturado; la factura leída y sus botones.
+    // Lo que se pidió (los pedidos, los presupuestos) ya no se muestra: solo lo que se compró.
+    const t = r.tarjeta, c = r.compra, f = r.lectura && r.lectura.datos;
     $('b-titulo').textContent = 'Compra';
-    h += '<h2 class="cx-titulo">' + esc(t.titulo) + '</h2>' + (t.prueba ? '<p class="nota">🧪 Compra de un pedido de prueba</p>' : '') +
-      (r.orden && r.orden.numero
-        ? '<div class="caja cx-oc"><h3>📄 Orden de compra N° ' + esc(r.orden.numero) + '</h3>' +
-          // Feli (30/10): "Orden de compra" (la del proveedor) y a su derecha, sin globito, en gris y más chica, la de Albor
-          '<div class="ad-acciones">' + (r.orden.pdfProveedor ? '<button type="button" class="btn2" data-ver="' + esc(r.orden.pdfProveedor) + '">Orden de compra</button>' : '') +
-          (r.orden.pdf ? '<button type="button" class="link-gris" data-ver="' + esc(r.orden.pdf) + '">Orden de compra de Albor</button>' : '') + '</div></div>'
-        : t.sinOrden ? '<div class="caja cx-sinorden"><b>Este pedido no tiene orden de compra</b>' + (t.motivo ? '<small>' + esc(t.motivo) + '</small>' : '') + '</div>' : '') +
-      '<div class="caja"><h3>Compra</h3>' + (t.entero ? '<p class="nota">Este pedido pasó entero a Entregas, sin una compra hecha en la app: no tiene proveedor ni precios.</p>' : '') +
-        '<dl class="ad-datos">' + (t.entero ? '' : '<dt>Proveedor</dt><dd>' + esc(t.proveedor || '—') + '</dd><dt>CUIT</dt><dd>' + esc(t.cuit || 'No está cargado') + '</dd>') +
-        (t.total !== null ? '<dt>Total</dt><dd><b>' + esc(dinero(t.total, t.moneda)) + '</b></dd>' : '') +
-        (c && c.quien ? '<dt>Compró</dt><dd>' + esc(c.quien) + (c.fecha ? ' · ' + esc(fechaCt(c.fecha)) : '') + '</dd>' : '') +
-        (c && c.condiciones && c.condiciones.pago ? '<dt>Forma de pago</dt><dd>' + esc(c.condiciones.pago) + '</dd>' : '') +
-        '<dt>Recepción</dt><dd>' + esc(t.recibido ? 'Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : ' · ' + t.columna) : 'Todavía no llegó (' + t.columna + ')') + '</dd></dl>' +
-        (c && c.archivo ? '<button type="button" class="btn2" data-ver="' + esc(c.archivo) + '">📄 Ver el presupuesto</button>' : '') +
-        (c && c.productos && c.productos.length ? '<table class="cx-tabla"><thead><tr><th>Producto</th><th>Cant.</th><th>Total</th></tr></thead><tbody>' +
-          c.productos.map(function (x) { return '<tr><td>' + esc(x.nombre) + '</td><td>' + esc(x.cantidad) + '</td><td>' + esc(x.total === null ? '' : dinero(x.total, c.moneda)) + '</td></tr>'; }).join('') +
-          '</tbody></table>' : htmlProductosCt(r.productos)) +
-      '</div>' +
-      // La factura (PDF): desde Comprado o Recibido; con ella la tarjeta pasa a Factura cargada
+    const fnum = f && f.numero ? 'Factura ' + (f.letra ? f.letra + ' ' : '') + f.numero : t.factura ? t.factura.numero ? 'Factura ' + t.factura.numero : t.factura.nombre : 'Sin factura';
+    h += '<h2 class="cx-titulo">' + esc([t.proveedor || (t.entero ? '' : 'Sin proveedor'), t.cuit ? 'CUIT ' + t.cuit : '', fnum].filter(Boolean).join(' · ')) + '</h2>' +
+      '<p class="nota">' + esc(t.titulo) + (t.prueba ? ' · 🧪 compra de un pedido de prueba' : '') + '</p>' +
+      htmlOrdenPedidoCt(t, r.orden) +
+      '<div class="caja cx-imput">' + r.pedidos.map(function (p) {
+        return htmlCuentaPedido(p) + '<p class="nota cx-pidio">Pidió <b>' + esc(p.solicitante || '—') + '</b> · ' + esc(p.sitio || '—') + (r.pedidos.length > 1 ? ' · ' + esc(p.titulo || p.ref) : '') + '</p>';
+      }).join('') +
+        '<p class="nota">' + esc(t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : '') : '⏳ Todavía no llegó (' + t.columna + ')') +
+        (c && c.quien ? ' · compró ' + esc(c.quien) + (c.fecha ? ' el ' + esc(fechaCt(c.fecha)) : '') : '') + '</p></div>' +
+      htmlNotasCt(r.comentarios, t.id) +
+      (t.entero ? '<div class="caja"><p class="nota">Este pedido pasó entero a Entregas, sin una compra hecha en la app: no tiene proveedor ni precios.</p>' + htmlProductosCt(r.productos) + '</div>'
+                : htmlComparadoCt(r.comparado, r.orden, t)) +
       '<div class="caja"><h3>Factura</h3>' + htmlFacturaCt(t, r.lectura) +
-      // Feli (30/10): cargarla en Albor; en Comprado, "anticipadamente". Por ahora abre Albor en un comprobante de compra nuevo
-      // (la carga sola llega con la Fase 6-bis)
+      // Feli (30/10): cargarla en Albor; en Compradas, "anticipadamente". Con la orden pendiente no se puede (Feli, 16/11)
       '<div class="ad-acciones"><button type="button" class="btn2" id="cx-fac-albor">' +
-        (t.recibido ? 'Cargar la factura en Albor' : 'Cargar la factura en Albor anticipadamente') + '</button></div></div>' +
-      '<h3 class="cx-sub">' + (r.pedidos.length === 1 ? 'Pedido' : 'Pedidos') + '</h3>' + r.pedidos.map(function (p) { return htmlPedidoCt(p, true); }).join('') +
-      htmlOrdenesCt(r.ordenes) +
-      '<div class="caja"><h3>Presupuestos</h3>' + htmlPresupuestosCt(r.presupuestos) + '</div>';
+        (t.recibido ? 'Cargar la factura en Albor' : 'Cargar en Albor anticipadamente') + '</button></div></div>';
   }
   $('cx-cuerpo').innerHTML = h;
   $('cx-cuerpo').querySelectorAll('[data-ver]').forEach(function (b) { b.addEventListener('click', function () { verArchivo(b.dataset.ver); }); });
   $('cx-cuerpo').querySelectorAll('[data-cambiar]').forEach(function (b) { b.addEventListener('click', function () { cambiarCuentaUI(b.dataset.cambiar); }); });
+  $('cx-cuerpo').querySelectorAll('[data-nota]').forEach(function (b) { b.addEventListener('click', function () { agregarNotaUI(b, cargarTarjetaContable); }); });
   ['cx-fac-cargar', 'cx-fac-otra'].forEach(function (id) { if ($(id)) $(id).addEventListener('click', function () { $('cx-factura').click(); }); });
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
   if ($('cx-fac-deshacer')) $('cx-fac-deshacer').addEventListener('click', async function () {      // Fase 7, Paso 4
-    const si = await dialogo({ titulo: 'Deshacer', texto: 'La factura sale de esta compra y vuelve a 📥 Facturas (y el mail, a Recibidos). No se vuelve a pegar sola.',
-                               botones: [{ texto: 'Deshacer', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+    const si = await dialogo({ titulo: 'No es de esta compra', texto: 'La factura sale de esta compra y pasa al tablero de Facturas, a Entrantes (y el mail vuelve a Recibidos). No se vuelve a pegar sola.',
+                               botones: [{ texto: 'Pasarla a Facturas', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
     if (!si) return;
-    const x = await api('deshacerFacturaMail', $('cx-fac-deshacer').dataset.mail);
+    const idm = $('cx-fac-deshacer').dataset.mail;
+    const x = await api('deshacerFacturaMail', idm);
     if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
-    aviso('Listo: la factura volvió a 📥 Facturas.');
-    mostrarTarjetaContable();
+    aviso('Listo: la factura pasó a Facturas.');
+    cargarContable();
+    abrir('cdoc', { id: idm });
   });
   if ($('cx-fac-leer')) $('cx-fac-leer').addEventListener('click', function () { leerFacturaUI(r.tarjeta.id); });
   if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', corregirFacturaUI);
   if ($('cx-fac-amano')) $('cx-fac-amano').addEventListener('click', marcarFacturaEnAlbor);
   if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () { cargarFacturaEnAlbor(r); });
+}
+
+/** La orden de compra y si la factura coincide (Feli, 16/11). Pendiente: en rojo y no se carga; sin orden: tranquilo. */
+function htmlOrdenPedidoCt(t, o) {
+  const est = t.factura ? { ok: '✅ La factura coincide', aviso: '⚠️ La factura tiene cosas para revisar', grave: '⛔ La factura no coincide', sinLeer: 'La factura todavía no se leyó' }[t.factura.estado] : 'Todavía no tiene factura';
+  if (o && o.numero) return '<div class="caja cx-oc"><h3>📄 Orden de compra N° ' + esc(o.numero) + '</h3><p class="cx-coincide ' + esc(t.factura ? t.factura.estado : '') + '">' + esc(est) + '</p></div>';
+  if (t.motivo === 'Orden de compra pendiente')
+    return '<div class="caja cx-sinorden"><b>⚠️ Orden de compra pendiente</b><small>Todavía no tiene su número en Albor: la factura no se puede cargar hasta que esté.</small></div>';
+  return '<div class="caja cx-sinoc"><b>Sin orden de compra</b>' + (t.motivo ? '<small>' + esc(t.motivo) + '</small>' : '') + '</div>';
+}
+
+/** Lo comprado al lado de lo facturado (leído por la IA), producto por producto, con "Ver orden de compra" y "Ver factura" debajo. */
+function htmlComparadoCt(cmp, o, t) {
+  const verOC = o && (o.pdfProveedor || o.pdf), verFac = t.factura && t.factura.archivo;
+  const pies = '<div class="cx-cmp-pie"><div>' + (verOC ? '<button type="button" class="btn2" data-ver="' + esc(verOC) + '">Ver orden de compra</button>' : '') + '</div>' +
+               '<div>' + (verFac ? '<button type="button" class="btn2" data-ver="' + esc(verFac) + '">Ver factura</button>' : '') + '</div></div>';
+  if (!cmp) return '<div class="caja"><h3>Comprado y facturado</h3><p class="nota">' + (t.factura ? 'Cuando la IA lea la factura, acá se ve lo comprado al lado de lo facturado.' : 'Todavía no tiene factura.') + '</p>' + pies + '</div>';
+  const num = function (n) { return n === null || n === undefined ? '' : Number(n).toLocaleString('es-AR', { maximumFractionDigits: 4 }); };
+  const lado = function (x, mon, k) {
+    if (!x) return '<span class="nota">—</span>';
+    return esc(num(x.cant) + (x.unidad ? ' ' + x.unidad : '')) + (x.precio !== null && x.precio !== undefined ? ' × ' + esc(dinero(x.precio, mon)) : '') +
+           (x[k] !== null && x[k] !== undefined ? '<br><b>' + esc(dinero(x[k], mon)) + '</b>' : '');
+  };
+  return '<div class="caja"><h3>Comprado y facturado</h3><div class="cx-cmp-w"><table class="cx-tabla cx-cmp"><thead><tr><th>Producto</th><th>Comprado</th><th>Facturado</th><th></th></tr></thead><tbody>' +
+    cmp.filas.map(function (x) {
+      return '<tr' + (x.igual ? '' : ' class="cx-mal"') + '><td>' + esc(x.nombre) + (x.facturado && x.comprado && x.facturado.texto && x.facturado.texto !== x.nombre ? '<br><small class="nota">' + esc(x.facturado.texto) + '</small>' : '') +
+             '</td><td>' + lado(x.comprado, cmp.moneda, 'total') + '</td><td>' + lado(x.facturado, cmp.monedaFactura, 'importe') + '</td><td>' + (x.igual ? '✅' : '⚠️') + '</td></tr>';
+    }).join('') +
+    '<tr class="cx-cmp-tot"><td>Total sin IVA</td><td><b>' + esc(dinero(cmp.totalCompra, cmp.moneda)) + '</b></td><td><b>' + esc(dinero(cmp.netoFactura, cmp.monedaFactura)) + '</b>' +
+      (cmp.totalFactura !== null && cmp.totalFactura !== undefined ? '<br><small class="nota">con IVA ' + esc(dinero(cmp.totalFactura, cmp.monedaFactura)) + '</small>' : '') + '</td><td></td></tr>' +
+    '</tbody></table></div>' + pies + '</div>';
+}
+
+/* ---------- Las notas (💬), en las tarjetas de Pedidos, de Facturas y en Documentos (Feli, 16/11) ---------- */
+function htmlNotasCt(l, id) {
+  return '<div class="caja cx-notas"><h3>💬 Notas</h3>' +
+    (l === undefined ? '<p class="nota">Cargando las notas…</p>' : !l.length ? '<p class="nota">Todavía no hay notas.</p>' :
+     l.map(function (c) {
+       return '<div class="cx-nota"><div class="cx-nota-c"><b>' + esc(c.autor) + '</b><small>' + esc(new Date(c.fecha).toLocaleString('es-AR', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })) + '</small></div>' +
+              '<div class="cx-nota-t">' + esc(c.texto) + '</div></div>';
+     }).join('')) +
+    '<div class="cx-nota-nueva"><textarea rows="2" maxlength="2000" placeholder="Escribí una nota (con @Nombre le avisás a esa persona)" data-nota-txt="' + esc(id) + '"></textarea>' +
+    '<button type="button" class="btn2" data-nota="' + esc(id) + '">💬 Agregar nota</button></div></div>';
+}
+async function agregarNotaUI(b, despues) {
+  const id = b.dataset.nota, campo = b.parentNode.querySelector('textarea'), texto = campo.value.trim();
+  if (!texto) return campo.focus();
+  b.disabled = true;
+  const x = await api('comentarDocumento', id, texto, 'C' + nuevoId());
+  b.disabled = false;
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal para guardar la nota.' : x.error, 'bad');
+  campo.value = '';
+  if (x.avisados && x.avisados.length) aviso('💬 Listo. Le avisamos a ' + x.avisados.join(', ') + '.');
+  if (despues) despues();
 }
 
 /* ---------- Fase 6-bis, Paso 1 (Feli, 30/10): la factura leída por la IA ----------
@@ -365,7 +435,7 @@ function htmlFacturaCt(t, l) {
     (!al || al.estado !== 'Cargada' ? '<button type="button" class="btn2" id="cx-fac-amano">Ya la cargué en Albor</button>' : '') +
     '<button type="button" class="btn2" id="cx-fac-leer">' + (f ? '🔁 Leer de nuevo' : '🤖 Leer la factura') + '</button>' +
     '<button type="button" class="btn2" id="cx-fac-otra">Reemplazar</button>' +
-    (t.factura.mail ? '<button type="button" class="btn2 peligro-btn2" id="cx-fac-deshacer" data-mail="' + esc(t.factura.mail) + '">Deshacer (vuelve a 📥 Facturas)</button>'
+    (t.factura.mail ? '<button type="button" class="btn2 peligro-btn2" id="cx-fac-deshacer" data-mail="' + esc(t.factura.mail) + '">No es de esta compra (pasa a Facturas)</button>'
                     : '<button type="button" class="btn2 peligro-btn2" id="cx-fac-sacar">Sacar</button>') + '</div>';
 }
 
@@ -428,6 +498,11 @@ async function corregirFacturaUI() {
  */
 async function cargarFacturaEnAlbor(r) {
   const t = r.tarjeta, l = r.lectura, a = function () { window.open('https://laquimerasa.alboragro.com/1/Comprobantes_Compra/Create', '_blank', 'noopener'); };
+  if (t.motivo === 'Orden de compra pendiente') {          // Feli (16/11): con la orden pendiente no se carga
+    await dialogo({ titulo: 'Cargar la factura en Albor', texto: 'La orden de compra de esta compra está pendiente (todavía no tiene su número en Albor): la factura se carga cuando la orden esté.',
+                    botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
+    return { ok: false, salteada: true };
+  }
   const motivo = !t.factura ? 'Primero adjuntá la factura.'
     : !l ? 'Primero dejá que la IA lea la factura («🤖 Leer la factura»).'
     : l.comparacion && l.comparacion.graves.length ? 'La factura no coincide con esta compra: así no se carga en Albor.'
@@ -437,10 +512,10 @@ async function cargarFacturaEnAlbor(r) {
     const ir = await dialogo({ titulo: 'Cargar la factura en Albor', texto: motivo,
       botones: [{ texto: 'Abrir Albor para cargarla a mano', clase: 'btn2', valor: true }, { texto: 'Volver', valor: null }] });
     if (ir) a();
-    return;
+    return { ok: false, salteada: true };
   }
   const d = await api('datosFacturaAlbor', t.id);
-  if (!d.ok) return aviso(d.sinConexion ? '📶 Hace falta señal para cargar la factura.' : d.error, 'bad');
+  if (!d.ok) { aviso(d.sinConexion ? '📶 Hace falta señal para cargar la factura.' : d.error, 'bad'); return { ok: false }; }
   OC_ALBOR.abrir('Cargando la factura en Albor');
   // Feli (6/11): la factura va adjunta en Albor; si no se puede traer, la extensión avisa que se adjunte a mano
   if (d.factura.archivo) {
@@ -469,6 +544,47 @@ async function cargarFacturaEnAlbor(r) {
     await dialogo({ titulo: x.cancelado ? 'Se canceló la carga' : 'La factura no quedó cargada', cuerpo: cuerpo, botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
   }
   cargarTarjetaContable(); cargarContable();
+  return x;
+}
+
+/**
+ * Fase 7, Paso 5 (Feli, 16/11): "🧾 Cargar en Albor" arriba de Recibidas: todas las de la columna (con los filtros de arriba),
+ * una detrás de otra, frenando antes de guardar cada una (como la de a una). Salteadas: la orden pendiente (Feli), las sin orden de
+ * compra (se cargan a mano hasta el Paso 6), las que no coinciden o no se leyeron, y las ya cargadas.
+ */
+async function cargarTodasEnAlbor() {
+  const l = (CT.datos && CT.datos.recibido || []).filter(pasaFiltrosContables);
+  const cargada = function (t) { return t.factura && t.factura.albor && t.factura.albor.estado === 'Cargada'; };
+  const va = l.filter(function (t) { return t.numeroOrden && t.factura && ['ok', 'aviso'].indexOf(t.factura.estado) !== -1 && !cargada(t); });
+  const n = function (f) { return l.filter(f).length; };
+  const pend = n(function (t) { return t.motivo === 'Orden de compra pendiente'; }), sinOC = n(function (t) { return !t.numeroOrden && t.motivo !== 'Orden de compra pendiente'; });
+  const mal = n(function (t) { return t.numeroOrden && t.factura && ['grave', 'sinLeer'].indexOf(t.factura.estado) !== -1; }), ya = n(cargada);
+  const salteadas = [pend ? pend + ' con la orden de compra pendiente' : '', sinOC ? sinOC + ' sin orden de compra (por ahora se cargan a mano)' : '',
+                     mal ? mal + ' que no coinciden o sin leer (revisalas primero)' : '', ya ? ya + ' ya cargadas' : ''].filter(String);
+  if (!va.length) return dialogo({ titulo: 'Cargar en Albor', texto: 'No hay facturas para cargar solas.' + (salteadas.length ? ' Quedan afuera: ' + salteadas.join(', ') + '.' : ''),
+                                   botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
+  if (!(await hayExtensionAlbor())) return aviso('Para cargarlas en Albor hace falta la compu con la extensión de Albor.', 'bad');
+  const si = await dialogo({ titulo: '🧾 Cargar en Albor', texto: 'Se cargan ' + va.length + (va.length === 1 ? ' factura' : ' facturas') + ', una detrás de otra. ' +
+      'En cada una, la carga frena antes de guardar: controlala en Albor y tocá «Guardar» para seguir con la siguiente.' + (salteadas.length ? ' Quedan afuera: ' + salteadas.join(', ') + '.' : ''),
+    botones: [{ texto: 'Empezar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+  if (!si) return;
+  let hechas = 0;
+  for (let i = 0; i < va.length; i++) {
+    aviso('🧾 Factura ' + (i + 1) + ' de ' + va.length + ': ' + (va[i].proveedor || va[i].titulo));
+    const r = await api('getTarjetaContable', va[i].id);
+    if (!r.ok) { aviso(r.sinConexion ? '📶 Hace falta señal para seguir.' : r.error, 'bad'); break; }
+    CT.abierta = va[i].id; CT.tarjeta = r;
+    const x = await cargarFacturaEnAlbor(r);
+    if (x && x.ok) hechas++;
+    if (x && x.cancelado) break;
+    if (x && !x.ok && !x.salteada && i < va.length - 1) {
+      const seguir = await dialogo({ titulo: '¿Seguir con la siguiente?', texto: 'Quedan ' + (va.length - i - 1) + '.',
+                                     botones: [{ texto: 'Seguir', clase: 'btn', valor: true }, { texto: 'Parar acá', valor: null }] });
+      if (!seguir) break;
+    }
+  }
+  aviso('Listo: ' + hechas + (hechas === 1 ? ' factura cargada' : ' facturas cargadas') + ' en Albor.');
+  cargarContable();
 }
 
 /** "Ya la cargué en Albor": la persona la cargó a mano; con la compra recibida, pasa a "Factura cargada". */
@@ -789,15 +905,20 @@ async function imprimirFacturas() {
 }
 
 /* ============================================================
-   FASE 7, PASO 2 (Feli, 14/11): 📥 FACTURAS, LOS MAILS QUE ENTRAN
+   FASE 7, PASO 5 (Feli, 16/11): 📄 DOCUMENTOS
    ------------------------------------------------------------
-   Los mails con adjuntos de la cuenta de las facturas, del más nuevo al
-   más viejo, con sus archivos para verlos acá adentro (todavía sin leer:
-   eso es el Paso 3). Arriba, cómo está la conexión con Gmail; conectar,
-   la muestra, "en serio" y "Traer ahora" solo los ve Feli (puede).
+   Todo lo que llegó por mail (y lo subido a mano), un documento por fila, en apartados: Facturas, Remitos, Notas de crédito y
+   Otros. Cerrada, la fila dice el mail, el título y la fecha; abierta, el proveedor, el CUIT y el número, lo que leyó la IA, las
+   notas (💬), "Ver factura" y "Ver en tablero" a la derecha y "Ver mail" a la izquierda. Arriba, solo si algo no anda (el Gmail,
+   la impresora). Lo de conectar el Gmail, la lectura, el pegado y la impresora está en Ajustes → 📥 Mails e impresora (cmails).
    ============================================================ */
-pantalla('cfacturas', { titulo: 'Facturas', tab: 'cfacturas', alMostrar: mostrarMails });
-const MF = { datos: null, cargando: false, textos: {}, abiertos: {}, detalle: {} };
+pantalla('cfacturas', { titulo: 'Documentos', tab: 'cfacturas', alMostrar: mostrarMails });
+pantalla('cmails', { titulo: 'Mails e impresora', tab: 'cajustes', alMostrar: mostrarMails });
+const MF = { datos: null, cargando: false, textos: {}, abiertos: {}, docs: {}, verMail: {}, sec: 'facturas' };
+const SECCIONES_DOC = [{ k: 'facturas', t: 'Facturas' }, { k: 'remitos', t: 'Remitos' }, { k: 'notas', t: 'Notas de crédito' }, { k: 'otros', t: 'Otros' }];
+const NOMBRE_COL_FC = { entrantes: 'Entrantes', controlando: 'Controlando', aprobacion: 'Esperando aprobación', lista: 'Lista para cargar', finalizado: 'Finalizado', historial: 'Historial' };
+
+function notaMF(t) { notaAd('mf-nota', t); notaAd('md-nota', t); }
 
 async function mostrarMails() {
   pintarMails();
@@ -807,12 +928,12 @@ async function mostrarMails() {
 async function cargarMails() {
   if (MF.cargando) return;
   MF.cargando = true;
-  if (!MF.datos) notaAd('mf-nota', 'Cargando…');
+  if (!MF.datos) notaMF('Cargando…');
   const r = await api('getMailsFacturas', { desde: $('mf-desde').value, hasta: $('mf-hasta').value });
   MF.cargando = false;
-  if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal para ver los mails.' : r.error); return; }
+  if (!r.ok) { notaMF(r.sinConexion ? '📶 Hace falta señal para ver los documentos.' : r.error); return; }
   MF.datos = r;
-  notaAd('mf-nota', '');
+  notaMF('');
   pintarMails();
 }
 
@@ -827,6 +948,7 @@ function horaCorta(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 }
+function nombreDe(de) { return String(de || '').replace(/\s*<[^>]*>\s*$/, '').replace(/^"|"$/g, '') || String(de || ''); }
 
 function htmlEstadoGmail(g, puede) {
   if (!g) return '';
@@ -858,86 +980,96 @@ function htmlEstadoGmail(g, puede) {
   return h;
 }
 
-function mailsALaVista() {
-  const q = $('mf-q').value.trim().toLowerCase(), ver = $('mf-ver').value;
-  return ((MF.datos && MF.datos.mails) || []).filter(function (m) {
-    const as = m.adjuntos;
-    if (ver === 'revisar' && !as.some(function (a) { return a.papel && !a.revision && !/^(Otro archivo|Imagen del mail)$/.test(a.papel); })) return false;
-    if (ver === 'facturas' && !as.some(function (a) { return a.factura; })) return false;
-    if (ver === 'avisos' && !as.some(function (a) { return a.error || (a.avisos && a.avisos.length); })) return false;
-    if (ver === 'noes' && (!as.length || as.some(function (a) { return a.factura || !a.papel; }))) return false;
-    if (ver === 'sinleer' && !as.some(function (a) { return !a.papel; })) return false;
-    if (ver === 'adjuntadas' && !as.some(function (a) { return a.compra && a.compra.estado === 'adjuntada'; })) return false;
-    if (ver === 'elegir' && !as.some(function (a) { return a.compra && (a.compra.estado === 'propuesta' || a.compra.estado === 'no coincide'); })) return false;
-    if (ver === 'sincompra' && !as.some(function (a) { return a.factura && (!a.compra || ['sin compra', 'deshecha', 'ya tiene'].indexOf(a.compra.estado) !== -1); })) return false;
-    if (!q) return true;
-    if (as.some(function (a) { return a.factura && ((a.factura.numero + ' ' + a.factura.cuit + ' ' + a.factura.emisor + ' ' + (a.ordenCompra || '')).toLowerCase().indexOf(q) !== -1); })) return true;
-    return (m.de + ' ' + m.asunto + ' ' + m.adjuntos.map(function (a) { return a.nombre; }).join(' ')).toLowerCase().indexOf(q) !== -1;
-  });
-}
+/* ---------- La lista ---------- */
+function proveedorDoc(d) { return (d.factura && d.factura.emisor) || nombreDe(d.mail && d.mail.de); }
+function cargadaDoc(d) { return !!((d.enCompra && d.enCompra.cargada) || (d.tablero && d.tablero.albor && d.tablero.albor.estado === 'Cargada')); }
+function conOcDoc(d) { return !!(d.ordenCompra || (d.enCompra && d.enCompra.orden)); }
 
-function htmlMail(m) {
-  const adj = m.adjuntos.map(function (a) {
-    const ic = /pdf/.test(a.tipo) ? '📄' : /^image\//.test(a.tipo) ? '🖼️' : /zip|compressed/.test(a.tipo) ? '🗜️' : '📎';
-    const extra = a.estado ? ' · ⚠️ ' + (a.estado === 'Muy grande' ? 'muy grande, no se guardó' : a.estado.toLowerCase()) : a.repetido ? ' · repetido' : '';
-    const chip = a.archivo ? '<button type="button" class="mf-adj" data-ver="' + esc(a.archivo) + '">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></button>'
-                           : '<span class="mf-adj mf-sin">' + ic + ' ' + esc(a.nombre) + ' <small>' + esc(tamanoArchivo(a.bytes) + extra) + '</small></span>';
-    const lec = htmlLecturaAdj(a);
-    return lec ? '<div class="mf-adjl">' + chip + lec + '</div>' : chip;
-  }).join('');
-  const abierto = MF.abiertos[m.id], texto = MF.textos[m.id];
-  return '<div class="mf-mail" data-id="' + esc(m.id) + '">' +
-    '<div class="mf-cab"><span class="mf-de">' + esc(m.de.replace(/\s*<[^>]*>\s*$/, '') || m.de) + '</span><span class="mf-fecha">' + esc(horaCorta(m.fecha)) + '</span></div>' +
-    '<div class="mf-asunto">' + esc(m.asunto || '(sin asunto)') + (m.muestra ? ' <span class="mf-marca">muestra</span>' : '') + '</div>' +
-    (m.resumen ? '<div class="mf-resumen">' + esc(m.resumen.split('\n').filter(String)[0] || '') + '</div>' : '') +
-    (m.noSePudo ? '<p class="mf-mal">⚠️ Este mail no se pudo traer (era muy pesado para el servidor): abrilo en Gmail.</p>' : '') +
-    '<div class="mf-adjs">' + (adj || (m.noSePudo ? '' : '<span class="nota">Sin adjuntos guardados</span>')) +
-    (m.fotitos ? '<span class="nota">+ ' + m.fotitos + ' imagen' + (m.fotitos === 1 ? '' : 'es') + ' chica' + (m.fotitos === 1 ? '' : 's') + ' (logos o firmas)</span>' : '') + '</div>' +
-    (m.texto ? '<button type="button" class="link-gris" data-texto="' + esc(m.id) + '">' + (abierto ? 'Esconder el mail' : 'Ver el mail') + '</button>' : '') +
-    (abierto ? '<pre class="mf-texto">' + esc(texto === undefined ? 'Abriendo…' : texto) + '</pre>' : '') +
-    '</div>';
+function docsALaVista() {
+  const q = sinTildes($('mf-q').value.trim()), prov = $('md-prov').value, fac = MF.sec === 'facturas';
+  const al = $('md-albor').value, oc = $('md-oc').value, co = $('md-compra').value;
+  return ((MF.datos && MF.datos.docs) || []).filter(function (d) {
+    if (d.seccion !== MF.sec) return false;
+    if (prov && proveedorDoc(d) !== prov) return false;
+    if (fac && al && cargadaDoc(d) !== (al === 'si')) return false;
+    if (fac && oc && conOcDoc(d) !== (oc === 'si')) return false;
+    if (fac && co && !!d.enCompra !== (co === 'si')) return false;
+    if (!q) return true;
+    const f = d.factura || {};
+    return sinTildes([f.numero, f.cuit, (f.cuit || '').replace(/\D/g, ''), f.emisor, f.total, dinero(f.total, f.moneda), d.ordenCompra, d.mail.asunto, d.mail.de, d.nombre].join(' ')).indexOf(q) !== -1;
+  });
 }
 
 function pintarMails() {
   const d = MF.datos;
-  $('mf-gmail').innerHTML = d ? htmlEstadoGmail(d.gmail, d.puede) + (d.puede && d.gmail.conectado ? htmlBancoMails(d.banco) + htmlImpresoraSola(d.impresora) : '') : '';
-  $('mf-gmail').hidden = !d;
-  const l = mailsALaVista();
-  $('mf-lista').innerHTML = !d ? '' : !l.length ? '<p class="nota">' + (d.mails.length ? 'Ningún mail coincide con la búsqueda.' : 'Todavía no entró ningún mail.') + '</p>'
-    : '<p class="nota">' + l.length + ' mail' + (l.length === 1 ? '' : 's') + (d.total > d.mails.length ? ' (los ' + d.mails.length + ' más nuevos de ' + d.total + ')' : '') + '</p>' + l.map(htmlMail).join('');
+  if ($('mf-gmail')) $('mf-gmail').innerHTML = d ? htmlEstadoGmail(d.gmail, d.puede) + (d.puede && d.gmail.conectado ? htmlBancoMails(d.banco) + htmlImpresoraSola(d.impresora) : '') : '';
+  const pr = (d && d.problemas) || [];
+  $('md-problemas').hidden = !pr.length;
+  $('md-problemas').innerHTML = pr.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('');
+  const docs = d ? d.docs || [] : [];
+  $('md-secs').innerHTML = SECCIONES_DOC.map(function (x) {
+    return '<button type="button" class="md-sec' + (MF.sec === x.k ? ' activa' : '') + '" data-sec="' + x.k + '" aria-pressed="' + (MF.sec === x.k) + '">' + esc(x.t) +
+           ' <span class="n">' + docs.filter(function (y) { return y.seccion === x.k; }).length + '</span></button>';
+  }).join('');
+  document.querySelectorAll('#s-cfacturas [data-solo-fac]').forEach(function (el) { el.hidden = MF.sec !== 'facturas'; });
+  const sel = $('md-prov'), v = sel.value, provs = [];
+  docs.forEach(function (x) { const p = proveedorDoc(x); if (x.seccion === MF.sec && p && provs.indexOf(p) === -1) provs.push(p); });
+  provs.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+  sel.innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('');
+  sel.value = provs.indexOf(v) !== -1 ? v : '';
+  const l = docsALaVista();
+  $('mf-lista').innerHTML = !d ? '' : !l.length ? '<p class="nota">' + (docs.length ? 'Nada por acá.' : 'Todavía no entró ningún documento.') + '</p>'
+    : '<p class="nota">' + l.length + (l.length === 1 ? ' documento' : ' documentos') + (d.total > d.mostrados ? ' (de los ' + d.mostrados + ' mails más nuevos de ' + d.total + ')' : '') + '</p>' +
+      l.map(htmlFilaDoc).join('');
 }
 
-/* ---------- Paso 3 (Feli, 14/11): la lectura de cada adjunto, la prueba y la revisión de Feli ---------- */
+function htmlFilaDoc(d) {
+  const ab = !!MF.abiertos[d.id], full = MF.docs[d.id];
+  return '<div class="md-doc' + (ab ? ' abierto' : '') + '">' +
+    '<button type="button" class="md-cab" data-abrir="' + esc(d.id) + '" aria-expanded="' + ab + '">' +
+      '<span class="mf-cab"><span class="mf-de">' + esc(nombreDe(d.mail.de)) + '</span><span class="mf-fecha">' + esc(horaCorta(d.mail.fecha)) + '</span></span>' +
+      '<span class="mf-asunto">' + esc(d.mail.asunto || d.nombre || '(sin asunto)') + (d.noSePudo ? ' <span class="mf-mal">· no se pudo traer</span>' : '') + '</span></button>' +
+    (ab ? '<div class="md-cuerpo">' + htmlDocumento(full || d, { lista: true }) + '</div>' : '') + '</div>';
+}
+
+/* ---------- Un documento: en la lista (abierto) y en la tarjeta del tablero de Facturas ---------- */
 const ICONO_PAPEL = { 'Factura': '🧾', 'Nota de crédito': '↩️', 'Nota de débito': '➕', 'Remito': '📦', 'Recibo': '💵', 'Orden de pago': '💸',
                       'Resumen de cuenta': '📋', 'Presupuesto': '📝', 'Otro papel': '📄', 'Otro archivo': '🗂️', 'Imagen del mail': '🖼️' };
-
-function htmlLecturaAdj(a) {
-  if (a.leyendo) return '<div class="mf-lec nota">🤖 Leyendo…</div>';
-  if (!a.papel) return a.error ? '<div class="mf-lec mf-mal">⚠️ No se pudo leer: ' + esc(a.error) + '</div>' : '';
-  const sinIA = /^(Otro archivo|Imagen del mail)$/.test(a.papel), f = a.factura;
-  let h = '<div class="mf-lec' + (f ? '' : ' mf-noes') + '"><b>' + (ICONO_PAPEL[a.papel] || '📄') + ' ' + esc(a.papel) + '</b>';
-  if (f) {
-    h += ' ' + esc((f.letra ? f.letra + ' ' : '') + (f.numero || 'sin número')) + ' · ' + esc(f.emisor || 'sin proveedor') + (f.cuit ? ' · ' + esc(f.cuit) : '') +
-         (f.fecha ? ' · ' + esc(f.fecha) : '') + (f.total !== null && f.total !== undefined ? ' · <b>' + esc(dinero(f.total, f.moneda)) + '</b>' : '');
-    if (a.ordenCompra) h += ' · OC ' + esc(a.ordenCompra);
-    if (a.original && a.paginas > 1) h += '<br><span class="nota">Original: página' + (a.original.paginas.length > 1 ? 's ' : ' ') + esc(a.original.paginas.join(', ')) + ' de ' + a.paginas + '</span>';
-    if (f.detalle) h += '<br><button type="button" class="btn2 mf-det-b" data-det="' + esc(a.id) + '">' + (MF.detalle[a.id] ? 'Esconder los renglones' : '🔎 Ver los renglones y el IVA (' + f.renglones + ' renglón' + (f.renglones === 1 ? '' : 'es') + ')') + '</button>';
-    if (f.detalle && MF.detalle[a.id]) h += htmlDetalleFacturaMail(f);
-  } else if (!sinIA) h += ' <span class="nota">· no es factura</span>';
-  if (a.resumenMail) h += '<br><span class="nota">💬 ' + esc(a.resumenMail) + '</span>';
-  if (f) h += htmlPegadoMail(a);
-  if (a.impresa) h += '<br><span class="nota">🖨️ Impresa' + (a.impresa.sola ? ' sola' : '') + ' el ' + esc(new Date(a.impresa.cuando).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })) +
-                      (a.impresa.sola ? (a.impresa.compu ? ' en ' + esc(a.impresa.compu) : '') : ' por ' + esc(a.impresa.quien || '')) + (a.impresa.veces > 1 ? ' (' + a.impresa.veces + ' veces)' : '') + '</span>';
-  (a.avisos || []).forEach(function (x) { h += '<br><span class="mf-aviso">⚠️ ' + esc(x) + '</span>'; });
-  if (MF.datos && MF.datos.puede && !sinIA) {
-    const rv = a.revision;
-    h += '<div class="mf-rev">' + (rv ? '<span>' + (rv.ok ? '✅ Bien' : '❌ Mal' + (rv.nota ? ': ' + esc(rv.nota) : '')) + '</span> <button type="button" class="link-gris" data-rev="' + esc(a.id) + '" data-ok="">Cambiar</button>'
-         : '<button type="button" class="btn2" data-rev="' + esc(a.id) + '" data-ok="1">✅ Bien</button><button type="button" class="btn2" data-rev="' + esc(a.id) + '" data-ok="0">❌ Mal</button>') + '</div>';
+function nombrePapel(d) { return { 'Factura': 'factura', 'Remito': 'remito', 'Nota de crédito': 'nota de crédito', 'Nota de débito': 'nota de débito', 'Presupuesto': 'presupuesto', 'Recibo': 'recibo' }[d.papel] || (d.seccion === 'facturas' ? 'factura' : 'documento'); }
+function tituloDoc(d) {
+  const f = d.factura;
+  if (f) return [f.emisor || 'Sin proveedor', f.cuit ? 'CUIT ' + f.cuit : '', (d.papel || 'Factura') + ' ' + ((f.letra ? f.letra + ' ' : '') + (f.numero || 'sin número'))].filter(String).join(' · ');
+  return (ICONO_PAPEL[d.papel] || '📄') + ' ' + (d.papel || 'Documento') + ' · ' + (d.nombre || '');
+}
+function htmlLugarDoc(d) {
+  if (d.enCompra) return '<p class="md-lugar">🛒 En la compra <b>' + esc(d.enCompra.titulo || d.enCompra.id) + '</b> (tablero de Pedidos' + (d.enCompra.orden ? ', OC ' + esc(d.enCompra.orden) : '') + ')' +
+                         (d.enCompra.cargada ? ' · ✅ cargada en Albor' : '') + '</p>';
+  if (d.enFacturas) {
+    const t = d.tablero || {};
+    return '<p class="md-lugar">🧾 En Facturas: <b>' + esc(NOMBRE_COL_FC[d.columna] || 'Entrantes') + '</b>' + (t.col === 'descartada' ? ' (descartada' + (t.motivo ? ': ' + esc(t.motivo) : '') + ')' : '') +
+           (t.albor && t.albor.estado === 'Cargada' ? ' · ✅ cargada en Albor' + (t.albor.referencia ? ' (' + esc(t.albor.referencia) + ')' : '') : '') + '</p>';
   }
+  return '';
+}
+function htmlLecturaDoc(d) {
+  if (d.leyendo) return '<p class="nota">🤖 Leyendo…</p>';
+  if (!d.papel) return d.error ? '<p class="mf-mal">⚠️ No se pudo leer: ' + esc(d.error) + '</p>' : d.estado ? '<p class="mf-mal">⚠️ ' + esc(d.estado) + '</p>' : '<p class="nota">Todavía no se leyó.</p>';
+  const f = d.factura;
+  let h = '<div class="md-lec">';
+  (d.avisos || []).forEach(function (x) { h += '<p class="mf-aviso">⚠️ ' + esc(x) + '</p>'; });
+  if (f) {
+    h += '<p>' + [f.fecha ? 'Fecha ' + esc(f.fecha) : '', f.total !== null && f.total !== undefined ? 'Total <b>' + esc(dinero(f.total, f.moneda)) + '</b>' : '',
+                  d.ordenCompra ? 'Orden de compra ' + esc(d.ordenCompra) : ''].filter(String).join(' · ') + '</p>';
+    if (f.detalle) h += htmlDetalleFacturaMail(f);
+    if (d.original && d.paginas > 1) h += '<p class="nota">Original: página' + (d.original.paginas.length > 1 ? 's ' : ' ') + esc(d.original.paginas.join(', ')) + ' de ' + d.paginas + '</p>';
+  } else if (!/^(Otro archivo|Imagen del mail)$/.test(d.papel)) h += '<p>' + (ICONO_PAPEL[d.papel] || '📄') + ' ' + esc(d.papel) + '</p>';
+  if (d.resumenMail) h += '<p class="nota">💬 En el mail: ' + esc(d.resumenMail) + '</p>';
+  if (d.impresa) h += '<p class="nota">🖨️ Impresa' + (d.impresa.sola ? ' sola' : '') + ' el ' + esc(new Date(d.impresa.cuando).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })) +
+                      (d.impresa.sola ? (d.impresa.compu ? ' en ' + esc(d.impresa.compu) : '') : ' por ' + esc(d.impresa.quien || '')) + '</p>';
   return h + '</div>';
 }
 
-/** Todo lo que leyó de la factura: los renglones, el neto, el IVA de cada tasa, las percepciones y el total. */
+/** Todo lo leído de la factura: los renglones, el neto, el IVA de cada tasa, las percepciones y el total. */
 function htmlDetalleFacturaMail(f) {
   const d = f.detalle, m = f.moneda;
   const num = function (n) { return n === null || n === undefined ? '' : Number(n).toLocaleString('es-AR', { maximumFractionDigits: 4 }); };
@@ -956,90 +1088,130 @@ function htmlDetalleFacturaMail(f) {
   return h;
 }
 
-/* ---------- Paso 4 (Feli, 14/11): con qué compra se pegó ---------- */
+/* La compra que la app propuso (o que no coincide): "Sí, es esta" / "No es de ninguna" (Fase 7, Paso 4) */
 function htmlCompraCorta(c) {
   return esc(c.titulo || c.id) + (c.proveedor ? ' · ' + esc(c.proveedor) : '') + (c.total !== null && c.total !== undefined ? ' · ' + esc(dinero(c.total, c.moneda)) + ' sin IVA' : '') +
          (c.orden ? ' · OC ' + esc(c.orden) : '') + (c.donde ? ' · ' + esc(c.donde) : '');
 }
-function htmlPegadoMail(a) {
-  const c = a.compra;
-  if (!c || !c.estado) return MF.datos && MF.datos.banco && MF.datos.banco.pegar ? '<div class="mf-peg nota">🔎 Buscando su compra…</div>' : '';
-  const puede = true;                                  // contabilidad y Feli (el servidor controla)
-  let h = '<div class="mf-peg">';
-  if (c.estado === 'adjuntada') {
-    h += '<b>🔗 ' + (c.como === 'mano' ? 'Adjuntada' : '🤖 Adjuntada sola') + '</b> a ' + esc(c.titulo || c.id) +
-         (c.como === 'orden' ? ' <span class="nota">(por el número de orden)</span>' : c.como === 'montos' ? ' <span class="nota">(coincide en el total y en cada producto)</span>' : '') +
-         (c.avisos || []).map(function (x) { return '<br><span class="mf-aviso">⚠️ ' + esc(x) + '</span>'; }).join('') +
-         '<div class="mf-rev"><button type="button" class="btn2" data-ctab="' + esc(c.id) + '">Ver la compra</button>' +
-         (puede ? '<button type="button" class="btn2" data-peg="deshacer" data-adj="' + esc(a.id) + '">Deshacer</button>' : '') + '</div>';
-  } else if (c.estado === 'no coincide') {
-    h += '<b>⛔ No coincide con la orden' + (c.orden ? ' ' + esc(c.orden) : '') + '</b> (' + esc(c.titulo || c.id) + '):' +
-         (c.motivos || []).map(function (x) { return '<br><span class="mf-aviso">• ' + esc(x) + '</span>'; }).join('') +
-         '<div class="mf-rev"><button type="button" class="btn2" data-ctab="' + esc(c.id) + '">Ver la compra</button>' +
-         '<button type="button" class="btn2" data-peg="elegir" data-adj="' + esc(a.id) + '" data-w="' + esc(c.id) + '">Adjuntar igual</button></div>';
-  } else if (c.estado === 'propuesta') {
-    h += '<b>❓ ¿Es de alguna de estas compras?</b>' + (c.nota ? ' <span class="nota">' + esc(c.nota) + '</span>' : '') +
-         (c.candidatas || []).map(function (x) {
-           return '<div class="mf-cand"><span>' + htmlCompraCorta(x) + (x.motivos && x.motivos.length ? '<br><span class="mf-aviso">⚠️ ' + x.motivos.map(esc).join(' · ') + '</span>' : '') + '</span>' +
-                  '<button type="button" class="btn2" data-peg="elegir" data-adj="' + esc(a.id) + '" data-w="' + esc(x.id) + '">Sí, es esta</button></div>';
-         }).join('') +
-         '<div class="mf-rev"><button type="button" class="link-gris" data-peg="ninguna" data-adj="' + esc(a.id) + '">No es de ninguna</button></div>';
-  } else if (c.estado === 'ya tiene') {
-    h += '<span class="nota">La compra ' + esc(c.titulo || c.id) + (c.orden ? ' (OC ' + esc(c.orden) + ')' : '') + ' ya tiene su factura adjuntada a mano.</span>';
-  } else if (c.estado === 'deshecha') {
-    h += '<span class="nota">↩️ Se deshizo' + (c.reemplazada ? ' (la reemplazaron en la compra)' : '') + ' por ' + esc(c.quien || '') + '. Queda para la bandeja.</span>';
-  } else {
-    h += '<span class="nota">📭 ' + (c.descartada ? 'No es de ninguna compra de la app' : 'No hay una compra de este proveedor en la app') + ': queda para la bandeja.</span>';
+function htmlPegadoDoc(d) {
+  const c = d.compra;
+  if (!c || !c.estado) return '';
+  if (c.estado === 'no coincide') {
+    return '<div class="md-peg"><b>⛔ Dice la orden' + (c.orden ? ' ' + esc(c.orden) : '') + ', pero no coincide con esa compra</b> (' + esc(c.titulo || c.id) + '):' +
+      (c.motivos || []).map(function (x) { return '<br><span class="mf-aviso">• ' + esc(x) + '</span>'; }).join('') +
+      '<div class="mf-botones"><button type="button" class="btn2" data-peg="elegir" data-adj="' + esc(d.id) + '" data-w="' + esc(c.id) + '">Es de esa compra igual</button></div></div>';
   }
-  return h + '</div>';
+  if (c.estado === 'propuesta') {
+    return '<div class="md-peg"><b>❓ ¿Es de alguna de estas compras?</b>' + (c.nota ? ' <span class="nota">' + esc(c.nota) + '</span>' : '') +
+      (c.candidatas || []).map(function (x) {
+        return '<div class="mf-cand"><span>' + htmlCompraCorta(x) + (x.motivos && x.motivos.length ? '<br><span class="mf-aviso">⚠️ ' + x.motivos.map(esc).join(' · ') + '</span>' : '') + '</span>' +
+               '<button type="button" class="btn2" data-peg="elegir" data-adj="' + esc(d.id) + '" data-w="' + esc(x.id) + '">Sí, es esta</button></div>';
+      }).join('') +
+      '<div class="mf-botones"><button type="button" class="link-gris" data-peg="ninguna" data-adj="' + esc(d.id) + '">No es de ninguna</button></div></div>';
+  }
+  return '';
 }
 
-async function accionPegado(b) {
-  const que = b.dataset.peg, id = b.dataset.adj;
-  let r;
-  if (que === 'deshacer') {
-    const si = await dialogo({ titulo: 'Deshacer', texto: 'La factura sale de esa compra y queda en 📥 Facturas (y el mail vuelve a Recibidos). No se vuelve a pegar sola.',
-                               botones: [{ texto: 'Deshacer', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
-    if (!si) return;
-    r = await api('deshacerFacturaMail', id);
-  } else {
-    b.disabled = true;
-    notaAd('mf-nota', que === 'ninguna' ? 'Guardando…' : '🔗 Adjuntando… (la compara con la compra)');
-    r = que === 'ninguna' ? await api('elegirCompraMail', id, '') : await apiLenta('elegirCompraMail', id, b.dataset.w);
-  }
-  notaAd('mf-nota', '');
-  if (!r.ok) { b.disabled = false; return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad'); }
-  MF.datos.mails.forEach(function (m) { m.adjuntos.forEach(function (a) { if (a.id === id) a.compra = r.pegado; }); });
+/** El cuerpo de un documento. op.lista: en Documentos ("Ver en tablero"); op.tablero: la tarjeta de Facturas (las notas primero). */
+function htmlDocumento(d, op) {
+  op = op || {};
+  if (d.noSePudo) return '<p class="mf-mal">⚠️ Este mail no se pudo traer (era muy pesado para el servidor): abrilo en Gmail.</p>' + htmlVerMailDoc(d);
+  const notas = htmlNotasCt(d.comentarios, d.notasEn || d.id);
+  let h = '<h3 class="md-tit">' + esc(tituloDoc(d)) + '</h3>' + htmlLugarDoc(d);
+  if (op.tablero) h += htmlAccionesFactura(d) + notas;
+  h += htmlLecturaDoc(d);
+  if (op.tablero) h += htmlPegadoDoc(d);
+  else h += notas;
+  h += '<div class="md-pie"><div>' + (d.mail && (d.mail.texto || (d.otros && d.otros.length) || d.mail.resumen) ? '<button type="button" class="link-gris" data-vermail="' + esc(d.id) + '">' + (MF.verMail[d.id] ? 'Esconder el mail' : 'Ver mail') + '</button>' : '') + '</div>' +
+       '<div class="md-pie-d">' + (d.archivo ? '<button type="button" class="btn2" data-ver="' + esc(d.archivo) + '">Ver ' + esc(nombrePapel(d)) + '</button>' : '') +
+       (op.lista && (d.enCompra || d.enFacturas) ? '<button type="button" class="btn2" data-entablero="' + esc(d.id) + '">Ver en tablero</button>' : '') + '</div></div>';
+  return h + (MF.verMail[d.id] ? htmlVerMailDoc(d) : '');
+}
+function htmlVerMailDoc(d) {
+  const t = MF.textos[d.mail.id];
+  return '<div class="md-mail"><p class="nota">De: ' + esc(d.mail.de) + ' · ' + esc(horaCorta(d.mail.fecha)) + '</p>' +
+    '<pre class="mf-texto">' + esc(!d.mail.texto ? d.mail.resumen || '(sin texto)' : t === undefined ? 'Abriendo…' : t) + '</pre>' +
+    (d.otros && d.otros.length ? '<div class="mf-adjs">' + d.otros.map(function (x) {
+      return x.archivo ? '<button type="button" class="mf-adj" data-ver="' + esc(x.archivo) + '">' + (ICONO_PAPEL[x.papel] || '📎') + ' ' + esc(x.nombre) + '</button>' : '';
+    }).join('') + '</div>' : '') + '</div>';
+}
+
+async function verMailDoc(id, repintar) {
+  MF.verMail[id] = !MF.verMail[id];
+  repintar();
+  const d = docPorId(id);
+  if (!MF.verMail[id] || !d || !d.mail.texto || MF.textos[d.mail.id] !== undefined) return;
+  const r = await api('verArchivo', d.mail.texto);
+  if (!r.ok) { MF.textos[d.mail.id] = r.sinConexion ? '📶 Hace falta señal para abrirlo.' : r.error; repintar(); return; }
+  const bin = atob(r.datos), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  MF.textos[d.mail.id] = new TextDecoder('utf-8').decode(bytes);
+  repintar();
+}
+function docPorId(id) {
+  if (CD.d && CD.d.id === id) return CD.d;
+  return MF.docs[id] || ((MF.datos && MF.datos.docs) || []).filter(function (x) { return x.id === id; })[0] || null;
+}
+
+async function abrirFilaDoc(id) {
+  MF.abiertos[id] = !MF.abiertos[id];
+  pintarMails();
+  const d = docPorId(id);
+  if (!MF.abiertos[id] || !d || d.noSePudo) return;
+  const r = await api('getDocumento', id);
+  if (!r.ok) { notaMF(r.sinConexion ? '📶 Hace falta señal para ver las notas.' : r.error); return; }
+  MF.docs[id] = r;
   pintarMails();
 }
 
-/** "🔗 Buscar las compras": de a una factura (la página repite). */
-async function pegarMailsUI() {
-  let n = 0, adj = 0, fallas = 0;
-  for (let vuelta = 0; vuelta < 150; vuelta++) {
-    notaAd('mf-nota', '🔗 Buscando la compra de cada factura… ' + (n ? n + ' hechas' + (adj ? ', ' + adj + ' adjuntadas solas' : '') : ''));
-    const r = await apiLenta('pegarMailsAhora');
-    if (!r.ok) {
-      if (!r.sinConexion && ++fallas <= 3) { await new Promise(function (ok) { setTimeout(ok, 4000); }); continue; }
-      notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
-    }
-    fallas = 0; n += r.r.pegadas; adj += r.r.adjuntadas;
-    if (MF.datos) MF.datos.banco = r.banco;
-    if (!r.r.quedan) { notaAd('mf-nota', '✅ Listo: ' + n + ' facturas miradas, ' + adj + ' adjuntadas solas a su compra.'); break; }
-  }
-  const nota = $('mf-nota').textContent;
-  MF.cargando = false;
-  await cargarMails();
-  notaAd('mf-nota', nota);
+/** "Sí, es esta" / "Es de esa compra igual" / "No es de ninguna" (y después de pegarla, se recarga lo que se esté mirando). */
+async function accionPegado(b, despues) {
+  const que = b.dataset.peg, id = b.dataset.adj;
+  b.disabled = true;
+  aviso(que === 'ninguna' ? 'Guardando…' : '🔗 Adjuntando… (la compara con la compra)');
+  const r = que === 'ninguna' ? await api('elegirCompraMail', id, '') : await apiLenta('elegirCompraMail', id, b.dataset.w);
+  if (!r.ok) { b.disabled = false; return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad'); }
+  aviso(que === 'ninguna' ? 'Listo: queda en Facturas.' : 'Listo: la factura quedó en su compra (tablero de Pedidos).');
+  if (que !== 'ninguna') return abrir('ctarjeta', { id: b.dataset.w });
+  if (despues) despues();
 }
+
+$('mf-q').addEventListener('input', pintarMails);
+['md-prov', 'md-albor', 'md-oc', 'md-compra'].forEach(function (id) { $(id).addEventListener('change', pintarMails); });
+['mf-desde', 'mf-hasta'].forEach(function (id) { $(id).addEventListener('change', cargarMails); });
+$('mf-refrescar').addEventListener('click', function () { MF.docs = {}; cargarMails(); });
+$('s-cfacturas').addEventListener('click', function (e) {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.sec) { MF.sec = b.dataset.sec; pintarMails(); }
+  else if (b.dataset.abrir) abrirFilaDoc(b.dataset.abrir);
+  else if (b.dataset.ver) verArchivo(b.dataset.ver);
+  else if (b.dataset.vermail) verMailDoc(b.dataset.vermail, pintarMails);
+  else if (b.dataset.nota) agregarNotaUI(b, function () { delete MF.docs[b.dataset.nota]; Object.keys(MF.docs).forEach(function (k) { if (MF.docs[k].notasEn === b.dataset.nota) abrirOtraVez(k); }); abrirOtraVez(b.dataset.nota); });
+  else if (b.dataset.entablero) {
+    const d = docPorId(b.dataset.entablero);
+    if (d && d.enCompra) abrir('ctarjeta', { id: d.enCompra.id });
+    else abrir('cdoc', { id: b.dataset.entablero });
+  }
+});
+/** Vuelve a pedir un documento abierto en la lista (después de una nota). */
+async function abrirOtraVez(id) {
+  if (!MF.abiertos[id]) return;
+  const r = await api('getDocumento', id);
+  if (r.ok) { MF.docs[id] = r; pintarMails(); }
+}
+
+/* ---------- Ajustes → 📥 Mails e impresora (Feli): conectar, la lectura, el pegado y la impresora ---------- */
+$('s-cmails').addEventListener('click', function (e) {
+  const b = e.target.closest('button');
+  if (b && b.dataset.mf) accionGmail(b.dataset.mf);
+});
 
 function htmlBancoMails(b) {
   if (!b) return '';
   const pc = b.revisados ? Math.round(b.bien / b.revisados * 100) : null;
-  return '<div class="mf-banco"><p><b>🧪 Prueba de lectura</b>: leídos ' + b.conIA + ' de ' + b.tope + ' con la IA' +
-    (b.leidos > b.conIA ? ' (y ' + (b.leidos - b.conIA) + ' sin la IA)' : '') + ' · revisados ' + b.revisados +
-    (b.revisados ? ' (✅ ' + b.bien + ', ❌ ' + b.mal + ': <b>' + pc + ' % bien</b>)' : '') + ' · costó US$ ' + b.costo.toFixed(2).replace('.', ',') + '</p>' +
-    '<p class="nota">La meta: 95 de cada 100 bien. ✅ si están bien qué papel es y, en una factura, el CUIT, la letra, el número, la fecha y el total.</p>' +
+  return '<div class="mf-banco"><p><b>🤖 Lectura</b>: leídos ' + b.leidos + ' · la prueba: ' + b.conIA + ' de ' + b.tope + ' con la IA' +
+    (b.revisados ? ' (revisados ' + b.revisados + ': <b>' + pc + ' % bien</b>)' : '') + ' · la prueba costó US$ ' + b.costo.toFixed(2).replace('.', ',') + '</p>' +
     '<div class="mf-botones">' + (b.conIA < b.tope ? '<button type="button" class="btn" data-mf="leer">🤖 Leer la muestra</button>' : '') +
     '<button type="button" class="btn2" data-mf="leersolos">' + (b.leer ? '⏸️ Apagar la lectura de los nuevos' : '🤖 Leer solos los mails nuevos') + '</button>' +
     (b.leer ? '<span class="nota">Los mails nuevos se leen solos.</span>' : '') + '</div>' +
@@ -1048,6 +1220,26 @@ function htmlBancoMails(b) {
     (b.paraPegar ? '<button type="button" class="btn" data-mf="pegar">🔗 Buscar las compras ahora</button>' : '') +
     '<button type="button" class="btn2" data-mf="pegarsolas">' + (b.pegar ? '⏸️ Apagar el pegado solo' : '🔗 Pegar solas las nuevas') + '</button>' +
     (b.costoTotal > b.costo ? '<span class="nota">Total gastado en lecturas: US$ ' + b.costoTotal.toFixed(2).replace('.', ',') + '</span>' : '') + '</div></div>';
+}
+
+/** "🔗 Buscar las compras": de a una factura (la página repite). */
+async function pegarMailsUI() {
+  let n = 0, adj = 0, fallas = 0;
+  for (let vuelta = 0; vuelta < 150; vuelta++) {
+    notaMF('🔗 Buscando la compra de cada factura… ' + (n ? n + ' hechas' + (adj ? ', ' + adj + ' adjuntadas solas' : '') : ''));
+    const r = await apiLenta('pegarMailsAhora');
+    if (!r.ok) {
+      if (!r.sinConexion && ++fallas <= 3) { await new Promise(function (ok) { setTimeout(ok, 4000); }); continue; }
+      notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
+    }
+    fallas = 0; n += r.r.pegadas; adj += r.r.adjuntadas;
+    if (MF.datos) MF.datos.banco = r.banco;
+    if (!r.r.quedan) { notaMF('✅ Listo: ' + n + ' facturas miradas, ' + adj + ' adjuntadas solas a su compra.'); break; }
+  }
+  const nota = $('mf-nota').textContent;
+  MF.cargando = false;
+  await cargarMails();
+  notaMF(nota);
 }
 
 /* ---------- Feli (16/11): la cuenta de la impresora, con la llave en su acceso directo ---------- */
@@ -1092,77 +1284,29 @@ async function armarAccesoImpresora() {
 async function leerMuestraUI() {
   let n = 0, fallas = 0;
   for (let vuelta = 0; vuelta < 120; vuelta++) {
-    notaAd('mf-nota', '🤖 Leyendo la muestra… ' + (n ? n + ' leídos' : ''));
+    notaMF('🤖 Leyendo la muestra… ' + (n ? n + ' leídos' : ''));
     const r = await apiLenta('leerMailsAhora', { muestra: true });
     if (!r.ok) {
       if (!r.sinConexion && ++fallas <= 3) { await new Promise(function (ok) { setTimeout(ok, 4000); }); continue; }
-      notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
+      notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
     }
     fallas = 0;
     n += r.r.leidas;
     if (MF.datos) MF.datos.banco = r.banco;
     if (vuelta % 3 === 2) { MF.cargando = false; await cargarMails(); }
-    if (!r.r.quedan || r.banco.conIA >= r.banco.tope) { notaAd('mf-nota', '✅ Listo: ' + n + ' leídos. Ahora revisalos con ✅ / ❌ (filtro «Para revisar»).'); break; }
+    if (!r.r.quedan || r.banco.conIA >= r.banco.tope) { notaMF('✅ Listo: ' + n + ' leídos.'); break; }
   }
   const nota = $('mf-nota').textContent;
   MF.cargando = false;
   await cargarMails();
-  notaAd('mf-nota', nota);
-}
-
-async function revisarLecturaUI(id, ok) {
-  let nota = '';
-  if (ok === '') {                                 // "Cambiar": se saca la marca
-    const r = await api('revisarLecturaMail', id, null, '');
-    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
-    ponerRevision(id, null);
-    return;
-  }
-  if (ok === '0') {
-    const campo = document.createElement('input');
-    campo.type = 'text'; campo.placeholder = 'Qué está mal (por ejemplo: el total, el número)'; campo.maxLength = 300;
-    const v = await dialogo({ titulo: '❌ Lectura mal', texto: '¿Qué leyó mal? (opcional)', cuerpo: campo, alAbrir: function () { campo.focus(); },
-      botones: [{ texto: 'Guardar', clase: 'btn', valor: function () { return { nota: campo.value.trim() }; } }, { texto: 'Volver', valor: null }] });
-    if (!v) return;
-    nota = v.nota;
-  }
-  const r = await api('revisarLecturaMail', id, ok === '1', nota);
-  if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
-  ponerRevision(id, r.revision);
-}
-
-/** Pone la revisión en lo cargado y recalcula el resumen de la prueba sin volver a pedir todo. */
-function ponerRevision(id, rv) {
-  const b = MF.datos.banco;
-  MF.datos.mails.forEach(function (m) {
-    m.adjuntos.forEach(function (a) {
-      if (a.id !== id) return;
-      if (m.muestra && a.revision) { b.revisados--; if (a.revision.ok) b.bien--; else b.mal--; }
-      a.revision = rv;
-      if (m.muestra && rv) { b.revisados++; if (rv.ok) b.bien++; else b.mal++; }
-    });
-  });
-  pintarMails();
-}
-
-async function verTextoMail(id) {
-  MF.abiertos[id] = !MF.abiertos[id];
-  pintarMails();
-  if (!MF.abiertos[id] || MF.textos[id] !== undefined) return;
-  const m = MF.datos.mails.filter(function (x) { return x.id === id; })[0];
-  const r = await api('verArchivo', m.texto);
-  if (!r.ok) { MF.textos[id] = r.sinConexion ? '📶 Hace falta señal para abrirlo.' : r.error; pintarMails(); return; }
-  const bin = atob(r.datos), bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  MF.textos[id] = new TextDecoder('utf-8').decode(bytes);
-  pintarMails();
+  notaMF(nota);
 }
 
 async function accionGmail(que) {
   if (que === 'conectar') {
-    notaAd('mf-nota', 'Abriendo Google…');
+    notaMF('Abriendo Google…');
     const r = await api('gmailConectar');
-    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+    if (!r.ok) { notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
     location.href = r.url;
     return;
   }
@@ -1173,7 +1317,7 @@ async function accionGmail(que) {
   if (que === 'pegarsolas') {
     const prender = !(MF.datos.banco && MF.datos.banco.pegar);
     const r = await api('gmailPegar', prender);
-    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+    if (!r.ok) { notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
     MF.datos.banco.pegar = r.pegar;
     pintarMails();
     return;
@@ -1187,7 +1331,7 @@ async function accionGmail(que) {
       if (!si) return;
     }
     const r = await api('gmailLeer', prender);
-    if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+    if (!r.ok) { notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
     MF.datos.banco.leer = r.leer;
     pintarMails();
     return;
@@ -1206,11 +1350,11 @@ async function accionGmail(que) {
       botones: [{ texto: '⏸️ Apagar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
     if (!si) return;
   }
-  notaAd('mf-nota', 'Guardando…');
+  notaMF('Guardando…');
   const r = await api('gmailModo', modo, desde);
-  if (!r.ok) { notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
+  if (!r.ok) { notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error); return; }
   MF.datos.gmail = r;
-  notaAd('mf-nota', '');
+  notaMF('');
   pintarMails();
   if (modo) await traerMailsUI();
 }
@@ -1219,23 +1363,23 @@ async function accionGmail(que) {
 async function traerMailsUI() {
   let total = 0, etiquetados = 0, fallas = 0;
   for (let vuelta = 0; vuelta < 80; vuelta++) {
-    notaAd('mf-nota', '⬇️ Trayendo los mails… ' + (total ? total + ' nuevos hasta ahora' : ''));
+    notaMF('⬇️ Trayendo los mails… ' + (total ? total + ' nuevos hasta ahora' : ''));
     const r = await apiLenta('traerMailsAhora');
     if (!r.ok) {
       // Si el servidor se cayó con un mail pesado, se reintenta: a la tercera, ese mail queda "No se pudo traer" y se sigue
-      if (!r.sinConexion && ++fallas <= 4) { notaAd('mf-nota', '⬇️ Un mail costó más de la cuenta; sigo en unos segundos…'); await new Promise(function (ok) { setTimeout(ok, 5000); }); continue; }
-      notaAd('mf-nota', r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
+      if (!r.sinConexion && ++fallas <= 4) { notaMF('⬇️ Un mail costó más de la cuenta; sigo en unos segundos…'); await new Promise(function (ok) { setTimeout(ok, 5000); }); continue; }
+      notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error); break;
     }
     fallas = 0;
     if (r.r.ocupado) {                          // el reloj está trayendo: se espera un poco y se sigue
-      notaAd('mf-nota', '⬇️ El reloj de la app está trayendo mails; sigo en unos segundos…');
+      notaMF('⬇️ El reloj de la app está trayendo mails; sigo en unos segundos…');
       await new Promise(function (ok) { setTimeout(ok, 15000); });
       continue;
     }
     total += r.r.nuevos; etiquetados += r.r.etiquetados;
     if (MF.datos) MF.datos.gmail = r.gmail;
     if (!r.r.quedan) {
-      notaAd('mf-nota', '✅ Listo: ' + total + ' mail' + (total === 1 ? '' : 's') + ' nuevo' + (total === 1 ? '' : 's') +
+      notaMF('✅ Listo: ' + total + ' mail' + (total === 1 ? '' : 's') + ' nuevo' + (total === 1 ? '' : 's') +
              (etiquetados ? ' · ' + etiquetados + ' quedaron con la etiqueta en Gmail' : '') + (r.r.errores ? ' · ' + r.r.errores + ' con error (se reintentan solos)' : '') + '.');
       break;
     }
@@ -1243,24 +1387,287 @@ async function traerMailsUI() {
   MF.cargando = false;
   const n = $('mf-nota').textContent;
   await cargarMails();
-  notaAd('mf-nota', n);
+  notaMF(n);
 }
 
-$('mf-q').addEventListener('input', pintarMails);
-$('mf-ver').addEventListener('change', pintarMails);
-['mf-desde', 'mf-hasta'].forEach(function (id) { $(id).addEventListener('change', cargarMails); });
-$('mf-refrescar').addEventListener('click', cargarMails);
-$('s-cfacturas').addEventListener('click', function (e) {
+
+/* ============================================================
+   FASE 7, PASO 5 (Feli, 16/11): 🧾 EL TABLERO DE FACTURAS
+   ------------------------------------------------------------
+   Las facturas que no quedaron en una compra de la app (servicios, combustible, luz, fletes…): Entrantes → Controlando →
+   Esperando aprobación → Lista para cargar → Finalizado (7 días; después, 📚 Historial). La tarjeta se abre como las del
+   tablero de Compras (pantalla cdoc): lo de Documentos, las notas bien a la vista y los botones "Mandar a controlar",
+   "Mandar a aprobar" (WhatsApp a Adolfo; él aprueba o no desde la misma tarjeta) y "Lista para cargar". "Cargar en Albor"
+   (todas las de Lista para cargar) llega con el Paso 6: mientras, "Ya la cargué en Albor" en cada una.
+   ============================================================ */
+pantalla('cfac', { titulo: 'Facturas', tab: 'cfac', alMostrar: mostrarFacturasT });
+pantalla('cdoc', { titulo: 'Factura', tab: 'cfac', alMostrar: mostrarDoc });
+const FC = { datos: null, cargando: false, verHist: false, historial: null };
+const CD = { id: null, d: null };
+const COLS_FC = ['entrantes', 'controlando', 'aprobacion', 'lista', 'finalizado'];
+
+async function mostrarFacturasT() {
+  if (!FC.datos) notaAd('fc-estado', 'Cargando…');
+  pintarFacturasT();
+  await cargarFacturasT();
+  if (FC.verHist) cargarHistorialFacturas();
+}
+async function cargarFacturasT() {
+  if (FC.cargando) return;
+  FC.cargando = true;
+  const r = await api('getTableroFacturas');
+  FC.cargando = false;
+  if (!r.ok) { notaAd('fc-estado', r.sinConexion ? '📶 Poca señal: se ve lo último que se cargó. Se actualiza solo cuando vuelva.' : r.error); return; }
+  FC.datos = r;
+  notaAd('fc-estado', '');
+  pintarFacturasT();
+}
+async function cargarHistorialFacturas() {
+  const r = await api('getTableroFacturas', true);
+  if (!r.ok) { notaAd('fc-estado', r.sinConexion ? '📶 Hace falta señal para ver el Historial.' : r.error); if (FC.historial === null) FC.historial = []; pintarFacturasT(); return; }
+  FC.historial = r.historial || [];
+  pintarFacturasT();
+}
+
+function conAvisosDoc(d) { return !!((d.avisos && d.avisos.length) || d.error || d.repetida || (d.compra && ['propuesta', 'no coincide'].indexOf(d.compra.estado) !== -1)); }
+function pasaFiltrosFacturas(d) {
+  const q = sinTildes($('fc-q').value.trim()), prov = $('fc-prov').value, f = d.factura || {};
+  if (prov && proveedorDoc(d) !== prov) return false;
+  if ($('fc-avisos').checked && !conAvisosDoc(d)) return false;
+  return !q || sinTildes([f.numero, f.cuit, (f.cuit || '').replace(/\D/g, ''), f.emisor, f.total, dinero(f.total, f.moneda), d.mail.asunto, d.mail.de, d.nombre,
+                          d.tablero.ultimaNota ? d.tablero.ultimaNota.texto : ''].join(' ')).indexOf(q) !== -1;
+}
+
+function htmlTarjetaFactura(d) {
+  const f = d.factura, t = d.tablero || {}, ap = t.aprobacion, n = t.ultimaNota;
+  return '<div class="tarjeta ct-t fc-t" data-doc="' + esc(d.id) + '" role="button" tabindex="0">' +
+    '<div class="mf-cab"><span class="mf-de">' + esc(nombreDe(d.mail.de)) + '</span><span class="mf-fecha">' + esc(horaCorta(d.mail.fecha)) + '</span></div>' +
+    '<div class="t">' + esc(d.mail.asunto || d.nombre) + '</div>' +
+    (f ? '<div class="sub-t">' + esc([f.emisor, f.numero ? (f.letra ? f.letra + ' ' : '') + f.numero : ''].filter(Boolean).join(' · ')) +
+         (f.total !== null && f.total !== undefined ? ' · <b>' + esc(dinero(f.total, f.moneda)) + '</b>' : '') + '</div>'
+       : '<div class="sub-t">' + (d.leyendo || !d.papel ? '🤖 Leyendo…' : esc(d.papel)) + '</div>') +
+    (ap && ap.estado === 'Esperando' ? '<div class="fc-marca">⏳ Esperando a ' + esc(ap.aprueba) + '</div>' : '') +
+    (ap && ap.estado === 'Aprobada' ? '<div class="fc-marca ok">✅ Aprobada por ' + esc(ap.decidio) + '</div>' : '') +
+    (ap && ap.estado === 'No aprobada' && t.col === 'controlando' ? '<div class="fc-marca mal">❌ No aprobada' + (ap.motivo ? ': ' + esc(ap.motivo) : '') + '</div>' : '') +
+    (d.compra && d.compra.estado === 'propuesta' ? '<div class="fc-marca">❓ ¿Es de una compra?</div>' : '') +
+    (d.compra && d.compra.estado === 'no coincide' ? '<div class="fc-marca">⛔ Dice una orden de compra, pero no coincide</div>' : '') +
+    ((d.avisos && d.avisos.length) || d.repetida ? '<div class="fc-marca">⚠️ ' + (d.repetida ? 'Repetida' : d.avisos.length === 1 ? '1 aviso' : d.avisos.length + ' avisos') + '</div>' : '') +
+    (n ? '<div class="fc-nota">💬 <b>' + esc(n.autor) + ':</b> ' + esc(n.texto) + (t.notas > 1 ? ' <span class="nota">(+' + (t.notas - 1) + ')</span>' : '') + '</div>' : '') +
+    (t.col === 'descartada' ? '<div class="ct-hist-f">🗑️ Descartada' + (t.motivo ? ': ' + esc(t.motivo) : '') + '</div>' :
+     FC.verHist && t.desde ? '<div class="ct-hist-f">Finalizado desde el ' + esc(fechaCt(t.desde)) + '</div>' : '') + '</div>';
+}
+
+function pintarFacturasT() {
+  const d = FC.datos;
+  $('fc-hist-b').setAttribute('aria-pressed', FC.verHist ? 'true' : 'false');
+  $('fc-hist-b').textContent = FC.verHist ? '← Volver al tablero' : '📚 Historial';
+  if (!d) { $('fc-cols').innerHTML = ''; return; }
+  const sel = $('fc-prov'), v = sel.value, provs = [];
+  COLS_FC.forEach(function (k) { (d[k] || []).forEach(function (x) { const p = proveedorDoc(x); if (p && provs.indexOf(p) === -1) provs.push(p); }); });
+  provs.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+  sel.innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('');
+  sel.value = provs.indexOf(v) !== -1 ? v : '';
+  if (FC.verHist) {
+    const l = (FC.historial || []).filter(pasaFiltrosFacturas);
+    $('fc-cols').innerHTML = '<div class="ct-hist-h"><h3>📚 Historial <span class="n">' + l.length + '</span></h3>' +
+      '<small class="nota">Las facturas que pasaron 7 días en Finalizado y las descartadas.</small></div>' +
+      (FC.historial === null ? '<p class="nota">Cargando…</p>' : '<div class="ct-hist">' + (l.map(htmlTarjetaFactura).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>');
+  } else {
+    $('fc-cols').innerHTML = COLS_FC.map(function (k) {
+      const l = (d[k] || []).filter(pasaFiltrosFacturas);
+      return '<div class="ct-col"><h3>' + esc(NOMBRE_COL_FC[k]) + ' <span class="n">' + l.length + '</span></h3>' +
+        (k === 'lista' && l.length ? '<button type="button" class="btn2 ct-albor-todas" id="fc-albor-todas">🧾 Cargar en Albor</button>' : '') +
+        (l.map(htmlTarjetaFactura).join('') || '<p class="nota ct-vacia">Nada por acá.</p>') + '</div>';
+    }).join('');
+    if ($('fc-albor-todas')) $('fc-albor-todas').addEventListener('click', function () {
+      dialogo({ titulo: '🧾 Cargar en Albor', texto: 'Cargar en Albor las facturas sin orden de compra llega con el Paso 6 (falta conocer cómo se cargan en Albor). ' +
+                'Mientras, cargalas a mano y tocá «Ya la cargué en Albor» en cada una: pasa a Finalizado.', botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
+    });
+  }
+  document.querySelectorAll('#fc-cols [data-doc]').forEach(function (el) {
+    const abrirla = function () { abrir('cdoc', { id: el.dataset.doc }); };
+    el.addEventListener('click', abrirla);
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter') abrirla(); });
+  });
+}
+
+['fc-q', 'fc-prov', 'fc-avisos'].forEach(function (id) { $(id).addEventListener(id === 'fc-q' ? 'input' : 'change', pintarFacturasT); });
+$('fc-refrescar').addEventListener('click', function () { cargarFacturasT(); if (FC.verHist) cargarHistorialFacturas(); });
+$('fc-hist-b').addEventListener('click', function () { FC.verHist = !FC.verHist; pintarFacturasT(); if (FC.verHist) cargarHistorialFacturas(); });
+$('fc-imprimir-b').hidden = !hayMouse();
+$('fc-imprimir-b').addEventListener('click', function () { abrir('cimprimir'); });
+$('fc-subir-b').addEventListener('click', function () { $('fc-subir').click(); });
+
+/** "＋ Subir factura" (una que llegó en papel o por WhatsApp): PDF o foto, hasta 6 MB. Entra a Entrantes y la IA la lee. */
+$('fc-subir').addEventListener('change', async function (e) {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const tipo = f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : '');
+  if (!/^application\/pdf$|^image\/(jpeg|png|webp)$/.test(tipo)) return aviso('La factura tiene que ser un PDF o una foto.', 'bad');
+  if (f.size > 6 * 1024 * 1024) return aviso('El archivo pesa más de 6 MB.', 'bad');
+  aviso('Subiendo la factura…');
+  const base64 = await new Promise(function (ok, mal) {
+    const fr = new FileReader();
+    fr.onload = function () { ok(String(fr.result).replace(/^data:[^,]*,/, '')); };
+    fr.onerror = mal;
+    fr.readAsDataURL(f);
+  });
+  const x = await apiLenta('subirFacturaDoc', { id: 'SUB' + nuevoId(), nombre: f.name, tipo: tipo, base64: base64 });
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: la factura se sube con señal. Probá de nuevo en un rato.' : x.error, 'bad');
+  aviso('🤖 Leyendo la factura… (tarda unos segundos)');
+  abrir('cdoc', { id: x.id });
+  const l = await apiLenta('leerDocumentoAhora', x.id);
+  if (l.ok && CD.id === x.id) { CD.d = l; pintarDoc(); }
+  aviso(l.ok ? 'Listo: la factura está en Entrantes.' : 'La factura quedó en Entrantes; la IA la lee en un rato.');
+  cargarFacturasT();
+});
+
+/* ---------- La tarjeta abierta (un documento) ---------- */
+async function mostrarDoc(datos) {
+  if (datos && datos.id && datos.id !== CD.id) { CD.id = datos.id; CD.d = null; $('cd-cuerpo').innerHTML = ''; }
+  notaAd('cd-estado', CD.d ? '' : 'Cargando…');
+  await cargarDoc();
+}
+async function cargarDoc() {
+  const id = CD.id;
+  if (!id) return;
+  const r = await api('getDocumento', id);
+  if (CD.id !== id) return;
+  if (!r.ok) { notaAd('cd-estado', r.sinConexion ? '📶 Hace falta señal para abrir la factura.' : r.error); return; }
+  CD.d = r;
+  notaAd('cd-estado', '');
+  pintarDoc();
+}
+function pintarDoc() {
+  const d = CD.d;
+  if (!d) return;
+  $('b-titulo').textContent = d.enFacturas ? 'Factura' : 'Documento';
+  $('cd-cuerpo').innerHTML = htmlDocumento(d, { tablero: d.enFacturas, lista: !d.enFacturas });
+}
+
+/** Los botones de la tarjeta de Facturas, según la columna (Feli, 16/11). Quien aprueba ve primero "Aprobar" / "No aprobar". */
+function htmlAccionesFactura(d) {
+  const col = d.columna, ap = d.tablero.aprobacion, b = function (que, txt, clase) { return '<button type="button" class="' + (clase || 'btn2') + '" data-fc="' + que + '">' + txt + '</button>'; };
+  let h = '';
+  if (ap && ap.estado === 'Esperando') {
+    h += '<div class="caja fc-aprob' + (ap.aprueba === APP.yo.nombre ? ' tuya' : '') + '"><b>⏳ Esperando la aprobación de ' + esc(ap.aprueba) + '</b>' +
+         '<small class="nota">La mandó ' + esc(ap.pidio) + ' el ' + esc(horaCorta(ap.fecha)) + (ap.nota ? ': «' + esc(ap.nota) + '»' : '') + '</small>' +
+         (ap.aprueba === APP.yo.nombre ? '<div class="mf-botones">' + b('aprobar', '✅ Aprobar', 'btn') + b('noaprobar', '❌ No aprobar') + '</div>' : '') + '</div>';
+  } else if (ap && ap.estado === 'No aprobada' && col === 'controlando') {
+    h += '<div class="caja cx-sinorden"><b>❌ ' + esc(ap.decidio) + ' no la aprobó</b><small>' + esc(ap.motivo || '') + '</small></div>';
+  } else if (ap && ap.estado === 'Aprobada' && col !== 'finalizado' && col !== 'historial') {
+    h += '<p class="md-lugar">✅ La aprobó ' + esc(ap.decidio) + ' el ' + esc(horaCorta(ap.decidida)) + '.</p>';
+  }
+  const bs = [];
+  if (col === 'entrantes') bs.push(b('controlando', 'Mandar a controlar'), b('aprobar-pedir', 'Mandar a aprobar'), b('lista', 'Lista para cargar'));
+  else if (col === 'controlando') bs.push(b('aprobar-pedir', 'Mandar a aprobar'), b('lista', 'Lista para cargar'), b('entrantes', 'Volver a Entrantes', 'link-gris'));
+  else if (col === 'aprobacion') bs.push(b('controlando', 'Mandar a controlar'), b('lista', 'Lista para cargar'));
+  else if (col === 'lista') bs.push(b('cargada', 'Ya la cargué en Albor', 'btn'), b('controlando', 'Mandar a controlar'), b('aprobar-pedir', 'Mandar a aprobar'));
+  else bs.push(b('entrantes', 'Volver a Entrantes'));
+  if (col !== 'finalizado' && col !== 'historial') bs.push(b('compra', 'Es de una compra…', 'link-gris'), b('descartar', '🗑️ Descartar', 'link-gris'));
+  return h + '<div class="mf-botones fc-acciones">' + bs.join('') + '</div>';
+}
+
+async function accionFactura(que) {
+  const d = CD.d, id = d.id;
+  let x;
+  if (['controlando', 'lista', 'entrantes'].indexOf(que) !== -1) {
+    if (que === 'lista' && d.columna === 'aprobacion' && !(await dialogo({ titulo: 'Lista para cargar', texto: 'Todavía espera la aprobación de ' + d.tablero.aprobacion.aprueba + '. ¿La pasás igual?',
+        botones: [{ texto: 'Sí, pasarla', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] }))) return;
+    x = await api('moverFactura', id, que);
+  } else if (que === 'aprobar-pedir') {
+    const nombre = (FC.datos && FC.datos.aprueba) || d.aprueba || 'quien aprueba';
+    const t = document.createElement('textarea');
+    t.rows = 3; t.maxLength = 1000; t.placeholder = 'Por ejemplo: es el service del tractor, ¿lo aprobás?'; t.className = 'fc-msj';
+    const v = await dialogo({ titulo: 'Mandar a aprobar', texto: 'A ' + nombre + ' le llega un WhatsApp con la factura y el link. Si querés, sumale un mensaje:', cuerpo: t, alAbrir: function () { t.focus(); },
+      botones: [{ texto: '📨 Mandar', clase: 'btn', valor: function () { return { nota: t.value.trim() }; } }, { texto: 'Volver', valor: null }] });
+    if (!v) return;
+    aviso('Mandando…');
+    x = await api('mandarAprobarFactura', id, { id: 'A' + nuevoId(), nota: v.nota });
+    if (x.ok) aviso('📨 Listo: le llegó a ' + nombre + '.');
+  } else if (que === 'aprobar') {
+    x = await api('decidirAprobacionFactura', id, true, '');
+    if (x.ok) aviso('✅ Aprobada: pasó a Lista para cargar.');
+  } else if (que === 'noaprobar') {
+    const c = document.createElement('input');
+    c.type = 'text'; c.maxLength = 500; c.placeholder = 'Por qué no';
+    const v = await dialogo({ titulo: '❌ No aprobar', texto: '¿Por qué no se aprueba? Vuelve a Controlando con el motivo como nota.', cuerpo: c, alAbrir: function () { c.focus(); },
+      botones: [{ texto: 'No aprobar', clase: 'btn', valor: function () { return { m: c.value.trim() }; } }, { texto: 'Volver', valor: null }] });
+    if (!v) return;
+    x = await api('decidirAprobacionFactura', id, false, v.m);
+  } else if (que === 'cargada') {
+    const c = document.createElement('div');
+    c.className = 'cuerpo';
+    c.innerHTML = '<div class="campo"><label for="fc-ref">Referencia en Albor <small>(opcional)</small></label><input type="text" id="fc-ref" maxlength="40" autocomplete="off" placeholder="Ej: 2026-COM-6150"></div>';
+    const v = await dialogo({ titulo: '¿Ya está cargada en Albor?', texto: 'Pasa a Finalizado (7 días; después, al Historial).', cuerpo: c,
+      botones: [{ texto: 'Sí, ya está cargada', clase: 'btn', valor: function () { return { ref: $('fc-ref').value.trim() }; } }, { texto: 'Volver', valor: null }] });
+    if (!v) return;
+    x = await api('facturaCargadaAMano', id, v.ref);
+  } else if (que === 'descartar') {
+    const c = document.createElement('input');
+    c.type = 'text'; c.maxLength = 500; c.placeholder = 'Por ejemplo: no es nuestra, ya estaba cargada';
+    const v = await dialogo({ titulo: '🗑️ Descartar', texto: '¿Por qué se descarta? Va al Historial (desde ahí se puede volver a Entrantes).', cuerpo: c, alAbrir: function () { c.focus(); },
+      botones: [{ texto: 'Descartar', clase: 'btn', valor: function () { return { m: c.value.trim() }; } }, { texto: 'Volver', valor: null }] });
+    if (!v) return;
+    x = await api('descartarFactura', id, v.m);
+  } else if (que === 'compra') return elegirCompraDeFactura(d);
+  if (!x) return;
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
+  cargarDoc();
+  cargarFacturasT();
+}
+
+/** "Es de una compra…": las compras sin factura (primero las de ese proveedor); al elegir una, la factura pasa a Pedidos. */
+async function elegirCompraDeFactura(d) {
+  aviso('Buscando las compras…');
+  const r = await api('comprasParaFactura', d.id);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad');
+  aviso('');
+  const c = document.createElement('div');
+  c.className = 'cuerpo fc-compras';
+  c.innerHTML = !r.compras.length ? '<p class="nota">No hay compras sin factura en Compradas ni en Recibidas.</p>' :
+    r.compras.map(function (x) {
+      return '<button type="button" class="fc-compra" data-w="' + esc(x.id) + '"><b>' + esc(x.proveedor || 'Sin proveedor') + '</b>' + (x.mismo ? ' <span class="tag">mismo CUIT</span>' : '') +
+             '<small>' + htmlCompraCorta(Object.assign({}, x, { proveedor: '' })) + '</small></button>';
+    }).join('');
+  let elegida = null;
+  await dialogo({ titulo: '¿De qué compra es?', cuerpo: c, botones: [{ texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      c.querySelectorAll('[data-w]').forEach(function (b) { b.addEventListener('click', function () { elegida = b.dataset.w; if (cerrarDialogoActual) cerrarDialogoActual(null); }); });
+    } });
+  if (!elegida) return;
+  aviso('🔗 Adjuntando… (la compara con la compra)');
+  const x = await apiLenta('elegirCompraMail', d.id, elegida);
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
+  aviso('Listo: la factura quedó en su compra (tablero de Pedidos).');
+  cargarFacturasT();
+  abrir('ctarjeta', { id: elegida });
+}
+
+$('s-cdoc').addEventListener('click', function (e) {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.mf) accionGmail(b.dataset.mf);
+  if (b.dataset.fc) accionFactura(b.dataset.fc);
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
-  else if (b.dataset.texto) verTextoMail(b.dataset.texto);
-  else if (b.dataset.rev) revisarLecturaUI(b.dataset.rev, b.dataset.ok);
-  else if (b.dataset.det) { MF.detalle[b.dataset.det] = !MF.detalle[b.dataset.det]; pintarMails(); }
-  else if (b.dataset.peg) accionPegado(b);
-  else if (b.dataset.ctab) abrir('ctarjeta', { id: b.dataset.ctab });
+  else if (b.dataset.vermail) verMailDoc(b.dataset.vermail, pintarDoc);
+  else if (b.dataset.nota) agregarNotaUI(b, cargarDoc);
+  else if (b.dataset.peg) accionPegado(b, function () { cargarDoc(); cargarFacturasT(); });
+  else if (b.dataset.entablero) { if (CD.d && CD.d.enCompra) abrir('ctarjeta', { id: CD.d.enCompra.id }); }
 });
+
+/* Al instante: el canal de siempre avisa cuando cambia algo (y sin canal, cada 20 s mientras se mira) */
+alCambiar(function (c) {
+  if (c.que !== 'tablero' && c.que !== 'conectado') return;
+  const p = document.body.dataset.pantalla;
+  if (p === 'cfac') cargarFacturasT();
+});
+// Los mails no avisan por el canal: el tablero de Facturas se pide cada 30 s mientras se mira
+setInterval(function () {
+  if (document.hidden) return;
+  const p = document.body.dataset.pantalla;
+  if (p === 'cfac') cargarFacturasT();
+}, 30000);
 
 
 /* ============================================================

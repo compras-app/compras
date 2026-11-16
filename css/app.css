@@ -1277,3 +1277,66 @@ body[data-pantalla="cimpresora"] .contenido{max-width:700px}
 .mf-cand .btn2{width:auto;flex:0 0 auto;padding:4px 10px;font-size:13px}
 .cx-fac-mail{font-size:13px;margin:6px 0}
 .ip-destino{width:100%;font:12px/1.4 monospace;word-break:break-all;margin-top:8px}
+
+/* Fase 7, Paso 5 (Feli, 16/11): Contabilidad en tres tableros (Facturas, Pedidos y Documentos) */
+.md-problemas{border-left:4px solid var(--warn);background:var(--warn-soft);border-radius:8px;padding:8px 12px;margin-bottom:10px}
+.md-problemas p{margin:3px 0;font-size:14px}
+.md-secs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.md-sec{width:auto;flex:0 0 auto;border:1px solid var(--line);background:transparent;color:inherit;border-radius:18px;padding:6px 14px;font-size:14px;cursor:pointer}
+.md-sec .n{color:var(--muted);font-weight:400}
+.md-sec.activa{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.md-sec.activa .n{color:inherit;opacity:.8}
+.md-doc{border:1px solid var(--line);border-radius:10px;background:var(--col);min-width:0}
+.md-doc.abierto{border-color:var(--accent)}
+.md-cab{display:block;width:100%;text-align:left;background:transparent;border:0;color:inherit;padding:10px 12px;cursor:pointer;font:inherit}
+.md-cab .mf-cab{display:flex}
+.md-cuerpo{padding:0 12px 12px;border-top:1px solid var(--line)}
+.md-tit{margin:10px 0 4px;font-size:16px;overflow-wrap:anywhere}
+.md-lugar{font-size:13px;margin:2px 0 8px}
+.md-lec p{margin:4px 0}
+.md-pie{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-top:10px}
+.md-pie-d{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.md-pie-d .btn2{width:auto}
+.md-mail{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px}
+.md-peg{border-left:4px solid var(--warn);border-radius:6px;padding:8px 10px;margin:8px 0;font-size:14px}
+.cx-notas h3{margin-top:0}
+.cx-nota{border-bottom:1px solid var(--line);padding:6px 0}
+.cx-nota:last-of-type{border-bottom:0}
+.cx-nota-c{display:flex;gap:8px;align-items:baseline;font-size:13px}
+.cx-nota-c small{color:var(--muted)}
+.cx-nota-t{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:2px}
+.cx-nota-nueva{display:flex;gap:8px;align-items:flex-end;margin-top:8px}
+.cx-nota-nueva textarea{flex:1;min-width:0;resize:vertical}
+.cx-nota-nueva .btn2{width:auto;flex:0 0 auto}
+.fc-t .mf-cab{display:flex;gap:8px;justify-content:space-between;font-size:12px;color:var(--muted)}
+.fc-marca{font-size:12px;font-weight:600;margin-top:4px;color:var(--warn)}
+.fc-marca.ok{color:var(--accent)}
+.fc-marca.mal{color:var(--danger)}
+.fc-nota{font-size:13px;margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(127,127,127,.12);overflow-wrap:anywhere}
+.fc-aprob{border-left:4px solid var(--warn)}
+.fc-aprob.tuya{border-left-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset}
+.fc-aprob small{display:block;margin-top:2px}
+.fc-acciones{margin:6px 0 12px}
+.fc-msj{width:100%;box-sizing:border-box}
+.fc-compras{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow:auto}
+.fc-compra{text-align:left;background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:inherit;cursor:pointer;font:inherit}
+.fc-compra small{display:block;color:var(--muted);margin-top:2px}
+.fc-compra:hover{border-color:var(--accent)}
+.ct-albor-todas{width:100%;margin:0 0 10px}
+.ct-sinoc{font-size:12px;color:var(--muted);margin-bottom:4px}
+.ct-pend{border:2px solid var(--danger)}
+.cx-sinoc{border-left:4px solid var(--line)}
+.cx-sinoc b{display:block}
+.cx-sinoc small{color:var(--muted)}
+.cx-coincide{margin:0;font-weight:600}
+.cx-coincide.grave{color:var(--danger)}
+.cx-coincide.aviso{color:var(--warn)}
+.cx-pidio{margin:2px 0 8px}
+.cx-cmp-w{overflow-x:auto}
+.cx-cmp td:nth-child(2),.cx-cmp td:nth-child(3){white-space:normal}
+.cx-cmp-tot td{font-weight:600;border-top:2px solid var(--line)}
+.cx-cmp-pie{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.cx-cmp-pie div{display:flex;justify-content:center}
+.cx-cmp-pie .btn2{width:auto}
+.cx-nota-nueva textarea{font:inherit}
+@media (max-width:600px){.cx-nota-nueva{flex-direction:column;align-items:stretch}.cx-nota-nueva .btn2{width:100%}}

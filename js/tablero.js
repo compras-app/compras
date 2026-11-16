@@ -605,8 +605,16 @@ async function moverA(ref, destino, despuesDe) {
   }
   const op = { columna: destino, despuesDe: despuesDe, desde: t.columna };
   const seccionCol = function (c) { const x = columnasTb().filter(function (k) { return k.columna === c; })[0]; return x ? x.seccion : ''; };
-  // Feli (13/11): a Entregas solo desde el cuadro comparativo (desde la Tanda verde, Cotización o Stand by no se pasa a mano)
-  if (destino !== t.columna && seccionCol(destino) === 'Entregas' && seccionCol(t.columna) !== 'Entregas' && !TB.reabiertos[ref]) {
+  // Feli (16/11: la curva PVC volvió de En armado a Decisión): lo que está en Entregas no vuelve a Cotización (ni a la Tanda ni a Stand by)
+  if (destino !== t.columna && seccionCol(t.columna) === 'Entregas' && seccionCol(destino) && seccionCol(destino) !== 'Entregas' && seccionCol(destino) !== 'Cerrado') {
+    pintarTablero();
+    await dialogo({ titulo: 'No vuelve a Cotización', texto: 'Esta tarjeta ya está en Entregas: no vuelve a Cotización. Si la compra no va, anulala desde la tarjeta («Anular la compra»).',
+      botones: [{ texto: 'Entendido', clase: 'btn', valor: true }] });
+    return;
+  }
+  // Feli (13/11): a Entregas solo desde el cuadro comparativo (desde la Tanda verde, Cotización o Stand by no se pasa a mano).
+  // Una tarjeta que ya tiene su compra (16/11: la que volvió para atrás antes de esta regla) sí vuelve.
+  if (destino !== t.columna && seccionCol(destino) === 'Entregas' && seccionCol(t.columna) !== 'Entregas' && !TB.reabiertos[ref] && !t.comprado) {
     pintarTablero();
     const abrir = await dialogo({ titulo: 'Se compra desde el cuadro', texto: 'La compra se debe confirmar desde el cuadro comparativo.',
       botones: [{ texto: 'Volver', valor: null }, { texto: '📊 Abrir el cuadro comparativo', clase: 'btn', valor: true }] });
@@ -1133,6 +1141,11 @@ window.addEventListener('popstate', function () {
 window.addEventListener('hashchange', function () {
   const ref = decodeURIComponent(location.hash.slice(1));
   if (ref === 'cuenta') { if (APP.token && !$('app').hidden) abrir('cuenta'); return; }
+  // Fase 7, Paso 5 (Feli, 16/11): el link de una factura de Contabilidad (el WhatsApp de "Mandar a aprobar" o de una mención)
+  if (/^doc=/.test(ref)) {
+    if (APP.token && !$('app').hidden && modoContable()) { history.replaceState(null, '', location.pathname + location.search); abrir('cdoc', { id: ref.slice(4) }); }
+    return;
+  }
   if (ref && APP.token && !$('app').hidden && TB.abierta !== ref) abrirPorLink(ref);
 });
 $('tj-cerrar').addEventListener('click', cerrarTarjeta);

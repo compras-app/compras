@@ -121,15 +121,18 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
       <span class="t-largo">Nuevo pedido</span><span class="t-corto">Nuevo</span>
     </a>
-    <!-- Fase 6, Paso 4: las pestañas del apartado de Contabilidad (contabilidad.js) -->
+    <!-- Fase 7, Paso 5 (Feli, 16/11): las pestañas de Contabilidad: Facturas, Pedidos, Documentos y después lo demás (contabilidad.js) -->
+    <button class="tab" type="button" data-tab="cfac" data-conta hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>
+      Facturas
+    </button>
     <button class="tab" type="button" data-tab="contabilidad" data-conta hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"/><rect x="10" y="4" width="5" height="11" rx="1.5"/><rect x="17" y="4" width="4" height="7" rx="1.5"/></svg>
-      Tablero
+      Pedidos
     </button>
-    <!-- Fase 7, Paso 2 (Feli, 14/11): los mails de las facturas (contabilidad.js) -->
     <button class="tab" type="button" data-tab="cfacturas" data-conta hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/></svg>
-      Facturas
+      Documentos
     </button>
     <button class="tab" type="button" data-tab="creportes" data-conta hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
@@ -394,6 +397,8 @@
         <input type="search" id="ct-q" placeholder="Buscar proveedor, producto, pedido, orden o factura…" autocomplete="off" aria-label="Buscar">
         <select id="ct-sitio" aria-label="Sitio"><option value="">Todos los sitios</option></select>
         <select id="ct-cuenta" aria-label="Cuenta"><option value="">Todas las cuentas</option></select>
+        <select id="ct-prov" aria-label="Proveedor"><option value="">Todos los proveedores</option></select>
+        <label class="pa-check"><input type="checkbox" id="ct-avisos"> Con avisos</label>
         <label class="pa-check"><input type="checkbox" id="ct-sinorden"> Sin orden de compra</label>
         <button type="button" class="btn-chico" id="ct-hist-b" aria-pressed="false">📚 Historial</button>
         <button type="button" class="btn-chico" id="ct-imprimir-b" hidden>🖨️ Imprimir facturas</button>
@@ -435,18 +440,46 @@
       <p class="nota">Esta ventana imprime sola cada factura que llega por mail (solo las facturas y solo el original). Puede quedar minimizada, pero no la cierres.</p>
       <div class="ip-lista" id="ip-lista"></div>
     </section>
-    <!-- Fase 7, Paso 2 (Feli, 14/11): 📥 Facturas, los mails con adjuntos de la cuenta de las facturas (contabilidad.js) -->
+    <!-- Fase 7, Paso 5 (Feli, 16/11): 📄 Documentos, todo lo que llegó por mail, por apartado (contabilidad.js) -->
     <section id="s-cfacturas" hidden>
-      <div class="caja mf-gmail" id="mf-gmail"></div>
+      <div class="md-problemas" id="md-problemas" hidden></div>
+      <div class="md-secs" id="md-secs" role="tablist"></div>
       <div class="ct-filtros">
-        <input type="search" id="mf-q" placeholder="Buscar por quién lo mandó, asunto, archivo, número o CUIT…" autocomplete="off">
-        <select id="mf-ver" aria-label="Qué mails ver"><option value="">Todos</option><option value="revisar">Para revisar</option><option value="facturas">Con factura</option><option value="avisos">Con aviso ⚠️</option><option value="noes">No son facturas</option><option value="sinleer">Sin leer</option><option value="adjuntadas">Adjuntadas a su compra</option><option value="elegir">Para elegir la compra</option><option value="sincompra">Sin compra</option></select>
+        <input type="search" id="mf-q" placeholder="Buscar por número, CUIT, monto, proveedor o asunto…" autocomplete="off">
+        <select id="md-prov" aria-label="Proveedor"><option value="">Todos los proveedores</option></select>
+        <select id="md-albor" aria-label="Cargada en Albor" data-solo-fac><option value="">Cargada en Albor o no</option><option value="si">Cargada en Albor</option><option value="no">No cargada en Albor</option></select>
+        <select id="md-oc" aria-label="Orden de compra" data-solo-fac><option value="">Con o sin orden de compra</option><option value="si">Con orden de compra</option><option value="no">Sin orden de compra</option></select>
+        <select id="md-compra" aria-label="En una compra" data-solo-fac><option value="">En una compra o no</option><option value="si">En una compra</option><option value="no">No está en una compra</option></select>
         <label class="ci-fecha">Desde <input type="date" id="mf-desde"></label>
         <label class="ci-fecha">Hasta <input type="date" id="mf-hasta"></label>
         <button type="button" class="refrescar" id="mf-refrescar" aria-label="Actualizar"><span class="ic">↻</span></button>
       </div>
-      <p class="nota ad-estado" id="mf-nota" role="status" aria-live="polite"></p>
+      <p class="nota ad-estado" id="md-nota" role="status" aria-live="polite"></p>
       <div class="mf-lista" id="mf-lista"></div>
+    </section>
+    <!-- Fase 7 (Feli): lo de conectar el Gmail, la lectura, el pegado y la impresora, en Ajustes → 📥 Mails e impresora -->
+    <section id="s-cmails" hidden>
+      <div class="caja mf-gmail" id="mf-gmail"></div>
+      <p class="nota ad-estado" id="mf-nota" role="status" aria-live="polite"></p>
+    </section>
+    <!-- Fase 7, Paso 5 (Feli, 16/11): 🧾 el tablero de Facturas y la tarjeta de un documento (contabilidad.js) -->
+    <section id="s-cfac" hidden>
+      <div class="ct-filtros">
+        <input type="search" id="fc-q" placeholder="Buscar por número, CUIT, monto o proveedor…" autocomplete="off" aria-label="Buscar">
+        <select id="fc-prov" aria-label="Proveedor"><option value="">Todos los proveedores</option></select>
+        <label class="pa-check"><input type="checkbox" id="fc-avisos"> Con avisos</label>
+        <button type="button" class="btn-chico" id="fc-hist-b" aria-pressed="false">📚 Historial</button>
+        <button type="button" class="btn-chico" id="fc-subir-b">＋ Subir factura</button>
+        <button type="button" class="btn-chico" id="fc-imprimir-b" hidden>🖨️ Imprimir facturas</button>
+        <button type="button" class="refrescar" id="fc-refrescar" aria-label="Actualizar"><span class="ic">↻</span></button>
+      </div>
+      <p class="nota ad-estado" id="fc-estado" role="status" aria-live="polite"></p>
+      <div class="ct-cols fc-cols" id="fc-cols"></div>
+      <input type="file" id="fc-subir" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp" hidden>
+    </section>
+    <section id="s-cdoc" hidden>
+      <p class="nota ad-estado" id="cd-estado" role="status" aria-live="polite"></p>
+      <div id="cd-cuerpo"></div>
     </section>
     <section id="s-ctarjeta" hidden>
       <p class="nota ad-estado" id="cx-estado" role="status" aria-live="polite"></p>
@@ -491,6 +524,7 @@
       <div class="ad-menu">
         <button type="button" class="ad-op" data-ir="cuentas"><span class="ic" aria-hidden="true">📒</span><b>Cuentas contables</b><small>Las cuentas de las órdenes de compra, sus centros de costos y quién ve cada una</small></button>
         <button type="button" class="ad-op" data-ir="bienes"><span class="ic" aria-hidden="true">🚜</span><b>Bienes de uso</b><small>Vehículos y generadores: un pedido para uno de ellos va sin orden de compra</small></button>
+        <button type="button" class="ad-op" data-ir="cmails" id="caj-mails" hidden><span class="ic" aria-hidden="true">📥</span><b>Mails e impresora</b><small>El Gmail de las facturas, la lectura, el pegado con las compras y la impresora sola</small></button>
       </div>
     </section>
 

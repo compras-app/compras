@@ -1017,7 +1017,15 @@ async function cargarOrdenEnAlbor(wid) {
     if (mano) cargarOrdenAManoUI(wid);
     return false;
   }
-  const d = await api('datosOrdenAlbor', wid);
+  // Feli (16/11): si el servidor no contesta (se cortó a los 21 s), se prueba de nuevo antes de rendirse; quien la dejó
+  // "Armando" la puede volver a pedir enseguida
+  let d;
+  for (let i = 1; i <= 3; i++) {
+    d = await api('datosOrdenAlbor', wid);
+    if (d.ok || !(d.reintentar || d.lento || d.sinConexion) || i === 3) break;
+    aviso('El servidor tardó: pruebo de nuevo (' + (i + 1) + ' de 3)…');
+    await new Promise(function (ok) { setTimeout(ok, 2000 * i); });
+  }
   if (!d.ok) { aviso(d.sinConexion ? '📶 Hace falta señal para cargar la orden.' : d.error, 'bad'); return false; }
   OC_ALBOR.abrir('Cargando la orden de compra en Albor');
   // "Cancelar la carga" siempre a mano: si la pestaña de Albor se traba o se cierra, la app no se queda esperando
@@ -1028,8 +1036,17 @@ async function cargarOrdenEnAlbor(wid) {
     };
   });
   let r;
-  try { r = await Promise.race([window.AlborExt.api.cargar_orden_compra(d.orden), abandono]); }
-  catch (e) { r = { ok: false, motivo: String(e && e.message || e) }; }
+  // Feli (16/11: comprando varias seguidas, la siguiente chocaba con la anterior, que la extensión todavía estaba
+  // terminando): si la extensión está ocupada, se espera hasta 2 minutos y medio en vez de fallar
+  const hastaOcupada = Date.now() + 150000;
+  for (;;) {
+    try { r = await Promise.race([window.AlborExt.api.cargar_orden_compra(d.orden), abandono]); }
+    catch (e) { r = { ok: false, motivo: String(e && e.message || e) }; }
+    if (r.ok || r.cancelado || !/Ya se está trabajando en Albor/.test(r.motivo || '') || Date.now() > hastaOcupada) break;
+    window.__alborLog('La carga anterior en Albor todavía no terminó: espero un momento…');
+    const corto = await Promise.race([new Promise(function (ok) { setTimeout(function () { ok(null); }, 4000); }), abandono]);
+    if (corto) { r = corto; break; }
+  }
   if (!r.ok || !r.numero) {
     const reg = registroAlbor();
     OC_ALBOR.cerrar();
