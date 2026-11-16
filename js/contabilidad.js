@@ -900,7 +900,7 @@ function htmlMail(m) {
 
 function pintarMails() {
   const d = MF.datos;
-  $('mf-gmail').innerHTML = d ? htmlEstadoGmail(d.gmail, d.puede) + (d.puede && d.gmail.conectado ? htmlBancoMails(d.banco) : '') : '';
+  $('mf-gmail').innerHTML = d ? htmlEstadoGmail(d.gmail, d.puede) + (d.puede && d.gmail.conectado ? htmlBancoMails(d.banco) + htmlImpresoraSola(d.impresora) : '') : '';
   $('mf-gmail').hidden = !d;
   const l = mailsALaVista();
   $('mf-lista').innerHTML = !d ? '' : !l.length ? '<p class="nota">' + (d.mails.length ? 'Ningún mail coincide con la búsqueda.' : 'Todavía no entró ningún mail.') + '</p>'
@@ -1050,6 +1050,44 @@ function htmlBancoMails(b) {
     (b.costoTotal > b.costo ? '<span class="nota">Total gastado en lecturas: US$ ' + b.costoTotal.toFixed(2).replace('.', ',') + '</span>' : '') + '</div></div>';
 }
 
+/* ---------- Feli (16/11): la cuenta de la impresora, con la llave en su acceso directo ---------- */
+function htmlImpresoraSola(e) {
+  if (!e) return '';
+  const hace = e.ultima ? Math.round((Date.now() - new Date(e.ultima).getTime()) / 60000) : null;
+  return '<div class="mf-banco"><p><b>🖨️ Impresora sola</b>: ' +
+    (!e.llave ? 'todavía no se armó su acceso directo.' :
+     hace === null ? 'el acceso directo está armado; todavía no se conectó.' :
+     (hace <= 3 ? '✅ conectada' : '⚠️ sin noticias desde hace ' + (hace < 120 ? hace + ' minutos' : Math.round(hace / 60) + ' horas')) + (e.compu ? ' (' + esc(e.compu) + ')' : '') + '.') + '</p>' +
+    '<p class="nota">Entra sola con la llave de su acceso directo (sin código). Si pasa media hora sin conectarse en horario de trabajo, te llega una 🔔 a vos y a contabilidad.</p>' +
+    '<div class="mf-botones"><button type="button" class="btn2" data-mf="llaveimp">' + (e.llave ? '🔑 Armar un acceso directo nuevo' : '🖨️ Armar el acceso directo de la impresora') + '</button></div></div>';
+}
+
+async function armarAccesoImpresora() {
+  const ya = MF.datos && MF.datos.impresora && MF.datos.impresora.llave;
+  if (ya) {
+    const si = await dialogo({ titulo: 'Un acceso directo nuevo', texto: 'Se arma una llave nueva: el acceso directo que ya está instalado deja de entrar y hay que reemplazarlo por el nuevo.',
+                               botones: [{ texto: 'Armar uno nuevo', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+    if (!si) return;
+  }
+  const r = await api('crearLlaveImpresora');
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad');
+  const url = location.origin + location.pathname + '?ap=contabilidad&impresora=1#llave=' + r.llave;
+  const destino = '"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --user-data-dir="C:\\ImpresoraFacturas" --kiosk-printing --app="' + url + '"';
+  const caja = document.createElement('div');
+  caja.innerHTML = '<p class="nota">Copialo y pegalo en el acceso directo de la compu de la impresora (clic derecho en el escritorio → Nuevo → Acceso directo). Es secreto: no lo mandes por WhatsApp ni lo pegues en otro lado.</p>';
+  const t = document.createElement('textarea');
+  t.readOnly = true; t.rows = 5; t.value = destino; t.className = 'ip-destino';
+  caja.appendChild(t);
+  await dialogo({ titulo: '🖨️ El acceso directo de la impresora', cuerpo: caja, alAbrir: function () { t.select(); },
+    botones: [{ texto: '📋 Copiar', clase: 'btn', valor: function () {
+      try { navigator.clipboard.writeText(destino); } catch (e) { t.select(); document.execCommand('copy'); }
+      aviso('📋 Copiado. Pegalo en el acceso directo de la compu de la impresora.');
+      return true;
+    } }, { texto: 'Cerrar', valor: null }] });
+  MF.cargando = false;
+  await cargarMails();
+}
+
 /** Lee la muestra de a un archivo (la página repite) hasta el tope de la prueba. */
 async function leerMuestraUI() {
   let n = 0, fallas = 0;
@@ -1131,6 +1169,7 @@ async function accionGmail(que) {
   if (que === 'traer') return traerMailsUI();
   if (que === 'leer') return leerMuestraUI();
   if (que === 'pegar') return pegarMailsUI();
+  if (que === 'llaveimp') return armarAccesoImpresora();
   if (que === 'pegarsolas') {
     const prender = !(MF.datos.banco && MF.datos.banco.pegar);
     const r = await api('gmailPegar', prender);
@@ -1271,7 +1310,7 @@ async function vueltaImpresora() {
   if (IP.ocupada || IP.pausada) return;
   IP.ocupada = true;
   try {
-    const r = await api('impresoraPendientes');
+    const r = await api('impresoraPendientes', nombreCompuImpresora());
     IP.ultima = Date.now();
     if (!r.ok) { IP.error = r.sinConexion ? '📶 Sin señal: sigue cuando vuelva' : r.error; return; }
     IP.error = ''; IP.esperan = r.esperan;

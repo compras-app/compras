@@ -1276,3 +1276,4 @@ body[data-pantalla="cimpresora"] .contenido{max-width:700px}
 .mf-cand{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:6px 0}
 .mf-cand .btn2{width:auto;flex:0 0 auto;padding:4px 10px;font-size:13px}
 .cx-fac-mail{font-size:13px;margin:6px 0}
+.ip-destino{width:100%;font:12px/1.4 monospace;word-break:break-all;margin-top:8px}

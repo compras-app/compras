@@ -18,8 +18,34 @@ function mostrarLogin(id) {
 /** Para base.js: no recargar la app por una versión nueva mientras se escribe el código. */
 function enMedioDeEntrar() { return !$('login').hidden && !$('p-codigo').hidden; }
 
+/* Fase 7, Paso 3-bis (Feli, 16/11): la compu de la impresora entra sola con la llave de su acceso directo
+   (…&impresora=1#llave=…: después de "#", no viaja a ningún servidor). La llave queda guardada en esa compu; si la sesión
+   se pierde, entra de nuevo sola. */
+const K_LLAVE_IMP = 'compras_impresora_llave';
+function llaveImpresora() {
+  if (!/[?&]impresora=1\b/.test(location.search)) return '';
+  const m = /llave=([a-f0-9]{64})/.exec(location.hash);
+  if (m) { guardado.guardar(K_LLAVE_IMP, m[1]); history.replaceState(null, '', location.pathname + location.search); }
+  return guardado.leer(K_LLAVE_IMP) || '';
+}
+async function entrarConLlave(llave) {
+  mostrarLogin('p-cargando');
+  let r;
+  try { r = await llamar('entrarImpresora', [llave, dispositivo()]); }
+  catch (e) { r = { ok: false, red: true }; }
+  if (!r.ok) {
+    errorGeneral(r.red ? '📶 Sin conexión: la impresora entra sola cuando vuelva (prueba cada minuto).' : r.error);
+    if (r.red || r.reintentar) setTimeout(function () { entrarConLlave(llave); }, 60000);
+    return;
+  }
+  guardado.guardar(K.token, r.token);
+  guardado.guardar(K.desde, new Date().toISOString());
+  iniciar(r.token);
+}
+
 function arrancar() {
-  const token = guardado.leer(K.token);
+  const token = guardado.leer(K.token), llave = llaveImpresora();
+  if (!token && llave) return entrarConLlave(llave);
   if (!token) return entrarDeCero();
   APP.token = token;
   const inicio = guardado.leerJSON(K.inicio, null);
@@ -113,6 +139,8 @@ function sesionPerdida(texto) {
   guardado.borrar(K.estilo);
   delete document.documentElement.dataset.estilo;
   if (typeof TB !== 'undefined') { TB.datos = null; TB.filtros = null; TB.cancelados = {}; if (TB.abierta) ocultarTarjeta(); }
+  const llave = llaveImpresora();
+  if (llave) return entrarConLlave(llave);        // la impresora: entra sola de nuevo (Feli, 16/11)
   entrarDeCero(texto);
 }
 
