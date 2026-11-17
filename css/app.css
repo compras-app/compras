@@ -1340,3 +1340,6 @@ body[data-pantalla="cimpresora"] .contenido{max-width:700px}
 .cx-cmp-pie .btn2{width:auto}
 .cx-nota-nueva textarea{font:inherit}
 @media (max-width:600px){.cx-nota-nueva{flex-direction:column;align-items:stretch}.cx-nota-nueva .btn2{width:100%}}
+/* Feli (17/11): el tablero de Facturas a lo ancho de toda la pantalla, con las columnas repartidas */
+body[data-pantalla="cfac"] .contenido{max-width:none}
+.fc-cols .ct-col{flex:1 1 0;min-width:260px;max-width:none}
