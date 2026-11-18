@@ -90,8 +90,9 @@
 
   var S = { r: null, cargando: false, error: '', parte: 'faltantes', junto: true, todos: false, buscar: '', foco: null, guardando: 0,
             cot: null,     // cot: el recuadro de "Pedir cotización" abierto (Paso 2)
-            oc: null };    // oc: el de "Realizar órdenes de compra" (Paso 4)
-  try { var v0 = JSON.parse(localStorage.getItem(VISTA) || 'null'); if(v0){ S.parte = v0.parte === 'necesidad' ? 'necesidad' : 'faltantes'; S.junto = v0.junto !== false; S.todos = !!v0.todos; } } catch(e){}
+            oc: null,      // oc: el de "Realizar órdenes de compra" (Paso 4)
+            cu: { editar: false, prov: '', leer: null, extra: [] } };   // Feli (18/11): el cuadro comparativo
+  try { var v0 = JSON.parse(localStorage.getItem(VISTA) || 'null'); if(v0){ S.parte = ['necesidad', 'cuadro'].indexOf(v0.parte) >= 0 ? v0.parte : 'faltantes'; S.junto = v0.junto !== false; S.todos = !!v0.todos; } } catch(e){}
   try { S.r = JSON.parse(localStorage.getItem(GUARDA) || 'null'); } catch(e){}
 
   function $(id){ return document.getElementById(id); }
@@ -117,6 +118,7 @@
     if(r && r.ok !== false && r.datos){
       S.r = { datos: r.datos, meses: r.meses, necesidad: r.necesidad || {}, proveedores: r.proveedores || [], msjCotizacion: r.msjCotizacion || '',
               precios: r.precios || {}, cotizados: r.cotizados || {}, ordenados: r.ordenados || {}, sinMandar: r.sinMandar || [], msjOrden: r.msjOrden || '',
+              cuadro: r.cuadro || {}, obs: r.obs || {}, obsGeneral: r.obsGeneral || '',
               llego: new Date().toISOString() };
       try { localStorage.setItem(GUARDA, JSON.stringify(S.r)); } catch(e){}
     } else S.error = r && r.sinConexion ? 'Hace falta señal para traer el consumo.' + (S.r ? ' Ves lo último que llegó.' : '') : 'No se pudo traer el consumo: ' + ((r && r.error) || '');
@@ -152,9 +154,11 @@
 
     h.push('<div class="hbotones" role="tablist">' +
            '<button type="button" class="hb' + (S.parte === 'faltantes' ? ' on' : '') + '" data-cm-parte="faltantes">Faltantes y sobrantes</button>' +
-           '<button type="button" class="hb' + (S.parte === 'necesidad' ? ' on' : '') + '" data-cm-parte="necesidad">Necesidad de compra</button></div>');
+           '<button type="button" class="hb' + (S.parte === 'necesidad' ? ' on' : '') + '" data-cm-parte="necesidad">Necesidad de compra</button>' +
+           '<button type="button" class="hb' + (S.parte === 'cuadro' ? ' on' : '') + '" data-cm-parte="cuadro">Cuadro comparativo</button>' +
+           '<span class="sep"></span><button type="button" class="linkbtn" id="cmexcel">📥 Bajar a Excel</button></div>');
     h.push('<div class="paso cm-fil"><div class="fila">');
-    h.push('<span class="cm-seg" role="group"><button type="button" class="' + (S.junto ? 'on' : '') + '" data-cm-junto="1">Todo junto</button>' +
+    if(S.parte !== 'cuadro') h.push('<span class="cm-seg" role="group"><button type="button" class="' + (S.junto ? 'on' : '') + '" data-cm-junto="1">Todo junto</button>' +
            '<button type="button" class="' + (S.junto ? '' : 'on') + '" data-cm-junto="0">Por oficina</button></span>');
     h.push('<label class="field">Buscar <input type="text" id="cmbuscar" autocomplete="off" placeholder="producto o código" value="' + esc(S.buscar) + '"></label>');
     if(S.parte === 'necesidad'){
@@ -181,7 +185,9 @@
     if(S.parte === 'necesidad' && S.cot) h.push(htmlCotizar());
     if(S.parte === 'necesidad' && S.oc) h.push(htmlOrdenes());
     if(S.parte === 'faltantes') h.push(S.junto ? tablaFaltantes(l, null) : OFICINAS.map(function(o){ return tablaFaltantes(l, o); }).join(''));
+    else if(S.parte === 'cuadro') h.push(htmlCuadro(l));
     else h.push(S.junto ? tablaNecesidad(l, null) : OFICINAS.map(function(o){ return tablaNecesidad(l, o); }).join(''));
+    if(S.parte !== 'faltantes') h.push(htmlObsGeneral());
     host.innerHTML = h.join('');
     conectar();
   }
@@ -196,8 +202,41 @@
     return '<h3 class="cm-of">' + esc(o.nombre) + ' <span>' + esc(o.granjas) + '</span></h3>';
   }
 
-  function celdaProducto(x){
-    return '<td class="name">' + esc(x.insumo) + ' <span class="cm-cod">' + esc(x.cod) + (x.unidad ? ' · ' + esc(x.unidad) : '') + '</span></td>';
+  function celdaProducto(x, conNota){
+    var nota = conNota && (S.r.obs || {})[x.cod];
+    return '<td class="name">' + esc(x.insumo) + ' <span class="cm-cod">' + esc(x.cod) + (x.unidad ? ' · ' + esc(x.unidad) : '') + '</span>' +
+      (conNota ? '<button type="button" class="notabtn' + (nota ? ' tiene' : '') + '" data-cm-nota="' + esc(x.cod) + '" title="' + (nota ? 'Editar la observación' : 'Agregar una observación') + '">💬</button>' +
+                 (nota ? '<div class="notacom">' + esc(nota.texto) + '</div>' : '') : '') + '</td>';
+  }
+
+  /* ---------- Feli (18/11): las observaciones (una por producto y una del cuadro), guardadas para todos ---------- */
+  function htmlObsGeneral(){
+    return '<div class="paso cm-obs"><label class="field cm-obs-l">Observaciones <textarea id="cmobs" rows="2" placeholder="Para todos los admins">' + esc(S.r.obsGeneral || '') + '</textarea></label></div>';
+  }
+  function editarNota(b){
+    var td = b.parentNode, cod = b.getAttribute('data-cm-nota');
+    if(td.querySelector('.notaedit')){ td.querySelector('.notaedit').focus(); return; }
+    var vieja = td.querySelector('.notacom'); if(vieja) vieja.style.display = 'none';
+    var ta = document.createElement('textarea'), ayuda = document.createElement('div');
+    ta.className = 'notaedit'; ta.rows = 2; ta.value = ((S.r.obs || {})[cod] || {}).texto || ''; ta.placeholder = 'Observación (Enter guarda)';
+    ayuda.className = 'notaayuda'; ayuda.textContent = 'Enter guarda · Escape cancela · vacío la borra';
+    td.appendChild(ta); td.appendChild(ayuda); ta.focus();
+    var listo = false;
+    function cerrar(sigo){
+      if(listo) return; listo = true;
+      var t = ta.value.trim(), antes = ((S.r.obs || {})[cod] || {}).texto || '';
+      if(!sigo || t === antes){ pintar(); return; }
+      var x = productoDe('T|' + cod);
+      guardar({ obs: [{ codigo: cod, producto: x ? x.insumo : '', texto: t }] }, function(){
+        if(!S.r.obs) S.r.obs = {};
+        if(t) S.r.obs[cod] = { texto: t, quien: 'vos', cuando: new Date().toISOString() }; else delete S.r.obs[cod];
+      });
+    }
+    ta.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); cerrar(true); }
+      else if(ev.key === 'Escape'){ ev.preventDefault(); cerrar(false); }
+    });
+    ta.addEventListener('blur', function(){ cerrar(true); });
   }
 
   function tablaFaltantes(l, o){
@@ -273,7 +312,7 @@
         (o && y.quien ? ' por ' + esc(y.quien) : '') + '. Calculado: ' + fmt(y.calculada) + '. Tocá para volver a lo calculado.">✏️ ↺</button>' : '';
       var ords = (o ? [o] : OFICINAS).map(function(of){ var z = (S.r.ordenados || {})[of.id + '|' + x.cod]; return z ? (o ? '' : of.nombre.replace('Oficina ', '') + ': ') + z.numero : ''; }).filter(String);
       var ordenado = ords.length ? '<div class="cm-ordenado" title="Ya se ordenó (desde el último «Borrar precios»)">✅ ' + esc(ords.join(' · ')) + '</div>' : '';
-      h.push('<tr' + (y.aMano ? ' class="cm-mano"' : '') + '>' + celdaProducto(x).replace(/<\/td>$/, ordenado + '</td>') + '<td>' + fmt(redondo(y.consumo * meses)) + '</td><td>' + fmt(y.existencia) + '</td>' +
+      h.push('<tr' + (y.aMano ? ' class="cm-mano"' : '') + '>' + celdaProducto(x, true).replace(/<\/td>$/, ordenado + '</td>') + '<td>' + fmt(redondo(y.consumo * meses)) + '</td><td>' + fmt(y.existencia) + '</td>' +
              '<td class="cm-nec">' + marca + '<input class="ajuste cm-campo cm-in" type="text" inputmode="decimal" autocomplete="off" data-k="' + esc(k) + '" value="' + esc(fmt(y.necesidad)) + '"></td>' +
              '<td' + (x.precio === null ? ' class="zero"' : '') + '>' + (x.precio === null ? '—' : plata(x.precio)) + '</td>' +
              '<td class="cm-pr"><input class="ajuste cm-campo cm-pu" type="text" inputmode="decimal" autocomplete="off" data-k="pu:' + esc(k) + '" value="' + esc(fmt2(pu)) + '" placeholder="$"></td>' +
@@ -337,6 +376,11 @@
     if(S.cot && $('cmcotmandar')) conectarCotizar();
     var oc = $('cmordenes');
     if(oc) oc.onclick = abrirOrdenes;
+    if($('cmexcel')) $('cmexcel').onclick = bajarExcel;
+    [].forEach.call(document.querySelectorAll('[data-cm-nota]'), function(b){ b.onclick = function(){ editarNota(b); }; });
+    var og = $('cmobs');
+    if(og) og.onchange = function(){ var t = og.value.trim(); if(t === (S.r.obsGeneral || '')) return; guardar({ obsGeneral: t }, function(){ S.r.obsGeneral = t; }); };
+    if(S.parte === 'cuadro') conectarCuadro();
     if(S.oc && $('cmocok')) conectarOrdenes();
     [].forEach.call(document.querySelectorAll('[data-cm-volver]'), function(x){
       x.onclick = function(){ cambiarNecesidad(x.getAttribute('data-cm-volver'), null); };
@@ -430,7 +474,7 @@
 
   /* Manda al servidor; mientras, la pantalla ya muestra el cambio (alGuardar). borrar: 'necesidad' o 'precios'. */
   async function guardar(c, alGuardar, borrar){
-    var antes = { meses: S.r.meses, necesidad: copia(S.r.necesidad), precios: copia(S.r.precios) };
+    var antes = { meses: S.r.meses, necesidad: copia(S.r.necesidad), precios: copia(S.r.precios), cuadro: copia(S.r.cuadro), obs: copia(S.r.obs), obsGeneral: S.r.obsGeneral };
     if(!S.r.precios) S.r.precios = {};
     if(alGuardar) alGuardar();
     S.guardando++; pintar();
@@ -438,9 +482,10 @@
     S.guardando--;
     if(r && r.ok !== false && r.necesidad){
       S.r.necesidad = r.necesidad; S.r.meses = r.meses; if(r.precios) S.r.precios = r.precios; if(r.ordenados) S.r.ordenados = r.ordenados; S.error = '';
+      if(r.cuadro) S.r.cuadro = r.cuadro; if(r.obs) S.r.obs = r.obs; if(r.obsGeneral !== undefined) S.r.obsGeneral = r.obsGeneral;
       try { localStorage.setItem(GUARDA, JSON.stringify(S.r)); } catch(e){}
     } else {
-      S.r.meses = antes.meses; S.r.necesidad = antes.necesidad; S.r.precios = antes.precios;
+      S.r.meses = antes.meses; S.r.necesidad = antes.necesidad; S.r.precios = antes.precios; S.r.cuadro = antes.cuadro; S.r.obs = antes.obs; S.r.obsGeneral = antes.obsGeneral;
       S.error = r && r.sinConexion ? 'Hace falta señal para guardar el cambio: no se guardó.' : 'No se guardó el cambio: ' + ((r && r.error) || '');
     }
     pintar();
@@ -651,7 +696,8 @@
     l.forEach(function(g){ if(provs.indexOf(g.proveedor) < 0) provs.push(g.proveedor); });
     provs.forEach(function(p){
       var gs = l.filter(function(g){ return g.proveedor === p; }), iva = C.iva[p] === undefined ? 21 : C.iva[p];
-      h.push('<div class="cm-cot-p cm-oc-prov"><b>' + esc(nombreProveedor(p)) + '</b> <label class="field">IVA <select data-oc-iva="' + esc(p) + '">' +
+      var todasP = gs.every(function(g){ return !C.fuera[g.clave]; });
+      h.push('<div class="cm-cot-p cm-oc-prov"><label class="check cm-oc-todas"><input type="checkbox" data-oc-prov="' + esc(p) + '"' + (todasP ? ' checked' : '') + '> <b>' + esc(nombreProveedor(p)) + '</b></label> <label class="field">IVA <select data-oc-iva="' + esc(p) + '">' +
              IVAS.map(function(v){ return '<option value="' + v + '"' + (v === iva ? ' selected' : '') + '>' + String(v).replace('.', ',') + ' %</option>'; }).join('') + '</select></label>');
       gs.forEach(function(g){
         h.push('<label class="check"><input type="checkbox" data-oc-orden="' + esc(g.clave) + '"' + (C.fuera[g.clave] ? '' : ' checked') + '> ' + esc(g.oficina) + ': ' +
@@ -682,7 +728,14 @@
     contarOrdenes();
     [].forEach.call(document.querySelectorAll('[data-oc-iva]'), function(x){ x.onchange = function(){ C.iva[x.dataset.ocIva] = Number(x.value); }; });
     [].forEach.call(document.querySelectorAll('[data-oc-orden]'), function(x){
-      x.onchange = function(){ if(x.checked) delete C.fuera[x.dataset.ocOrden]; else C.fuera[x.dataset.ocOrden] = true; contarOrdenes(); };
+      x.onchange = function(){ if(x.checked) delete C.fuera[x.dataset.ocOrden]; else C.fuera[x.dataset.ocOrden] = true; pintar(); };
+    });
+    // Feli (18/11): el tilde del proveedor tilda o destilda todas sus oficinas
+    [].forEach.call(document.querySelectorAll('[data-oc-prov]'), function(x){
+      x.onchange = function(){
+        ordenesParaHacer().filter(function(g){ return g.proveedor === x.dataset.ocProv; }).forEach(function(g){ if(x.checked) delete C.fuera[g.clave]; else C.fuera[g.clave] = true; });
+        pintar();
+      };
     });
     [].forEach.call(document.querySelectorAll('[data-oc-remandar]'), function(x){ x.onclick = function(){ remandarOrden(x.dataset.ocRemandar); }; });
     if(txt) txt.oninput = function(){ C.texto = txt.value; };
@@ -840,6 +893,197 @@
     y += 24;
     if(d.autorizo){ doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(30, 30, 30); doc.text(txtPdf('Autorizó: ' + d.autorizo), m, y); }
     return doc.output('datauristring').split(',')[1];
+  }
+
+  /* ---------- Feli (18/11): el cuadro comparativo ----------
+     Una fila por producto (los que hace falta comprar, y los que algún proveedor cotizó) con la necesidad total; una columna
+     por proveedor con el precio unitario y abajo el total (unitario × necesidad). El más barato, resaltado. "Elegir este" pone ese
+     proveedor y ese precio en la necesidad. "📄 Leer presupuesto": la IA lee el de un proveedor y pone sus precios en el cuadro
+     (nunca en la necesidad). "✏️ Editar": cambiar los precios y la necesidad a mano; el precio del proveedor elegido también
+     cambia en la necesidad. */
+  function precioCuadro(cod, prov){ var c = (S.r.cuadro || {})[cod]; return c && c[prov] ? c[prov] : null; }
+  function esUsd(m){ return /USD/i.test(m || ''); }
+  function plataM(v, m){ return v === null || v === undefined ? '' : (esUsd(m) ? 'US$ ' : '$ ') + n(v).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  function provsCuadro(){
+    var out = [];
+    Object.keys(S.r.cuadro || {}).forEach(function(cod){ Object.keys(S.r.cuadro[cod]).forEach(function(p){ if(out.indexOf(p) < 0) out.push(p); }); });
+    Object.keys(S.r.precios || {}).forEach(function(cod){ var p = S.r.precios[cod].proveedor; if(p && out.indexOf(p) < 0) out.push(p); });
+    S.cu.extra.forEach(function(p){ if(out.indexOf(p) < 0) out.push(p); });
+    return out.sort(function(a, b){ return nombreProveedor(a).localeCompare(nombreProveedor(b), 'es'); });
+  }
+
+  function filasCuadro(l){
+    return l.filter(function(x){
+      var cot = (S.r.cuadro || {})[x.cod];
+      if(S.cu.prov) return !!(cot && cot[S.cu.prov]);
+      return x.total.necesidad > 0 || (cot && Object.keys(cot).length);
+    });
+  }
+
+  function htmlCuadro(l){
+    var C = S.cu, provs = provsCuadro(), ver = filasCuadro(l), h = ['<div class="paso cm-cu-barra"><div class="fila">'];
+    h.push('<button class="btn" id="cmculeer">📄 Leer presupuesto</button>');
+    h.push('<button class="btn2" id="cmcueditar">' + (C.editar ? '✓ Terminar de editar' : '✏️ Editar') + '</button>');
+    h.push('<label class="field">Proveedor <select id="cmcuprov"><option value="">Todos</option>' + provs.map(function(p){
+      return '<option value="' + esc(p) + '"' + (p === C.prov ? ' selected' : '') + '>' + esc(nombreProveedor(p)) + '</option>'; }).join('') + '</select></label>');
+    if(C.editar) h.push('<label class="field">Sumar un proveedor <select id="cmcuagregar"><option value="">— elegir —</option>' + (S.r.proveedores || []).filter(function(p){ return provs.indexOf(p.id) < 0; })
+      .map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.nombre) + '</option>'; }).join('') + '</select></label>');
+    h.push('</div><p class="nota">El precio unitario arriba y el total (unitario × necesidad) abajo; en verde, el más barato. «Elegir este» lo pasa a la necesidad de compra. ' +
+           '🤖 = leído de un presupuesto, ✋ = cargado a mano.</p></div>');
+    if(C.leer) h.push(htmlLeerPresupuesto());
+    if(!provs.length) h.push('<p class="nota">Todavía no hay precios: «📄 Leer presupuesto» o cargalos con «✏️ Editar» (o en Necesidad de compra).</p>');
+    h.push('<div class="tablewrap on cm-tabla cm-cu"><table><thead><tr><th class="name">Producto</th><th class="cm-nec">Necesidad</th>' +
+           provs.map(function(p){ return '<th class="cm-cu-p">' + esc(nombreProveedor(p)) + '</th>'; }).join('') + '</tr></thead><tbody>');
+    if(!ver.length) h.push('<tr><td colspan="' + (2 + provs.length) + '" class="name cm-vacio">Nada por acá.</td></tr>');
+    var totales = {};
+    ver.forEach(function(x){
+      var nec = x.total.necesidad, eleg = (S.r.precios || {})[x.cod] || {}, min = null;
+      provs.forEach(function(p){ var c = precioCuadro(x.cod, p); if(c && !esUsd(c.moneda) && (min === null || c.precio < min)) min = c.precio; });
+      h.push('<tr>' + celdaProducto(x, true) + '<td class="cm-nec">' + (C.editar ? '<input class="ajuste cm-campo cm-cu-nec" type="text" inputmode="decimal" autocomplete="off" data-k="T|' + esc(x.cod) + '" value="' + esc(fmt(nec)) + '">' : fmt(nec)) + '</td>');
+      provs.forEach(function(p){
+        var c = precioCuadro(x.cod, p), es = eleg.proveedor === p, tot = c ? Math.round(c.precio * nec * 100) / 100 : null;
+        if(c && !esUsd(c.moneda)){ var g = totales[p] = totales[p] || { n: 0, total: 0 }; g.n++; g.total += tot; }
+        var cls = 'cm-cu-c' + (c && min !== null && c.precio === min && !esUsd(c.moneda) ? ' barato' : '') + (es ? ' elegido' : '');
+        if(C.editar){
+          h.push('<td class="' + cls + '"><input class="ajuste cm-campo cm-cu-in" type="text" inputmode="decimal" autocomplete="off" data-cu="' + esc(p + '|' + x.cod) + '" value="' + esc(c ? fmt2(c.precio) : '') + '" placeholder="$"></td>');
+          return;
+        }
+        if(!c){ h.push('<td class="' + cls + ' zero">—</td>'); return; }
+        h.push('<td class="' + cls + '" title="' + esc((c.fuente === 'ia' ? 'Leído del presupuesto' + (c.texto ? ': ' + c.texto : '') : 'A mano') + (c.quien ? ' · ' + c.quien : '')) + '">' +
+               '<div class="cm-cu-u">' + plataM(c.precio, c.moneda) + ' <span class="cm-cu-f">' + (c.fuente === 'ia' ? '🤖' : '✋') + '</span></div>' +
+               '<div class="cm-cu-t">' + (nec > 0 ? plataM(tot, c.moneda) : '') + '</div>' +
+               (es ? '<div class="cm-cu-ok">✓ Elegido</div>' : nec > 0 ? '<button class="linkbtn" data-cu-elegir="' + esc(p + '|' + x.cod) + '">Elegir este</button>' : '') + '</td>');
+      });
+      h.push('</tr>');
+    });
+    h.push('</tbody>');
+    if(ver.length && provs.length) h.push('<tfoot><tr><td class="name">' + ver.length + ' productos</td><td></td>' + provs.map(function(p){
+      var g = totales[p]; return '<td>' + (g ? g.n + (g.n === 1 ? ' producto' : ' productos') + '<br><b>' + plata(g.total) + '</b>' : '') + '</td>'; }).join('') + '</tr></tfoot>');
+    h.push('</table></div>');
+    return h.join('');
+  }
+
+  function htmlLeerPresupuesto(){
+    var L = S.cu.leer, cot = S.r.cotizados || {}, provs = S.r.proveedores || [];
+    var arriba = provs.filter(function(p){ return cot[p.id]; }), resto = provs.filter(function(p){ return !cot[p.id]; });
+    var op = function(p){ return '<option value="' + esc(p.id) + '"' + (p.id === L.prov ? ' selected' : '') + '>' + esc(p.nombre) + '</option>'; };
+    var h = ['<div class="paso cm-cot"><h3>📄 Leer el presupuesto de un proveedor</h3>'];
+    h.push('<div class="fila"><label class="field">Proveedor <select id="cmlprov"><option value="">— elegir —</option>' +
+           (arriba.length ? '<optgroup label="Se les pidió cotización">' + arriba.map(op).join('') + '</optgroup><optgroup label="Otros">' + resto.map(op).join('') + '</optgroup>' : resto.map(op).join('')) +
+           '</select></label><label class="field">Archivo <input type="file" id="cmlarch" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp"></label></div>');
+    h.push('<p class="nota">La IA lo lee y une cada renglón con un producto que hace falta comprar. Los precios quedan en el cuadro (no en la necesidad): revisalos y elegí.</p>');
+    if(L.res) h.push(L.res);
+    if(L.error) h.push('<p class="cm-cot-error">' + esc(L.error) + '</p>');
+    h.push('<div class="fila"><button class="btn" id="cmlok"' + (L.leyendo ? ' disabled' : '') + '>' + (L.leyendo ? '🤖 Leyendo… (hasta un minuto)' : 'Leer') + '</button>' +
+           '<button class="linkbtn" id="cmlcerrar">' + (L.leyendo ? '' : 'cerrar') + '</button></div></div>');
+    return h.join('');
+  }
+
+  function conectarCuadro(){
+    var C = S.cu;
+    if($('cmculeer')) $('cmculeer').onclick = function(){ C.leer = C.leer ? null : { prov: '', leyendo: false, error: '', res: '' }; pintar(); };
+    if($('cmcueditar')) $('cmcueditar').onclick = function(){ C.editar = !C.editar; pintar(); };
+    if($('cmcuprov')) $('cmcuprov').onchange = function(){ C.prov = this.value; pintar(); };
+    if($('cmcuagregar')) $('cmcuagregar').onchange = function(){ if(this.value && C.extra.indexOf(this.value) < 0) C.extra.push(this.value); pintar(); };
+    [].forEach.call(document.querySelectorAll('[data-cu-elegir]'), function(b){
+      b.onclick = function(){
+        var k = b.dataset.cuElegir.split('|'), prov = k[0], cod = k.slice(1).join('|'), c = precioCuadro(cod, prov), x = productoDe('T|' + cod);
+        if(!c || !x) return;
+        if(esUsd(c.moneda) && !confirm('Ese precio está en dólares y la orden de compra va en pesos. ¿Lo elegís igual? (Cambialo a pesos con «✏️ Editar».)')) return;
+        guardar({ precios: [{ codigo: cod, producto: x.insumo, precio: c.precio, proveedor: prov }] }, function(){
+          S.r.precios[cod] = { precio: c.precio, proveedor: prov };
+        });
+      };
+    });
+    if(C.editar){
+      [].forEach.call(document.querySelectorAll('input.cm-cu-in'), function(inp){
+        inp.addEventListener('focus', function(){ inp.select(); });
+        inp.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); inp.blur(); } });
+        inp.addEventListener('change', function(){
+          var k = inp.dataset.cu.split('|'), prov = k[0], cod = k.slice(1).join('|'), v = numeroEscrito(inp.value), x = productoDe('T|' + cod);
+          if(v !== null && (!isFinite(v) || v < 0)){ alert('Tiene que ser un número de 0 para arriba.'); inp.value = ''; return; }
+          guardar({ cuadro: [{ codigo: cod, producto: x ? x.insumo : '', proveedor: prov, precio: v }] }, function(){
+            var c = S.r.cuadro[cod] = S.r.cuadro[cod] || {};
+            if(v === null) delete c[prov]; else c[prov] = Object.assign({}, c[prov] || { moneda: 'ARS' }, { precio: v, fuente: 'mano' });
+            var e = S.r.precios[cod]; if(e && e.proveedor === prov && v !== null) e.precio = v;
+          });
+        });
+      });
+      [].forEach.call(document.querySelectorAll('input.cm-cu-nec'), function(inp){
+        inp.addEventListener('focus', function(){ inp.select(); });
+        inp.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); inp.blur(); } });
+        inp.addEventListener('change', function(){ tomar(inp); });
+      });
+    }
+    if(C.leer){
+      if($('cmlprov')) $('cmlprov').onchange = function(){ C.leer.prov = this.value; };
+      $('cmlcerrar').onclick = function(){ if(!C.leer.leyendo){ C.leer = null; pintar(); } };
+      $('cmlok').onclick = leerPresupuestoUI;
+    }
+  }
+
+  async function leerPresupuestoUI(){
+    var L = S.cu.leer, f = $('cmlarch') && $('cmlarch').files[0];
+    L.error = ''; L.prov = $('cmlprov').value;
+    if(!L.prov){ L.error = 'Elegí el proveedor.'; pintar(); return; }
+    if(!f){ L.error = 'Elegí el archivo del presupuesto.'; pintar(); return; }
+    if(f.size > 8 * 1024 * 1024){ L.error = 'El archivo pesa más de 8 MB.'; pintar(); return; }
+    var prods = calcular(S.r.datos.productos, S.r.meses, S.r.necesidad).filter(function(x){ return x.total.necesidad > 0; })
+      .map(function(x){ return { codigo: x.cod, producto: x.insumo, unidad: x.unidad || '', cantidad: x.total.necesidad }; });
+    if(!prods.length){ L.error = 'No hay productos con necesidad de compra.'; pintar(); return; }
+    var b64 = await new Promise(function(ok, mal){ var fr = new FileReader(); fr.onload = function(){ ok(String(fr.result).replace(/^data:[^,]*,/, '')); }; fr.onerror = mal; fr.readAsDataURL(f); });
+    L.leyendo = true; pintar();
+    var r = await apiLenta('leerPresupuestoStock', { proveedor: L.prov, archivo: { nombre: f.name, tipo: f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : ''), base64: b64 }, productos: prods });
+    L.leyendo = false;
+    if(!r || r.ok === false){ L.error = r && r.sinConexion ? 'Hace falta señal para leer el presupuesto.' : 'No se pudo leer: ' + ((r && r.error) || ''); pintar(); return; }
+    S.r.cuadro = r.cuadro || S.r.cuadro;
+    if(S.cu.extra.indexOf(L.prov) < 0) S.cu.extra.push(L.prov);
+    L.res = '<div class="cm-cot-p"><b>' + esc(nombreProveedor(L.prov)) + ': ' + r.leidos.length + (r.leidos.length === 1 ? ' precio leído' : ' precios leídos') + '</b>' +
+      (esUsd(r.moneda) ? ' <span class="cm-cot-error">· en dólares</span>' : '') +
+      (r.dudas.length ? '<div class="cm-cod-i">❓ No es seguro (no se cargaron): ' + esc(r.dudas.map(function(d){ return d.texto + (d.producto ? ' → ¿' + d.producto + '?' : ''); }).join(' · ')) + '</div>' : '') +
+      (r.sinUnir.length ? '<div class="cm-cod-i">Sin producto nuestro: ' + esc(r.sinUnir.join(' · ')) + '</div>' : '') +
+      '<div class="cm-cod-i">Revisalos en el cuadro; si algo está mal o conseguiste descuento, «✏️ Editar».</div></div>';
+    pintar();
+  }
+
+  /* ---------- Feli (18/11): todo a Excel (necesidad por oficina, el cuadro comparativo y las observaciones) ---------- */
+  async function bajarExcel(){
+    var X;
+    try { X = await cargarXlsx(); } catch(e){ alert(e.message); return; }
+    var l = calcular(S.r.datos.productos, S.r.meses, S.r.necesidad), meses = n(S.r.meses), ob = S.r.obs || {};
+    var cab = ['Código', 'Producto', 'Unidad', 'Consumo por mes'];
+    OFICINAS.forEach(function(o){ cab.push('Existencia ' + o.nombre.replace('Oficina ', '')); });
+    OFICINAS.forEach(function(o){ cab.push('Necesidad ' + o.nombre.replace('Oficina ', '')); });
+    cab = cab.concat(['Necesidad total', 'Precio última compra', 'Precio unitario', 'Precio total', 'Proveedor', 'Observación']);
+    var filas1 = [['Necesidad de compra para ' + fmt(meses) + (meses === 1 ? ' mes' : ' meses')], [], cab];
+    l.filter(function(x){ return x.total.necesidad > 0 || precioDe(x.cod) !== null || ob[x.cod]; }).forEach(function(x){
+      var pu = precioDe(x.cod), f = [x.cod, x.insumo, x.unidad || '', redondo(x.total.consumo)];
+      OFICINAS.forEach(function(o){ f.push(redondo(x.of[o.id].existencia)); });
+      OFICINAS.forEach(function(o){ f.push(redondo(x.of[o.id].necesidad)); });
+      filas1.push(f.concat([redondo(x.total.necesidad), x.precio === null ? '' : x.precio, pu === null ? '' : pu, pu === null ? '' : Math.round(pu * x.total.necesidad * 100) / 100,
+                            proveedorDe(x.cod) ? nombreProveedor(proveedorDe(x.cod)) : '', ob[x.cod] ? ob[x.cod].texto : '']));
+    });
+    if(S.r.obsGeneral){ filas1.push([]); filas1.push(['Observaciones', S.r.obsGeneral]); }
+    var provs = provsCuadro(), cab2 = ['Código', 'Producto', 'Necesidad total'];
+    provs.forEach(function(p){ cab2.push(nombreProveedor(p) + ' - unitario', nombreProveedor(p) + ' - total'); });
+    cab2.push('Elegido');
+    var filas2 = [['Cuadro comparativo'], [], cab2];
+    filasCuadro(l).forEach(function(x){
+      var f = [x.cod, x.insumo, redondo(x.total.necesidad)];
+      provs.forEach(function(p){ var c = precioCuadro(x.cod, p); f.push(c ? c.precio : '', c ? Math.round(c.precio * x.total.necesidad * 100) / 100 : ''); });
+      f.push(proveedorDe(x.cod) ? nombreProveedor(proveedorDe(x.cod)) : '');
+      filas2.push(f);
+    });
+    var filas3 = [['Faltantes y sobrantes (un mes de consumo)'], [], ['Código', 'Producto', 'Consumo por mes', 'Existencia', 'Diferencia']];
+    l.filter(function(x){ return x.total.consumo || x.total.existencia; }).sort(function(a, b){ return a.total.diferencia - b.total.diferencia; })
+      .forEach(function(x){ filas3.push([x.cod, x.insumo, redondo(x.total.consumo), redondo(x.total.existencia), redondo(x.total.diferencia)]); });
+    var wb = X.utils.book_new();
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(filas1), 'Necesidad de compra');
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(filas2), 'Cuadro comparativo');
+    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(filas3), 'Faltantes y sobrantes');
+    var hoy = new Date();
+    X.writeFile(wb, 'Consumo mensual ' + String(hoy.getDate()).padStart(2, '0') + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + hoy.getFullYear() + '.xlsx');
   }
 
   function abrir(){

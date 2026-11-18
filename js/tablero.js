@@ -53,6 +53,11 @@ function colCancelado() {
 }
 function colPorRecibir() { return (TB.datos && TB.datos.porRecibir) || 'Para retirar'; }
 /** Stand by (Paso 2-ter): una columna más, que se ve como franja abajo del tablero. */
+/** Feli (18/11): "📋 Tarjeta de seguimiento" es solo una compra; las de la Tanda verde sin comprar dicen "🟢 Tanda verde". */
+function etiquetaTrabajo(t, sep) {
+  const e = t.deCompra ? '📋 Tarjeta de seguimiento' : t.tanda ? '🟢 Tanda verde' : '';
+  return e && sep ? e + sep : e;
+}
 function colStandby() { return (TB.datos && TB.datos.standby) || 'Stand by'; }
 function enTablero(columna) { return columna === colStandby() || columnasTb().some(function (c) { return c.columna === columna; }); }
 function colEntrantes() { const c = columnasTb().filter(function (x) { return x.seccion === 'Cotización'; }); return (c[0] || {}).columna || 'Entrantes'; }
@@ -417,7 +422,7 @@ function pintarTanda() {
     (abierto && !lista.length ? '<p class="nota" style="margin:0 0 6px">No hay ninguno. Acá entran los pedidos 🟢 del formulario' + (admin ? '; también se arrastra una tarjeta hasta acá' : '') + '.</p>' : '') +
     (abierto && lista.length ? '<div class="proc-l">' + lista.map(function (x) {
       return '<button type="button" class="proc-i" data-ref="' + esc(x.ref) + '"><b>' + esc(emojiUrgencia(x.urgencia)) + ' ' + esc(x.sitio) + ' · ' + esc(x.titulo || x.ref) + '</b>' +
-        '<small>' + (x.prueba ? '🧪 ' + esc(x.prueba) + ' · ' : '') + (x.trabajo ? '📋 Tarjeta de seguimiento · ' : '') + esc(x.solicitante ? 'Pidió ' + x.solicitante : '') + (x.fecha ? ' · cargado el ' + esc(fechaLinda(x.fecha)) : '') +
+        '<small>' + (x.prueba ? '🧪 ' + esc(x.prueba) + ' · ' : '') + etiquetaTrabajo(x, ' · ') + esc(x.solicitante ? 'Pidió ' + x.solicitante : '') + (x.fecha ? ' · cargado el ' + esc(fechaLinda(x.fecha)) : '') +
         (x.fueraPadron ? ' · ✋ Fuera del padrón' : '') + '</small></button>';
     }).join('') + '</div>' : '');
   $('tb-tanda-h').addEventListener('click', function () {
@@ -496,7 +501,7 @@ function htmlTarjeta(t, enPorRecibir) {
   return '<div class="tarjeta" data-ref="' + esc(t.ref) + '" role="button" tabindex="0">' +
     (t.nuevo ? '<div class="nuevo-t">Nuevo</div>' : '') +                       // Feli (2026-10-06): nunca lo abriste
     (t.prueba ? '<div class="sobre">🧪 ' + esc(t.prueba) + '</div>' : '') +          // Fase 6: pedido de prueba (solo lo ven los de "Ven lo de la Fase 6")
-    (t.trabajo ? '<div class="sobre">📋 Tarjeta de seguimiento</div>' : '') +       // Feli: que se note en el tablero
+    (t.trabajo && etiquetaTrabajo(t) ? '<div class="sobre">' + etiquetaTrabajo(t) + '</div>' : '') +       // Feli: que se note en el tablero
     (t.ordenPendiente ? '<div class="sobre orden-pend">⚠️ Orden de compra pendiente</div>' : '') +   // Fase 6, Paso 5 (Feli, 29/10)
     (t.enEntregas ? '<div class="sobre en-entregas">📍 Parte de este pedido está en seguimiento de entrega</div>' : '') +   // Paso 6 (Feli, 29/10: con el color de las demás líneas de arriba, ya no en rojo)
     (t.aprobacion === 'Esperando' ? '<div class="sobre">⏳ Esperando aprobación</div>' : '') +
@@ -813,7 +818,7 @@ function soltarArrastre(cancelado) {
   if (!cancelado && a.sobreStandby) {
     if (a.origen === colStandby()) return a.ctx.repintar();
     const t = buscarEnVista(a.ref);
-    if (t && t.trabajo) { aviso('A Stand by van los pedidos, no las tarjetas de seguimiento.'); return a.ctx.repintar(); }
+    if (t && t.trabajo && t.deCompra) { aviso('A Stand by van los pedidos, no las compras (tarjetas de seguimiento).'); return a.ctx.repintar(); }
     return a.ctx.mover(a.ref, colStandby(), '*');
   }
   const lista = a.hueco.parentNode;
@@ -1223,7 +1228,7 @@ function pintarTarjeta() {
   $('tj-datos').innerHTML = datos.join('');
 
   const etiquetas = [];
-  if (trabajo) etiquetas.push('📋 Tarjeta de seguimiento');
+  if (trabajo && etiquetaTrabajo(t || { tanda: d && d.trabajo && d.trabajo.tanda, deCompra: !!(d && d.compra) })) etiquetas.push(etiquetaTrabajo(t || { tanda: d && d.trabajo && d.trabajo.tanda, deCompra: !!(d && d.compra) }));
   if ((t && t.masivo) || (p && p.origen === 'masivo')) etiquetas.push('Pedido masivo');
   if (!enTb && p && p.columna) etiquetas.push((p.columna === 'Procesando' ? '📦 ' : 'Finalizado: ') + p.columna);
   $('tj-etiquetas').innerHTML = etiquetas.map(function (e) { return '<span class="etiqueta">' + esc(e) + '</span>'; }).join('');
@@ -1388,7 +1393,8 @@ $('tj-columna').addEventListener('click', async function () {
   const t = buscarEnVista(ref);
   if (!t) return;
   // Paso 2-ter: un pedido también va a Stand by (y de ahí vuelve a Entrantes)
-  const cols = esTrabajo(ref) ? null : columnasTb().concat([{ columna: colStandby(), seccion: 'Stand by' }]);
+  // Feli (18/11): una tarjeta de la tanda (sin comprar) también va a Stand by; una compra, no
+  const cols = esTrabajo(ref) && t.deCompra ? null : columnasTb().concat([{ columna: colStandby(), seccion: 'Stand by' }]);
   const destino = await moverADialogo(esTrabajo(ref) ? 'Mover la tarjeta a…' : 'Mover el pedido a…', t.columna, '', cols,
                                       t.columna === colStandby() ? colEntrantes() : '');
   if (!destino || destino === t.columna) return;

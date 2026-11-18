@@ -500,6 +500,8 @@ function htmlCuerpoPresupuesto(b) {
   if (est === 'No se pudo leer') bs.push(['corregir', '✏️ Cargarlo a mano']);
   if (est === 'Confirmado') bs.push(['reabrir', '↩️ Volver a revisar']);
   if (est !== 'Confirmado') bs.push(['leer', est === 'Leyendo' ? 'Leer ahora' : '🔄 Volver a leer'], ['quitar', 'Quitar']);
+  // Feli (18/11): muchos dicen pesos y son dólares
+  if (est !== 'Leyendo' && est !== 'Quitado') bs.push(['moneda', /USD|U\$S|DOL/i.test(b.moneda || '') ? '💱 Es en pesos' : '💱 Es en dólares']);
   h += '<div class="pr-acciones">' + bs.map(function (x) {
     return '<button type="button" class="btn-chico' + (x[0] === 'confirmar' ? ' si' : '') + '" data-pr="' + x[0] + '" data-id="' + esc(b.id) + '">' + x[1] + '</button>';
   }).join('') + '</div>';
@@ -608,6 +610,13 @@ async function accionPresupuesto(que, id) {
       aunAsi = true;
     }
     r = await api('confirmarPresupuesto', id, aunAsi);
+  } else if (que === 'moneda') {
+    const usd = !/USD|U\$S|DOL/i.test(b.moneda || '');
+    const si = await dialogo({ titulo: usd ? '¿Es en dólares?' : '¿Es en pesos?', texto: 'Cambia solo la moneda: los números quedan como están (' +
+                               (usd ? '200 pasa a ser US$ 200' : 'US$ 200 pasa a ser $ 200') + ').',
+                               botones: [{ texto: 'Volver', valor: false }, { texto: usd ? 'Sí, es en dólares' : 'Sí, es en pesos', clase: 'btn', valor: true }] });
+    if (!si) return;
+    r = await api('cambiarMonedaPresupuesto', id, usd ? 'USD' : 'ARS');
   } else if (que === 'reabrir') {
     r = await api('reabrirPresupuesto', id);
   } else if (que === 'leer') {
