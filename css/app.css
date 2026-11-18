@@ -1350,3 +1350,5 @@ body[data-pantalla="cfac"] .contenido{max-width:none}
 .md-papeles .btn2{width:100%}
 .md-papeles .btn2.activa{border-color:var(--accent)}
 .cx-revisada{font-size:14px;color:var(--accent);margin:6px 0}
+.cx-fac-r.revisada{border-left-color:var(--line);background:transparent}
+.cx-fac-r.revisada b{color:var(--accent)}

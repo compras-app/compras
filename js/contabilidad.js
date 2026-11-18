@@ -326,7 +326,7 @@ function pintarTarjetaContable() {
     abrir('cdoc', { id: idm });
   });
   if ($('cx-fac-leer')) $('cx-fac-leer').addEventListener('click', function () { leerFacturaUI(r.tarjeta.id); });
-  if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', corregirFacturaUI);
+  if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', function () { corregirFacturaUI(); });
   if ($('cx-fac-revisada')) $('cx-fac-revisada').addEventListener('click', async function () {
     const x = await api('revisarFacturaCompra', r.tarjeta.id);
     if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
@@ -403,12 +403,15 @@ function htmlFacturaCt(t, l) {
           (f && f.numero ? ' <small class="nota">' + esc(t.factura.nombre) + '</small>' : '') + '</p>';
   if (!f) h += '<p class="nota">Todavía no se leyó. «Leer la factura» la lee con la IA y la compara con la compra (tarda unos segundos).</p>';
   else {
-    if (c.graves.length) h += '<div class="cx-fac-r grave"><b>⛔ No coincide con esta compra</b><ul>' + c.graves.map(li).join('') + '</ul></div>';
-    if (f.problemas.length || c.avisos.length) h += '<div class="cx-fac-r aviso"><b>⚠️ Para revisar</b><ul>' + f.problemas.concat(c.avisos).map(li).join('') + '</ul></div>';
-    if (!c.graves.length && !c.avisos.length && !f.problemas.length) h += '<div class="cx-fac-r ok"><b>✅ Las cuentas cierran y coincide con la compra.</b></div>';
-    // Feli (18/11): lo revisado no vuelve a mostrar el cartel como problema
-    else if (l.revisada) h += '<p class="cx-revisada">✅ Revisada por ' + esc(l.revisada.quien) + ' el ' + esc(fechaCt(l.revisada.cuando)) + '. Lo de arriba queda solo como dato.</p>';
-    else h += '<div class="ad-acciones"><button type="button" class="btn" id="cx-fac-revisada">✅ Ya lo revisé: está bien</button></div>';
+    const todo = c.graves.concat(f.problemas, c.avisos);
+    if (!todo.length) h += '<div class="cx-fac-r ok"><b>✅ Las cuentas cierran y coincide con la compra.</b></div>';
+    // Feli (18/11): revisada, el cartel dice quién la revisó y sigue mostrando lo que se vio, pero sin el amarillo
+    else if (l.revisada) h += '<div class="cx-fac-r revisada"><b>✅ Revisado por ' + esc(l.revisada.quien) + ' el ' + esc(fechaCt(l.revisada.cuando)) + '</b><ul>' + todo.map(li).join('') + '</ul></div>';
+    else {
+      if (c.graves.length) h += '<div class="cx-fac-r grave"><b>⛔ No coincide con esta compra</b><ul>' + c.graves.map(li).join('') + '</ul></div>';
+      if (f.problemas.length || c.avisos.length) h += '<div class="cx-fac-r aviso"><b>⚠️ Para revisar</b><ul>' + f.problemas.concat(c.avisos).map(li).join('') + '</ul></div>';
+      h += '<div class="ad-acciones"><button type="button" class="btn" id="cx-fac-revisada">✅ Ya lo revisé: está bien</button></div>';
+    }
     h += '<dl class="ad-datos"><dt>Proveedor</dt><dd>' + esc([f.emisor, f.cuit ? 'CUIT ' + f.cuit : ''].filter(Boolean).join(' · ') || '—') + '</dd>' +
       '<dt>Fecha</dt><dd>' + esc(f.fecha || '—') + (f.vencimiento ? ' · vence ' + esc(f.vencimiento) : '') + '</dd>' +
       (f.cae ? '<dt>CAE</dt><dd>' + esc(f.cae) + (f.vtoCae ? ' · vence ' + esc(f.vtoCae) : '') + '</dd>' : '') +
@@ -460,9 +463,11 @@ async function leerFacturaUI(id) {
 }
 
 /** ✏️ Corregir lo leído: cabecera, cada renglón y los totales. El servidor rehace las cuentas y la comparación. */
-async function corregirFacturaUI() {
-  const r = CT.tarjeta, f = r && r.lectura && r.lectura.datos;
+async function corregirFacturaUI(fDoc, guardarDoc) {
+  // Feli (18/11): la misma ventana para una factura del mail (fDoc: la leída; guardarDoc: cómo se guarda)
+  const r = CT.tarjeta, f = fDoc && fDoc.renglones ? fDoc : r && r.lectura && r.lectura.datos;
   if (!f) return;
+  f.iva = f.iva || [];
   const num = function (n) { return n === null || n === undefined ? '' : String(n).replace('.', ','); };
   const campo = function (id, rotulo, valor, ancho) {
     return '<div class="campo"' + (ancho ? ' style="flex:' + ancho + '"' : '') + '><label for="' + id + '">' + rotulo + '</label><input type="text" id="' + id + '" value="' + esc(valor) + '" autocomplete="off"></div>';
@@ -495,6 +500,7 @@ async function corregirFacturaUI() {
     } }, { texto: 'Volver', valor: null }] });
   if (!ok) return;
   aviso('Guardando…');
+  if (guardarDoc) return guardarDoc(ok);
   const x = await api('corregirFactura', r.tarjeta.id, ok);
   if (!x.ok) return aviso(x.sinConexion ? '📶 Poca señal: esto se hace con señal. Probá de nuevo en un rato.' : x.error, 'bad');
   aviso('Listo: se corrigió y se volvió a comparar.');
@@ -1139,12 +1145,26 @@ function htmlDocumento(d, op) {
        (op.lista && (d.enCompra || d.enFacturas) ? '<button type="button" class="btn2" data-entablero="' + esc(d.id) + '">Ver en tablero</button>' : '') + '</div></div>';
   return h + (MF.verMail[d.id] ? htmlVerMailDoc(d) : '');
 }
+/** Feli (18/11): ✏️ Corregir lo leído de una factura del mail (la misma ventana que en Pedidos). */
+async function corregirDocUI(id, despues) {
+  const d = docPorId(id);
+  if (!d || !d.facturaCompleta) return;
+  await corregirFacturaUI(JSON.parse(JSON.stringify(d.facturaCompleta)), async function (c) {
+    const r = await api('corregirDocumento', id, c);
+    if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad');
+    aviso('Listo: se corrigió.');
+    MF.docs[id] = r;
+    if (MF.datos) MF.datos.docs = MF.datos.docs.map(function (x) { return x.id === id ? Object.assign({}, x, r) : x; });
+    if (despues) despues(r);
+  });
+}
 /** Feli (18/11): si la IA lo leyó mal, "🔁 Leer de nuevo"; si se equivocó de papel, "Es otro documento…" (factura, remito…). */
 function htmlArreglarDoc(d) {
   if (d.noSePudo || d.leyendo || d.estado === 'Muy grande') return '';
   const pegado = d.compra && d.compra.estado === 'adjuntada';
   return '<div class="md-arreglar">' + (d.papelAMano ? '<span class="nota">✋ ' + esc(d.papel) + ' (lo dijo ' + esc(d.papelAMano) + ')</span>' : '') +
     (pegado ? '<span class="nota">Está en una compra: para cambiarlo, primero sacala de la compra.</span>' :
+     (d.facturaCompleta ? '<button type="button" class="link-gris" data-corregir="' + esc(d.id) + '">✏️ Corregir</button>' : '') +
      '<button type="button" class="link-gris" data-releer="' + esc(d.id) + '">🔁 Leer de nuevo</button>' +
      '<button type="button" class="link-gris" data-papel="' + esc(d.id) + '">Es otro documento…</button>') + '</div>';
 }
@@ -1232,6 +1252,7 @@ $('s-cfacturas').addEventListener('click', function (e) {
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
   else if (b.dataset.vermail) verMailDoc(b.dataset.vermail, pintarMails);
   else if (b.dataset.releer || b.dataset.papel) releerDocUI(b.dataset.releer || b.dataset.papel, !!b.dataset.papel, function () { pintarMails(); });
+  else if (b.dataset.corregir) corregirDocUI(b.dataset.corregir, function () { pintarMails(); });
   else if (b.dataset.nota) agregarNotaUI(b, function () { delete MF.docs[b.dataset.nota]; Object.keys(MF.docs).forEach(function (k) { if (MF.docs[k].notasEn === b.dataset.nota) abrirOtraVez(k); }); abrirOtraVez(b.dataset.nota); });
   else if (b.dataset.entablero) {
     const d = docPorId(b.dataset.entablero);
@@ -1697,6 +1718,7 @@ $('s-cdoc').addEventListener('click', function (e) {
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
   else if (b.dataset.vermail) verMailDoc(b.dataset.vermail, pintarDoc);
   else if (b.dataset.releer || b.dataset.papel) releerDocUI(b.dataset.releer || b.dataset.papel, !!b.dataset.papel, function (r) { CD.d = r; pintarDoc(); cargarFacturasT(); });
+  else if (b.dataset.corregir) corregirDocUI(b.dataset.corregir, function (r) { CD.d = r; pintarDoc(); cargarFacturasT(); });
   else if (b.dataset.nota) agregarNotaUI(b, cargarDoc);
   else if (b.dataset.peg) accionPegado(b, function () { cargarDoc(); cargarFacturasT(); });
   else if (b.dataset.entablero) { if (CD.d && CD.d.enCompra) abrir('ctarjeta', { id: CD.d.enCompra.id }); }
