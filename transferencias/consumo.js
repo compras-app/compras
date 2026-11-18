@@ -91,7 +91,9 @@
   var S = { r: null, cargando: false, error: '', parte: 'faltantes', junto: true, todos: false, buscar: '', foco: null, guardando: 0,
             cot: null,     // cot: el recuadro de "Pedir cotización" abierto (Paso 2)
             oc: null,      // oc: el de "Realizar órdenes de compra" (Paso 4)
-            cu: { editar: false, prov: '', leer: null, extra: [] } };   // Feli (18/11): el cuadro comparativo
+            cu: { editar: false, leer: null, extra: [], ocultos: {} } };   // Feli (18/11): el cuadro comparativo
+  var OCULTOS = 'programa-compras:cuadro_ocultos';   // los proveedores destildados del cuadro, en esta compu
+  try { S.cu.ocultos = JSON.parse(localStorage.getItem(OCULTOS) || '{}') || {}; } catch(e){}
   try { var v0 = JSON.parse(localStorage.getItem(VISTA) || 'null'); if(v0){ S.parte = ['necesidad', 'cuadro'].indexOf(v0.parte) >= 0 ? v0.parte : 'faltantes'; S.junto = v0.junto !== false; S.todos = !!v0.todos; } } catch(e){}
   try { S.r = JSON.parse(localStorage.getItem(GUARDA) || 'null'); } catch(e){}
 
@@ -913,26 +915,29 @@
     return out.sort(function(a, b){ return nombreProveedor(a).localeCompare(nombreProveedor(b), 'es'); });
   }
 
+  function provsVisibles(){ return provsCuadro().filter(function(p){ return !S.cu.ocultos[p]; }); }
   function filasCuadro(l){
+    var vis = provsVisibles();
     return l.filter(function(x){
       var cot = (S.r.cuadro || {})[x.cod];
-      if(S.cu.prov) return !!(cot && cot[S.cu.prov]);
-      return x.total.necesidad > 0 || (cot && Object.keys(cot).length);
+      return x.total.necesidad > 0 || (cot && vis.some(function(p){ return cot[p]; }));
     });
   }
 
   function htmlCuadro(l){
-    var C = S.cu, provs = provsCuadro(), ver = filasCuadro(l), h = ['<div class="paso cm-cu-barra"><div class="fila">'];
+    var C = S.cu, todos = provsCuadro(), provs = provsVisibles(), ver = filasCuadro(l), h = ['<div class="paso cm-cu-barra"><div class="fila">'];
     h.push('<button class="btn" id="cmculeer">📄 Leer presupuesto</button>');
     h.push('<button class="btn2" id="cmcueditar">' + (C.editar ? '✓ Terminar de editar' : '✏️ Editar') + '</button>');
-    h.push('<label class="field">Proveedor <select id="cmcuprov"><option value="">Todos</option>' + provs.map(function(p){
-      return '<option value="' + esc(p) + '"' + (p === C.prov ? ' selected' : '') + '>' + esc(nombreProveedor(p)) + '</option>'; }).join('') + '</select></label>');
-    if(C.editar) h.push('<label class="field">Sumar un proveedor <select id="cmcuagregar"><option value="">— elegir —</option>' + (S.r.proveedores || []).filter(function(p){ return provs.indexOf(p.id) < 0; })
+    if(C.editar) h.push('<label class="field">Sumar un proveedor <select id="cmcuagregar"><option value="">— elegir —</option>' + (S.r.proveedores || []).filter(function(p){ return todos.indexOf(p.id) < 0; })
       .map(function(p){ return '<option value="' + esc(p.id) + '">' + esc(p.nombre) + '</option>'; }).join('') + '</select></label>');
+    // Feli (18/11): tildar y destildar proveedores (se ven solo los tildados)
+    if(todos.length) h.push('</div><div class="fila cm-cu-provs"><span class="contado">Proveedores:</span>' + todos.map(function(p){
+      return '<label class="check"><input type="checkbox" data-cu-ver="' + esc(p) + '"' + (C.ocultos[p] ? '' : ' checked') + '> ' + esc(nombreProveedor(p)) + '</label>'; }).join(''));
     h.push('</div><p class="nota">El precio unitario arriba y el total (unitario × necesidad) abajo; en verde, el más barato. «Elegir este» lo pasa a la necesidad de compra. ' +
            '🤖 = leído de un presupuesto, ✋ = cargado a mano.</p></div>');
     if(C.leer) h.push(htmlLeerPresupuesto());
-    if(!provs.length) h.push('<p class="nota">Todavía no hay precios: «📄 Leer presupuesto» o cargalos con «✏️ Editar» (o en Necesidad de compra).</p>');
+    if(!todos.length) h.push('<p class="nota">Todavía no hay precios: «📄 Leer presupuesto» o cargalos con «✏️ Editar» (o en Necesidad de compra).</p>');
+    else if(!provs.length) h.push('<p class="nota">Tildá algún proveedor para verlo.</p>');
     h.push('<div class="tablewrap on cm-tabla cm-cu"><table><thead><tr><th class="name">Producto</th><th class="cm-nec">Necesidad</th>' +
            provs.map(function(p){ return '<th class="cm-cu-p">' + esc(nombreProveedor(p)) + '</th>'; }).join('') + '</tr></thead><tbody>');
     if(!ver.length) h.push('<tr><td colspan="' + (2 + provs.length) + '" class="name cm-vacio">Nada por acá.</td></tr>');
@@ -953,6 +958,7 @@
         h.push('<td class="' + cls + '" title="' + esc((c.fuente === 'ia' ? 'Leído del presupuesto' + (c.texto ? ': ' + c.texto : '') : 'A mano') + (c.quien ? ' · ' + c.quien : '')) + '">' +
                '<div class="cm-cu-u">' + plataM(c.precio, c.moneda) + ' <span class="cm-cu-f">' + (c.fuente === 'ia' ? '🤖' : '✋') + '</span></div>' +
                '<div class="cm-cu-t">' + (nec > 0 ? plataM(tot, c.moneda) : '') + '</div>' +
+               (c.texto ? '<div class="cm-cu-txt">«' + esc(c.texto) + '»</div>' : '') +
                (es ? '<div class="cm-cu-ok">✓ Elegido</div>' : nec > 0 ? '<button class="linkbtn" data-cu-elegir="' + esc(p + '|' + x.cod) + '">Elegir este</button>' : '') + '</td>');
       });
       h.push('</tr>');
@@ -973,18 +979,24 @@
            (arriba.length ? '<optgroup label="Se les pidió cotización">' + arriba.map(op).join('') + '</optgroup><optgroup label="Otros">' + resto.map(op).join('') + '</optgroup>' : resto.map(op).join('')) +
            '</select></label><label class="field">Archivo <input type="file" id="cmlarch" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp"></label></div>');
     h.push('<p class="nota">La IA lo lee y une cada renglón con un producto que hace falta comprar. Los precios quedan en el cuadro (no en la necesidad): revisalos y elegí.</p>');
-    if(L.res) h.push(L.res);
+    if(L.rev) h.push(htmlRevision());
     if(L.error) h.push('<p class="cm-cot-error">' + esc(L.error) + '</p>');
-    h.push('<div class="fila"><button class="btn" id="cmlok"' + (L.leyendo ? ' disabled' : '') + '>' + (L.leyendo ? '🤖 Leyendo… (hasta un minuto)' : 'Leer') + '</button>' +
-           '<button class="linkbtn" id="cmlcerrar">' + (L.leyendo ? '' : 'cerrar') + '</button></div></div>');
+    h.push('<div class="fila">' + (L.rev ? '' : '<button class="btn" id="cmlok"' + (L.leyendo ? ' disabled' : '') + '>' + (L.leyendo ? '🤖 Leyendo… (hasta un minuto)' : 'Leer') + '</button>') +
+           '<button class="linkbtn" id="cmlcerrar">' + (L.leyendo || L.cargando ? '' : 'cancelar') + '</button></div></div>');
     return h.join('');
   }
 
   function conectarCuadro(){
     var C = S.cu;
-    if($('cmculeer')) $('cmculeer').onclick = function(){ C.leer = C.leer ? null : { prov: '', leyendo: false, error: '', res: '' }; pintar(); };
+    if($('cmculeer')) $('cmculeer').onclick = function(){ if(C.leer){ if(C.leer.leyendo || C.leer.cargando) return; cerrarLeer(); } else C.leer = { prov: '', leyendo: false, error: '', rev: null }; pintar(); };
     if($('cmcueditar')) $('cmcueditar').onclick = function(){ C.editar = !C.editar; pintar(); };
-    if($('cmcuprov')) $('cmcuprov').onchange = function(){ C.prov = this.value; pintar(); };
+    [].forEach.call(document.querySelectorAll('[data-cu-ver]'), function(x){
+      x.onchange = function(){
+        if(x.checked) delete C.ocultos[x.dataset.cuVer]; else C.ocultos[x.dataset.cuVer] = true;
+        try { localStorage.setItem(OCULTOS, JSON.stringify(C.ocultos)); } catch(e){}
+        pintar();
+      };
+    });
     if($('cmcuagregar')) $('cmcuagregar').onchange = function(){ if(this.value && C.extra.indexOf(this.value) < 0) C.extra.push(this.value); pintar(); };
     [].forEach.call(document.querySelectorAll('[data-cu-elegir]'), function(b){
       b.onclick = function(){
@@ -1018,8 +1030,9 @@
     }
     if(C.leer){
       if($('cmlprov')) $('cmlprov').onchange = function(){ C.leer.prov = this.value; };
-      $('cmlcerrar').onclick = function(){ if(!C.leer.leyendo){ C.leer = null; pintar(); } };
-      $('cmlok').onclick = leerPresupuestoUI;
+      $('cmlcerrar').onclick = function(){ if(!C.leer.leyendo && !C.leer.cargando){ cerrarLeer(); pintar(); } };
+      if($('cmlok')) $('cmlok').onclick = leerPresupuestoUI;
+      if(C.leer.rev) conectarRevision();
     }
   }
 
@@ -1037,14 +1050,64 @@
     var r = await apiLenta('leerPresupuestoStock', { proveedor: L.prov, archivo: { nombre: f.name, tipo: f.type || (/\.pdf$/i.test(f.name) ? 'application/pdf' : ''), base64: b64 }, productos: prods });
     L.leyendo = false;
     if(!r || r.ok === false){ L.error = r && r.sinConexion ? 'Hace falta señal para leer el presupuesto.' : 'No se pudo leer: ' + ((r && r.error) || ''); pintar(); return; }
-    S.r.cuadro = r.cuadro || S.r.cuadro;
-    if(S.cu.extra.indexOf(L.prov) < 0) S.cu.extra.push(L.prov);
-    L.res = '<div class="cm-cot-p"><b>' + esc(nombreProveedor(L.prov)) + ': ' + r.leidos.length + (r.leidos.length === 1 ? ' precio leído' : ' precios leídos') + '</b>' +
-      (esUsd(r.moneda) ? ' <span class="cm-cot-error">· en dólares</span>' : '') +
-      (r.dudas.length ? '<div class="cm-cod-i">❓ No es seguro (no se cargaron): ' + esc(r.dudas.map(function(d){ return d.texto + (d.producto ? ' → ¿' + d.producto + '?' : ''); }).join(' · ')) + '</div>' : '') +
-      (r.sinUnir.length ? '<div class="cm-cod-i">Sin producto nuestro: ' + esc(r.sinUnir.join(' · ')) + '</div>' : '') +
-      '<div class="cm-cod-i">Revisalos en el cuadro; si algo está mal o conseguiste descuento, «✏️ Editar».</div></div>';
+    // Feli (18/11): primero se revisa (como en el pedido masivo) y recién después se carga en el cuadro
+    try { L.url = URL.createObjectURL(f); } catch(e){ L.url = ''; }
+    L.rev = { proveedor: r.proveedor, moneda: r.moneda, archivo: r.archivo, prods: prods,
+              filas: r.renglones.map(function(x){ return { n: x.n, texto: x.texto, cant: x.cant, unidad: x.unidad, contenido: x.contenido, precio: x.precio, codigo: x.codigo || '', duda: x.duda, contestada: !x.duda }; }) };
     pintar();
+  }
+
+  /* ---------- Feli (18/11): la revisión de lo leído, antes de cargarlo en el cuadro ----------
+     Cada renglón del presupuesto (cómo lo escribió el proveedor, cantidad y precio) con el producto nuestro que es (se cambia) y el
+     precio (se corrige). Las dudas de la IA ("¿Es …?") se contestan acá. Recién con "Cargar en el cuadro" se guardan. */
+  function cerrarLeer(){ var L = S.cu.leer; if(L && L.url){ try { URL.revokeObjectURL(L.url); } catch(e){} } S.cu.leer = null; }
+  function nombreProducto(cod, prods){ var p = (prods || []).filter(function(x){ return x.codigo === cod; })[0]; return p ? p.producto : cod; }
+  function htmlRevision(){
+    var R = S.cu.leer.rev, prods = R.prods, faltan = R.filas.filter(function(f){ return !f.contestada; }).length;
+    var listos = R.filas.filter(function(f){ return f.contestada && f.codigo && f.precio !== null && f.precio !== undefined; });
+    var veces = {}; listos.forEach(function(f){ veces[f.codigo] = (veces[f.codigo] || 0) + 1; });
+    var orden = R.filas.slice().sort(function(a, b){ var k = function(f){ return !f.contestada ? 0 : f.codigo ? 1 : 2; }; return k(a) - k(b) || a.n - b.n; });
+    var h = ['<div class="cm-cot-p cm-rev"><b>' + esc(nombreProveedor(R.proveedor)) + ': revisá lo que leyó la IA</b>' + (esUsd(R.moneda) ? ' <span class="cm-cot-error">· está en dólares</span>' : '') +
+             (S.cu.leer.url ? ' <a class="linkbtn" href="' + esc(S.cu.leer.url) + '" target="_blank" rel="noopener">📄 Ver el presupuesto</a>' : '')];
+    h.push('<div class="tablewrap on cm-tabla"><table><thead><tr><th class="name">Pedido (nuestro producto)</th><th class="name">Presupuestado (como lo escribió)</th><th>Cant.</th><th>Precio unitario</th></tr></thead><tbody>');
+    orden.forEach(function(f){
+      var sel = '<select class="cm-rev-prod" data-rev-n="' + f.n + '"><option value="">— no es ninguno —</option>' + prods.map(function(p){
+        return '<option value="' + esc(p.codigo) + '"' + (p.codigo === f.codigo ? ' selected' : '') + '>' + esc(p.producto) + '</option>'; }).join('') + '</select>';
+      var preg = !f.contestada && f.duda ? '<div class="cm-rev-preg">🤖 ¿Es «' + esc(nombreProducto(f.duda.codigo, prods)) + '»? <span class="cm-cod-i">(' + esc(f.duda.motivo) + ')</span> ' +
+        '<button class="linkbtn" data-rev-si="' + f.n + '">Sí</button> <button class="linkbtn" data-rev-no="' + f.n + '">No</button></div>' : '';
+      h.push('<tr' + (!f.contestada ? ' class="cm-mano"' : '') + '><td class="name">' + sel + preg + (f.codigo && veces[f.codigo] > 1 ? '<div class="cm-cot-error">Hay ' + veces[f.codigo] + ' renglones para este producto: queda el último.</div>' : '') + '</td>' +
+             '<td class="name">' + esc(f.texto) + (f.contenido ? ' <span class="cm-cod-i">(trae ' + fmt(f.contenido) + ' de los nuestros)</span>' : '') + '</td>' +
+             '<td>' + esc(f.cant === null || f.cant === undefined ? '' : fmt(f.cant) + (f.unidad ? ' ' + f.unidad : '')) + '</td>' +
+             '<td><input class="ajuste cm-rev-pu" type="text" inputmode="decimal" autocomplete="off" data-rev-n="' + f.n + '" value="' + esc(fmt2(f.precio)) + '" placeholder="$"></td></tr>');
+    });
+    h.push('</tbody></table></div>');
+    h.push('<div class="fila"><button class="btn" id="cmrevok"' + (faltan || !listos.length || S.cu.leer.cargando ? ' disabled' : '') + '>' +
+           (S.cu.leer.cargando ? 'Cargando…' : 'Cargar ' + listos.length + (listos.length === 1 ? ' precio' : ' precios') + ' en el cuadro') + '</button>' +
+           (faltan ? '<span class="contado">Contestá ' + (faltan === 1 ? 'la pregunta' : 'las ' + faltan + ' preguntas') + ' primero.</span>' : '') + '</div></div>');
+    return h.join('');
+  }
+  function conectarRevision(){
+    var L = S.cu.leer, R = L.rev, fila = function(n){ return R.filas.filter(function(f){ return f.n === Number(n); })[0]; };
+    [].forEach.call(document.querySelectorAll('select.cm-rev-prod'), function(x){ x.onchange = function(){ var f = fila(x.dataset.revN); f.codigo = x.value; f.contestada = true; pintar(); }; });
+    [].forEach.call(document.querySelectorAll('[data-rev-si]'), function(x){ x.onclick = function(){ var f = fila(x.dataset.revSi); f.codigo = f.duda.codigo; f.contestada = true; pintar(); }; });
+    [].forEach.call(document.querySelectorAll('[data-rev-no]'), function(x){ x.onclick = function(){ var f = fila(x.dataset.revNo); f.codigo = ''; f.contestada = true; pintar(); }; });
+    [].forEach.call(document.querySelectorAll('input.cm-rev-pu'), function(x){
+      x.onfocus = function(){ x.select(); };
+      x.onchange = function(){ var v = numeroEscrito(x.value), f = fila(x.dataset.revN); if(v !== null && (!isFinite(v) || v < 0)){ alert('Tiene que ser un número de 0 para arriba.'); x.value = fmt2(f.precio); return; } f.precio = v; pintar(); };
+      x.onkeydown = function(e){ if(e.key === 'Enter'){ e.preventDefault(); x.blur(); } };
+    });
+    if($('cmrevok')) $('cmrevok').onclick = async function(){
+      var por = {};
+      R.filas.forEach(function(f){ if(f.contestada && f.codigo && f.precio !== null && f.precio !== undefined) por[f.codigo] = f; });
+      var lista = Object.keys(por).map(function(cod){ var f = por[cod]; return { codigo: cod, producto: nombreProducto(cod, R.prods), proveedor: R.proveedor, precio: f.precio, texto: f.texto, archivo: R.archivo, moneda: R.moneda }; });
+      L.cargando = true; pintar();
+      await guardar({ cuadroLeido: lista }, null);
+      L.cargando = false;
+      if(S.error) { pintar(); return; }
+      if(S.cu.extra.indexOf(R.proveedor) < 0) S.cu.extra.push(R.proveedor);
+      delete S.cu.ocultos[R.proveedor];
+      cerrarLeer(); pintar();
+    };
   }
 
   /* ---------- Feli (18/11): todo a Excel (necesidad por oficina, el cuadro comparativo y las observaciones) ---------- */
