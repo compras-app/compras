@@ -118,7 +118,7 @@ function htmlTarjetaCt(t) {
       '<div class="pie"><span>' + esc(emojiUrgencia(t.urgencia)) + '</span><span class="ct-col-c">' + esc(t.columna) + '</span>' +
       '<span>' + (t.masivo ? 'Pedido masivo: se compra del presupuesto' : t.productos + (t.productos === 1 ? ' producto' : ' productos') + ' sin comprar') + '</span></div></div>';
   }
-  const recep = t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : ' · ' + t.columna)
+  const recep = t.recibido ? 'Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : ' · ' + t.columna)
                            : '⏳ ' + t.columna;
   const pendiente = t.motivo === 'Orden de compra pendiente';
   return '<div class="tarjeta ct-t' + (pendiente ? ' ct-pend' : '') + '" data-id="' + esc(t.id) + '" role="button" tabindex="0">' + prueba +
@@ -298,7 +298,7 @@ function pintarTarjetaContable() {
       '<div class="caja cx-imput">' + r.pedidos.map(function (p) {
         return htmlCuentaPedido(p) + '<p class="nota cx-pidio">Pidió <b>' + esc(p.solicitante || '—') + '</b> · ' + esc(p.sitio || '—') + (r.pedidos.length > 1 ? ' · ' + esc(p.titulo || p.ref) : '') + '</p>';
       }).join('') +
-        '<p class="nota">' + esc(t.recibido ? '✅ Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : '') : '⏳ Todavía no llegó (' + t.columna + ')') +
+        '<p class="nota">' + esc(t.recibido ? 'Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : '') : '⏳ Todavía no llegó (' + t.columna + ')') +
         (c && c.quien ? ' · compró ' + esc(c.quien) + (c.fecha ? ' el ' + esc(fechaCt(c.fecha)) : '') : '') + '</p></div>' +
       htmlNotasCt(r.comentarios, t.id) +
       (t.entero ? '<div class="caja"><p class="nota">Este pedido pasó entero a Entregas, sin una compra hecha en la app: no tiene proveedor ni precios.</p>' + htmlProductosCt(r.productos) + '</div>'
@@ -327,6 +327,12 @@ function pintarTarjetaContable() {
   });
   if ($('cx-fac-leer')) $('cx-fac-leer').addEventListener('click', function () { leerFacturaUI(r.tarjeta.id); });
   if ($('cx-fac-corregir')) $('cx-fac-corregir').addEventListener('click', corregirFacturaUI);
+  if ($('cx-fac-revisada')) $('cx-fac-revisada').addEventListener('click', async function () {
+    const x = await api('revisarFacturaCompra', r.tarjeta.id);
+    if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
+    aviso('Listo: quedó revisada.');
+    cargarTarjetaContable(); cargarContable();
+  });
   if ($('cx-fac-amano')) $('cx-fac-amano').addEventListener('click', marcarFacturaEnAlbor);
   if ($('cx-fac-albor')) $('cx-fac-albor').addEventListener('click', function () { cargarFacturaEnAlbor(r); });
 }
@@ -400,6 +406,9 @@ function htmlFacturaCt(t, l) {
     if (c.graves.length) h += '<div class="cx-fac-r grave"><b>⛔ No coincide con esta compra</b><ul>' + c.graves.map(li).join('') + '</ul></div>';
     if (f.problemas.length || c.avisos.length) h += '<div class="cx-fac-r aviso"><b>⚠️ Para revisar</b><ul>' + f.problemas.concat(c.avisos).map(li).join('') + '</ul></div>';
     if (!c.graves.length && !c.avisos.length && !f.problemas.length) h += '<div class="cx-fac-r ok"><b>✅ Las cuentas cierran y coincide con la compra.</b></div>';
+    // Feli (18/11): lo revisado no vuelve a mostrar el cartel como problema
+    else if (l.revisada) h += '<p class="cx-revisada">✅ Revisada por ' + esc(l.revisada.quien) + ' el ' + esc(fechaCt(l.revisada.cuando)) + '. Lo de arriba queda solo como dato.</p>';
+    else h += '<div class="ad-acciones"><button type="button" class="btn" id="cx-fac-revisada">✅ Ya lo revisé: está bien</button></div>';
     h += '<dl class="ad-datos"><dt>Proveedor</dt><dd>' + esc([f.emisor, f.cuit ? 'CUIT ' + f.cuit : ''].filter(Boolean).join(' · ') || '—') + '</dd>' +
       '<dt>Fecha</dt><dd>' + esc(f.fecha || '—') + (f.vencimiento ? ' · vence ' + esc(f.vencimiento) : '') + '</dd>' +
       (f.cae ? '<dt>CAE</dt><dd>' + esc(f.cae) + (f.vtoCae ? ' · vence ' + esc(f.vtoCae) : '') + '</dd>' : '') +
@@ -505,7 +514,7 @@ async function cargarFacturaEnAlbor(r) {
   }
   const motivo = !t.factura ? 'Primero adjuntá la factura.'
     : !l ? 'Primero dejá que la IA lea la factura («🤖 Leer la factura»).'
-    : l.comparacion && l.comparacion.graves.length ? 'La factura no coincide con esta compra: así no se carga en Albor.'
+    : l.comparacion && l.comparacion.graves.length && !l.revisada ? 'La factura no coincide con esta compra: revisala y tocá «✅ Ya lo revisé» para cargarla igual.'
     : t.entero || !t.numeroOrden ? 'Esta compra no tiene orden de compra en Albor: la factura se carga a mano.'
     : !(await hayExtensionAlbor()) ? 'Para cargarla sola hace falta la compu con la extensión de Albor.' : '';
   if (motivo) {
@@ -915,7 +924,8 @@ async function imprimirFacturas() {
 pantalla('cfacturas', { titulo: 'Documentos', tab: 'cfacturas', alMostrar: mostrarMails });
 pantalla('cmails', { titulo: 'Mails e impresora', tab: 'cajustes', alMostrar: mostrarMails });
 const MF = { datos: null, cargando: false, textos: {}, abiertos: {}, docs: {}, verMail: {}, sec: 'facturas' };
-const SECCIONES_DOC = [{ k: 'facturas', t: 'Facturas' }, { k: 'remitos', t: 'Remitos' }, { k: 'notas', t: 'Notas de crédito' }, { k: 'otros', t: 'Otros' }];
+// Feli (18/11): las notas de débito aparte, a la derecha de las de crédito
+const SECCIONES_DOC = [{ k: 'facturas', t: 'Facturas' }, { k: 'remitos', t: 'Remitos' }, { k: 'notas', t: 'Notas de crédito' }, { k: 'notasd', t: 'Notas de débito' }, { k: 'otros', t: 'Otros' }];
 const NOMBRE_COL_FC = { entrantes: 'Entrantes', controlando: 'Controlando', aprobacion: 'Esperando aprobación', lista: 'Lista para cargar', finalizado: 'Finalizado', historial: 'Historial' };
 
 function notaMF(t) { notaAd('mf-nota', t); notaAd('md-nota', t); }
@@ -1028,7 +1038,8 @@ function htmlFilaDoc(d) {
   return '<div class="md-doc' + (ab ? ' abierto' : '') + '">' +
     '<button type="button" class="md-cab" data-abrir="' + esc(d.id) + '" aria-expanded="' + ab + '">' +
       '<span class="mf-cab"><span class="mf-de">' + esc(nombreDe(d.mail.de)) + '</span><span class="mf-fecha">' + esc(horaCorta(d.mail.fecha)) + '</span></span>' +
-      '<span class="mf-asunto">' + esc(d.mail.asunto || d.nombre || '(sin asunto)') + (d.noSePudo ? ' <span class="mf-mal">· no se pudo traer</span>' : '') + '</span></button>' +
+      '<span class="mf-asunto">' + esc(d.mail.asunto || d.nombre || '(sin asunto)') + (d.noSePudo ? ' <span class="mf-mal">· no se pudo traer</span>' : '') + '</span>' +
+      (d.nombre && !d.noSePudo ? '<span class="md-arch">' + (ICONO_PAPEL[d.papel] || '📎') + ' ' + esc(d.nombre) + '</span>' : '') + '</button>' +
     (ab ? '<div class="md-cuerpo">' + htmlDocumento(full || d, { lista: true }) + '</div>' : '') + '</div>';
 }
 
@@ -1122,11 +1133,44 @@ function htmlDocumento(d, op) {
   h += htmlLecturaDoc(d);
   if (op.tablero) h += htmlPegadoDoc(d);
   else h += notas;
+  h += htmlArreglarDoc(d);
   h += '<div class="md-pie"><div>' + (d.mail && (d.mail.texto || (d.otros && d.otros.length) || d.mail.resumen) ? '<button type="button" class="link-gris" data-vermail="' + esc(d.id) + '">' + (MF.verMail[d.id] ? 'Esconder el mail' : 'Ver mail') + '</button>' : '') + '</div>' +
        '<div class="md-pie-d">' + (d.archivo ? '<button type="button" class="btn2" data-ver="' + esc(d.archivo) + '">Ver ' + esc(nombrePapel(d)) + '</button>' : '') +
        (op.lista && (d.enCompra || d.enFacturas) ? '<button type="button" class="btn2" data-entablero="' + esc(d.id) + '">Ver en tablero</button>' : '') + '</div></div>';
   return h + (MF.verMail[d.id] ? htmlVerMailDoc(d) : '');
 }
+/** Feli (18/11): si la IA lo leyó mal, "🔁 Leer de nuevo"; si se equivocó de papel, "Es otro documento…" (factura, remito…). */
+function htmlArreglarDoc(d) {
+  if (d.noSePudo || d.leyendo || d.estado === 'Muy grande') return '';
+  const pegado = d.compra && d.compra.estado === 'adjuntada';
+  return '<div class="md-arreglar">' + (d.papelAMano ? '<span class="nota">✋ ' + esc(d.papel) + ' (lo dijo ' + esc(d.papelAMano) + ')</span>' : '') +
+    (pegado ? '<span class="nota">Está en una compra: para cambiarlo, primero sacala de la compra.</span>' :
+     '<button type="button" class="link-gris" data-releer="' + esc(d.id) + '">🔁 Leer de nuevo</button>' +
+     '<button type="button" class="link-gris" data-papel="' + esc(d.id) + '">Es otro documento…</button>') + '</div>';
+}
+const PAPELES_ELEGIR = ['Factura', 'Nota de crédito', 'Nota de débito', 'Remito', 'Recibo', 'Resumen de cuenta', 'Presupuesto', 'Orden de pago', 'Otro papel'];
+async function releerDocUI(id, conPapel, despues) {
+  let papel = '';
+  if (conPapel) {
+    const d = docPorId(id), c = document.createElement('div');
+    c.className = 'cuerpo md-papeles';
+    c.innerHTML = PAPELES_ELEGIR.map(function (p) {
+      return '<button type="button" class="btn2' + (d && d.papel === p ? ' activa' : '') + '" data-p="' + esc(p) + '">' + (ICONO_PAPEL[p] || '📄') + ' ' + esc(p === 'Otro papel' ? 'Otro' : p) + '</button>';
+    }).join('');
+    await dialogo({ titulo: '¿Qué documento es?', texto: 'Si es una factura o una nota de crédito o débito y no estaba leída como tal, la IA la lee de nuevo (tarda unos segundos).', cuerpo: c,
+      botones: [{ texto: 'Volver', valor: null }],
+      alAbrir: function () { c.querySelectorAll('[data-p]').forEach(function (b) { b.addEventListener('click', function () { papel = b.dataset.p; if (cerrarDialogoActual) cerrarDialogoActual(null); }); }); } });
+    if (!papel) return;
+  }
+  aviso('🤖 Leyendo… (tarda unos segundos)');
+  const r = await apiLenta('releerDocumento', id, papel);
+  if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad');
+  aviso('Listo: ' + (r.papel ? 'quedó como ' + r.papel.toLowerCase() : 'leído de nuevo') + '.');
+  MF.docs[id] = r;
+  if (MF.datos) MF.datos.docs = MF.datos.docs.map(function (x) { return x.id === id ? Object.assign({}, x, r) : x; });
+  if (despues) despues(r);
+}
+
 function htmlVerMailDoc(d) {
   const t = MF.textos[d.mail.id];
   return '<div class="md-mail"><p class="nota">De: ' + esc(d.mail.de) + ' · ' + esc(horaCorta(d.mail.fecha)) + '</p>' +
@@ -1187,6 +1231,7 @@ $('s-cfacturas').addEventListener('click', function (e) {
   else if (b.dataset.abrir) abrirFilaDoc(b.dataset.abrir);
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
   else if (b.dataset.vermail) verMailDoc(b.dataset.vermail, pintarMails);
+  else if (b.dataset.releer || b.dataset.papel) releerDocUI(b.dataset.releer || b.dataset.papel, !!b.dataset.papel, function () { pintarMails(); });
   else if (b.dataset.nota) agregarNotaUI(b, function () { delete MF.docs[b.dataset.nota]; Object.keys(MF.docs).forEach(function (k) { if (MF.docs[k].notasEn === b.dataset.nota) abrirOtraVez(k); }); abrirOtraVez(b.dataset.nota); });
   else if (b.dataset.entablero) {
     const d = docPorId(b.dataset.entablero);
@@ -1651,6 +1696,7 @@ $('s-cdoc').addEventListener('click', function (e) {
   if (b.dataset.fc) accionFactura(b.dataset.fc);
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
   else if (b.dataset.vermail) verMailDoc(b.dataset.vermail, pintarDoc);
+  else if (b.dataset.releer || b.dataset.papel) releerDocUI(b.dataset.releer || b.dataset.papel, !!b.dataset.papel, function (r) { CD.d = r; pintarDoc(); cargarFacturasT(); });
   else if (b.dataset.nota) agregarNotaUI(b, cargarDoc);
   else if (b.dataset.peg) accionPegado(b, function () { cargarDoc(); cargarFacturasT(); });
   else if (b.dataset.entablero) { if (CD.d && CD.d.enCompra) abrir('ctarjeta', { id: CD.d.enCompra.id }); }

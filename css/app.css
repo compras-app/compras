@@ -1343,3 +1343,10 @@ body[data-pantalla="cimpresora"] .contenido{max-width:700px}
 /* Feli (17/11): el tablero de Facturas a lo ancho de toda la pantalla, con las columnas repartidas */
 body[data-pantalla="cfac"] .contenido{max-width:none}
 .fc-cols .ct-col{flex:1 1 0;min-width:260px;max-width:none}
+/* Feli (18/11): el archivo en la fila de Documentos, leer de nuevo / qué documento es, y la factura revisada */
+.md-arch{display:block;font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.md-arreglar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:8px}
+.md-papeles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.md-papeles .btn2{width:100%}
+.md-papeles .btn2.activa{border-color:var(--accent)}
+.cx-revisada{font-size:14px;color:var(--accent);margin:6px 0}
