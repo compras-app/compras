@@ -6179,6 +6179,11 @@
                  observaciones: 'Transferencia manual', manual: true,
                  items: ANALISIS.items.map(function(i){ return { cod: i.cod, nombre: i.nombre, cantidad: i.pedido, cuenta: i.cuenta || '' }; }) };
       var cm = await api('enviarPedidoGranja', pm);
+      // Feli (18/11): si el servidor no contestó, va por la bandeja (con su ID no se repite) y el Transferido sale detrás
+      if(!cm.ok && (cm.reintentar || cm.lento || cm.sinConexion)){
+        bandeja.agregar('enviarPedidoGranja', [pm], 'anotar la transferencia manual de ' + pm.granja);
+        cm = { ok: true, id: pm.id };
+      }
       if(cm.ok){ pedido = { id: cm.id || pm.id, granja: pm.granja }; MANUAL.items = []; guardarManual(); pintarManual(); }
       else avisoManualAlbor = '<li style="color:#b3261e">No se pudo anotar la transferencia manual como pedido de ' + esc(pm.granja) + ': ' +
                               esc(cm.error || (cm.sinConexion ? 'sin señal' : '')) + '. Los pendientes quedan solo en la planilla. La transferencia en Albor quedó hecha.</li>';
@@ -6196,23 +6201,24 @@
        pendientes de un pedido, se tachan los que salieron. */
     if(r && r.ok && pedido){
       var nros = hechos.map(function(x){ return x.comprobante; }).filter(Boolean).join(' / ');
-      var m;
-      if(pedido.modo === 'pendientes'){
-        m = await api('marcarPendientesTransferidos', pedido.id, { comprobantes: nros,
-              items: ANALISIS.items.map(function(i){ return { cod: i.cod, transferido: i.total }; }) });
-        if(m.ok) lineas.push('<li>Pendientes de ' + esc(pedido.granja || '') + ': ' + (m.quedan
-                               ? 'se anotó lo que salió. Todavía falta' + (m.quedan === 1 ? ' 1 pendiente' : 'n ' + m.quedan + ' pendientes') +
-                                 ' (los que salieron completos quedaron tachados en la planilla).'
-                               : 'quedaron todos tachados en la planilla. Ya no queda ninguno.') + '</li>');
-      }else{
-        m = await api('marcarTransferido', pedido.id, { comprobantes: nros,
-              items: ANALISIS.items.map(function(i){ return { cod: i.cod, transferido: i.total, pendiente: i.pendiente }; }) });
-        if(m.ok) lineas.push('<li>' + (manual ? 'La transferencia manual quedó anotada como un pedido de ' + esc(pedido.granja || '') + ', Transferido'
-                                              : 'El pedido de ' + esc(pedido.granja || '') + ' quedó como Transferido') +
-                             (m.quedan ? ', con ' + m.quedan + ' pendiente' + (m.quedan === 1 ? '' : 's') + '.' : '.') + '</li>');
-      }
-      if(!m.ok) lineas.push('<li style="color:#b3261e">No se pudo anotar en la planilla: ' + esc(m.error || '') +
-                            '. La transferencia en Albor quedó hecha.</li>');
+      /* Feli (18/11: las STK-3338 y STK-3380 quedaron en Albor y en el Historial, pero los pedidos seguían "Enviado"): el
+         servidor no contestó justo en este paso y no se reintentaba. Ahora va por la bandeja, como el Historial: queda en la
+         compu y se manda solo hasta que entra (con su número de envío, así nunca se anota dos veces). */
+      var pend = pedido.modo === 'pendientes';
+      var claveB = pend
+        ? bandeja.agregar('marcarPendientesTransferidos', [pedido.id, { comprobantes: nros,
+            items: ANALISIS.items.map(function(i){ return { cod: i.cod, transferido: i.total }; }) }], 'anotar los pendientes transferidos de ' + (pedido.granja || ''))
+        : bandeja.agregar('marcarTransferido', [pedido.id, { comprobantes: nros,
+            items: ANALISIS.items.map(function(i){ return { cod: i.cod, transferido: i.total, pendiente: i.pendiente }; }) }],
+            'anotar como Transferido el pedido de ' + (pedido.granja || ''));
+      var hasta = Date.now() + 30000;
+      while(claveB && bandeja.pendiente(claveB) && Date.now() < hasta) await new Promise(function(ok){ setTimeout(ok, 1000); });
+      var queQueda = pend ? 'Los pendientes de ' + esc(pedido.granja || '') : (manual ? 'La transferencia manual (pedido de ' + esc(pedido.granja || '') + ')' : 'El pedido de ' + esc(pedido.granja || ''));
+      if(claveB && bandeja.pendiente(claveB))
+        lineas.push('<li>' + queQueda + ': el servidor está tardando; queda anotado en esta compu y se marca ' + (pend ? 'solo' : 'Transferido solo') +
+                    ' apenas conteste (no hace falta hacer nada). La transferencia en Albor quedó hecha.</li>');
+      else if(claveB)
+        lineas.push('<li>' + queQueda + (pend ? ': se anotó lo que salió.' : ' quedó como Transferido.') + '</li>');
       PEDIDO_ELEGIDO = null;
       refrescarRecibidos();
     }
