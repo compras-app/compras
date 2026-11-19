@@ -85,6 +85,15 @@
   function jmParaTotal(x, total){
     return Math.max(0, redondo(n(total) - x.of.LC50.necesidad - x.of.CASA.necesidad));
   }
+  /** Feli (19/11: "quiero poner 50 y no me deja"): el total escrito en "Todo junto", repartido. Va a JM; si es menos de lo que
+      ya tienen LC 50 y CASA, JM queda en 0 y LC 50 y CASA se reparten el total en la misma proporción que tenían. */
+  function repartoTotal(x, total){
+    total = Math.max(0, n(total));
+    var lc = n(x.of.LC50.necesidad), ca = n(x.of.CASA.necesidad);
+    if(total >= lc + ca) return { JM: redondo(total - lc - ca), LC50: lc, CASA: ca };
+    var nlc = lc + ca > 0 ? Math.round(total * lc / (lc + ca)) : Math.round(total / 2);
+    return { JM: 0, LC50: nlc, CASA: redondo(total - nlc) };
+  }
 
   /* ---------- La pantalla ---------- */
 
@@ -177,7 +186,7 @@
     h.push('</div>');
     if(S.parte === 'necesidad') h.push('<p class="nota">Necesidad = consumo por mes × meses − existencias de hoy (para arriba, a unidades enteras). ' +
       'LC 50 y CASA se calculan juntas y se reparte lo que hay que comprar para que las dos queden con lo mismo. ' +
-      'La necesidad se cambia a mano (con ↓ o Enter pasás al siguiente)' + (S.junto ? '; en "Todo junto", el cambio va a Oficina JM' : '') +
+      'La necesidad se cambia a mano (con ↓ o Enter pasás al siguiente)' + (S.junto ? '; en "Todo junto", el cambio va a Oficina JM (si es menos de lo que tienen LC 50 y CASA, JM queda en 0 y ellas se reparten el total)' : '') +
       '. Lo cambiado a mano queda guardado para todos hasta que lo borres. ' +
       'Precio unitario y Precio total van juntos (total = unitario × necesidad): cargá el que tengas. Los precios y el proveedor de cada producto ' +
       'quedan guardados para todos hasta "Borrar precios".</p>');
@@ -461,7 +470,10 @@
     var ofi = k.split('|')[0], cambios = [];
     if(ofi === 'T'){
       if(v === null) OFICINAS.forEach(function(o){ if(x.of[o.id].aMano) cambios.push({ oficina: o.id, codigo: x.cod, producto: x.insumo, v: null }); });
-      else cambios.push({ oficina: 'JM', codigo: x.cod, producto: x.insumo, v: jmParaTotal(x, v) });
+      else {
+        var rp = repartoTotal(x, v);
+        OFICINAS.forEach(function(o){ if(redondo(rp[o.id]) !== redondo(x.of[o.id].necesidad) || o.id === 'JM') cambios.push({ oficina: o.id, codigo: x.cod, producto: x.insumo, v: rp[o.id] }); });
+      }
     } else cambios.push({ oficina: ofi, codigo: x.cod, producto: x.insumo, v: v });
     if(!cambios.length) return;
     guardar({ necesidad: cambios }, function(){
@@ -1155,5 +1167,5 @@
     if(viejo) cargar();
   }
 
-  window.ConsumoMensual = { abrir: abrir, calcular: calcular, necesidadCalculada: necesidadCalculada, jmParaTotal: jmParaTotal, numeroEscrito: numeroEscrito, armarOrdenStockPDF: armarOrdenStockPDF };
+  window.ConsumoMensual = { abrir: abrir, calcular: calcular, necesidadCalculada: necesidadCalculada, jmParaTotal: jmParaTotal, repartoTotal: repartoTotal, numeroEscrito: numeroEscrito, armarOrdenStockPDF: armarOrdenStockPDF };
 })();
