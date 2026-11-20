@@ -929,9 +929,9 @@ async function imprimirFacturas() {
    ============================================================ */
 pantalla('cfacturas', { titulo: 'Documentos', tab: 'cfacturas', alMostrar: mostrarMails });
 pantalla('cmails', { titulo: 'Mails e impresora', tab: 'cajustes', alMostrar: mostrarMails });
-const MF = { datos: null, cargando: false, textos: {}, abiertos: {}, docs: {}, verMail: {}, sec: 'facturas' };
+const MF = { datos: null, cargando: false, textos: {}, abiertos: {}, docs: {}, verMail: {}, sec: 'facturas', ordenes: null, ordAbiertas: {} };
 // Feli (18/11): las notas de débito aparte, a la derecha de las de crédito
-const SECCIONES_DOC = [{ k: 'facturas', t: 'Facturas' }, { k: 'remitos', t: 'Remitos' }, { k: 'notas', t: 'Notas de crédito' }, { k: 'notasd', t: 'Notas de débito' }, { k: 'otros', t: 'Otros' }];
+const SECCIONES_DOC = [{ k: 'facturas', t: 'Facturas' }, { k: 'remitos', t: 'Remitos' }, { k: 'notas', t: 'Notas de crédito' }, { k: 'notasd', t: 'Notas de débito' }, { k: 'otros', t: 'Otros' }, { k: 'ordenes', t: '🛒 Órdenes de compra' }];   // Feli (20/11)
 const NOMBRE_COL_FC = { entrantes: 'Entrantes', controlando: 'Controlando', aprobacion: 'Esperando aprobación', lista: 'Lista para cargar', finalizado: 'Finalizado', historial: 'Historial' };
 
 function notaMF(t) { notaAd('mf-nota', t); notaAd('md-nota', t); }
@@ -1024,10 +1024,14 @@ function pintarMails() {
   $('md-problemas').innerHTML = pr.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('');
   const docs = d ? d.docs || [] : [];
   $('md-secs').innerHTML = SECCIONES_DOC.map(function (x) {
+    const n = x.k === 'ordenes' ? (MF.ordenes ? MF.ordenes.length : '') : docs.filter(function (y) { return y.seccion === x.k; }).length;
     return '<button type="button" class="md-sec' + (MF.sec === x.k ? ' activa' : '') + '" data-sec="' + x.k + '" aria-pressed="' + (MF.sec === x.k) + '">' + esc(x.t) +
-           ' <span class="n">' + docs.filter(function (y) { return y.seccion === x.k; }).length + '</span></button>';
+           ' <span class="n">' + n + '</span></button>';
   }).join('');
   document.querySelectorAll('#s-cfacturas [data-solo-fac]').forEach(function (el) { el.hidden = MF.sec !== 'facturas'; });
+  document.querySelectorAll('#s-cfacturas [data-solo-ord]').forEach(function (el) { el.hidden = MF.sec !== 'ordenes'; });
+  document.querySelectorAll('#s-cfacturas [data-no-ord]').forEach(function (el) { el.hidden = MF.sec === 'ordenes'; });
+  if (MF.sec === 'ordenes') { pintarOrdenesDoc(); return; }
   const sel = $('md-prov'), v = sel.value, provs = [];
   docs.forEach(function (x) { const p = proveedorDoc(x); if (x.seccion === MF.sec && p && provs.indexOf(p) === -1) provs.push(p); });
   provs.sort(function (a, b) { return a.localeCompare(b, 'es'); });
@@ -1045,7 +1049,8 @@ function htmlFilaDoc(d) {
     '<button type="button" class="md-cab" data-abrir="' + esc(d.id) + '" aria-expanded="' + ab + '">' +
       '<span class="mf-cab"><span class="mf-de">' + esc(nombreDe(d.mail.de)) + '</span><span class="mf-fecha">' + esc(horaCorta(d.mail.fecha)) + '</span></span>' +
       '<span class="mf-asunto">' + esc(d.mail.asunto || d.nombre || '(sin asunto)') + (d.noSePudo ? ' <span class="mf-mal">· no se pudo traer</span>' : '') + '</span>' +
-      (d.nombre && !d.noSePudo ? '<span class="md-arch">' + (ICONO_PAPEL[d.papel] || '📎') + ' ' + esc(d.nombre) + '</span>' : '') + '</button>' +
+      (d.nombre && !d.noSePudo ? '<span class="md-arch">' + (ICONO_PAPEL[d.papel] || '📎') + ' ' + esc(d.nombre) + '</span>' : '') +
+      (d.enCompra ? '<span class="md-enoc">🛒 ' + (d.enCompra.orden ? 'Adjuntada a la OC ' + esc(d.enCompra.orden) : 'Adjuntada a una compra sin orden de compra') + '</span>' : '') + '</button>' +
     (ab ? '<div class="md-cuerpo">' + htmlDocumento(full || d, { lista: true }) + '</div>' : '') + '</div>';
 }
 
@@ -1059,8 +1064,8 @@ function tituloDoc(d) {
   return (ICONO_PAPEL[d.papel] || '📄') + ' ' + (d.papel || 'Documento') + ' · ' + (d.nombre || '');
 }
 function htmlLugarDoc(d) {
-  if (d.enCompra) return '<p class="md-lugar">🛒 En la compra <b>' + esc(d.enCompra.titulo || d.enCompra.id) + '</b> (tablero de Pedidos' + (d.enCompra.orden ? ', OC ' + esc(d.enCompra.orden) : '') + ')' +
-                         (d.enCompra.cargada ? ' · ✅ cargada en Albor' : '') + '</p>';
+  if (d.enCompra) return '<p class="md-lugar">🛒 ' + (d.enCompra.orden ? 'Adjuntada a la orden de compra <button type="button" class="link-gris md-oc-link" data-irorden="' + esc(d.enCompra.id) + '">' + esc(d.enCompra.orden) + '</button>' : 'Adjuntada a una compra sin orden de compra') +
+                         ': <b>' + esc(d.enCompra.titulo || d.enCompra.id) + '</b> (tablero de Pedidos)' + (d.enCompra.cargada ? ' · ✅ cargada en Albor' : '') + '</p>';
   if (d.enFacturas) {
     const t = d.tablero || {};
     return '<p class="md-lugar">🧾 En Facturas: <b>' + esc(NOMBRE_COL_FC[d.columna] || 'Entrantes') + '</b>' + (t.col === 'descartada' ? ' (descartada' + (t.motivo ? ': ' + esc(t.motivo) : '') + ')' : '') +
@@ -1243,11 +1248,17 @@ async function accionPegado(b, despues) {
 $('mf-q').addEventListener('input', pintarMails);
 ['md-prov', 'md-albor', 'md-oc', 'md-compra'].forEach(function (id) { $(id).addEventListener('change', pintarMails); });
 ['mf-desde', 'mf-hasta'].forEach(function (id) { $(id).addEventListener('change', cargarMails); });
-$('mf-refrescar').addEventListener('click', function () { MF.docs = {}; cargarMails(); });
+$('mf-refrescar').addEventListener('click', function () { MF.docs = {}; cargarMails(); if (MF.sec === 'ordenes') cargarOrdenesDoc(); });
+$('md-ordfac').addEventListener('change', pintarMails);
 $('s-cfacturas').addEventListener('click', function (e) {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.sec) { MF.sec = b.dataset.sec; pintarMails(); }
+  if (b.dataset.sec) { MF.sec = b.dataset.sec; pintarMails(); if (MF.sec === 'ordenes') cargarOrdenesDoc(); }
+  else if (b.dataset.orden) { MF.ordAbiertas[b.dataset.orden] = !MF.ordAbiertas[b.dataset.orden]; pintarOrdenesDoc(); }
+  else if (b.dataset.irorden) irAOrden(b.dataset.irorden);
+  else if (b.dataset.ordadj) adjuntarFacturaAOrdenUI(b.dataset.ordadj);
+  else if (b.dataset.orddes) desadjuntarOrdenUI(b.dataset.orddes);
+  else if (b.dataset.ordtar) abrir('ctarjeta', { id: b.dataset.ordtar });
   else if (b.dataset.abrir) abrirFilaDoc(b.dataset.abrir);
   else if (b.dataset.ver) verArchivo(b.dataset.ver);
   else if (b.dataset.vermail) verMailDoc(b.dataset.vermail, pintarMails);
@@ -1265,6 +1276,170 @@ async function abrirOtraVez(id) {
   if (!MF.abiertos[id]) return;
   const r = await api('getDocumento', id);
   if (r.ok) { MF.docs[id] = r; pintarMails(); }
+}
+
+/* ---------- Feli (20/11): 🛒 Órdenes de compra (Documentos) ----------
+   Una fila por orden: número, proveedor, sitio, razón del pedido y su factura. Abierta: los pedidos, lo comprado y
+   "🔗 Adjuntar una factura" (las del tablero de Facturas; pasa a Pedidos) o "Desadjuntar" (vuelve a Facturas). */
+async function cargarOrdenesDoc() {
+  if (MF.cargandoOrd) return;
+  MF.cargandoOrd = true;
+  if (!MF.ordenes) notaMF('Cargando las órdenes de compra…');
+  const r = await api('getOrdenesDocumentos');
+  MF.cargandoOrd = false;
+  if (!r.ok) { notaMF(r.sinConexion ? '📶 Hace falta señal para ver las órdenes de compra.' : r.error); return; }
+  MF.ordenes = r.ordenes;
+  notaMF('');
+  pintarMails();
+}
+
+function textoFacturaOrden(f) {
+  return 'Factura ' + ((f.letra ? f.letra + ' ' : '') + (f.numero || f.nombre || ''));
+}
+function ordenesALaVista() {
+  const q = sinTildes($('mf-q').value.trim()), prov = $('md-prov').value, fac = $('md-ordfac').value;
+  const desde = $('mf-desde').value, hasta = $('mf-hasta').value;
+  return (MF.ordenes || []).filter(function (o) {
+    if (prov && o.proveedor !== prov) return false;
+    if (fac && !!o.factura !== (fac === 'si')) return false;
+    const dia = (o.fecha || '').slice(0, 10);
+    if (desde && dia < desde) return false;
+    if (hasta && dia > hasta) return false;
+    if (!q) return true;
+    return sinTildes([o.numero, o.proveedor, o.cuit, o.titulo, o.sitios.join(' '), dinero(o.total, o.moneda),
+      o.pedidos.map(function (p) { return [p.ref, p.titulo, p.razon, p.solicitante].join(' '); }).join(' '),
+      o.productos.map(function (x) { return x.producto + ' ' + x.texto; }).join(' '),
+      o.factura ? [o.factura.numero, o.factura.nombre].join(' ') : ''].join(' ')).indexOf(q) !== -1;
+  });
+}
+
+function pintarOrdenesDoc() {
+  const sel = $('md-prov'), v = sel.value, provs = [];
+  (MF.ordenes || []).forEach(function (o) { if (o.proveedor && provs.indexOf(o.proveedor) === -1) provs.push(o.proveedor); });
+  provs.sort(function (a, b) { return a.localeCompare(b, 'es'); });
+  sel.innerHTML = '<option value="">Todos los proveedores</option>' + provs.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('');
+  sel.value = provs.indexOf(v) !== -1 ? v : '';
+  if (!MF.ordenes) { $('mf-lista').innerHTML = ''; return; }
+  const l = ordenesALaVista();
+  $('mf-lista').innerHTML = !l.length ? '<p class="nota">' + (MF.ordenes.length ? 'Nada por acá.' : 'Todavía no hay órdenes de compra.') + '</p>'
+    : '<p class="nota">' + l.length + (l.length === 1 ? ' orden de compra' : ' órdenes de compra') + '</p>' + l.map(htmlFilaOrden).join('');
+}
+
+function razonesCompra(c) {
+  return c.pedidos.map(function (p) { return p.razon || p.titulo; }).filter(Boolean).join(' · ');
+}
+function htmlFilaOrden(o) {
+  const ab = !!MF.ordAbiertas[o.id];
+  return '<div class="md-doc' + (ab ? ' abierto' : '') + '" id="ord-' + esc(o.id) + '">' +
+    '<button type="button" class="md-cab" data-orden="' + esc(o.id) + '" aria-expanded="' + ab + '">' +
+      '<span class="mf-cab"><span class="mf-de">' + (o.prueba ? '🧪 ' : '') + esc(o.numero) + ' · ' + esc(o.proveedor || 'Sin proveedor') + '</span><span class="mf-fecha">' + esc(fechaCt(o.fecha)) + '</span></span>' +
+      '<span class="mf-asunto">' + esc([o.sitios.join(', '), razonesCompra(o)].filter(Boolean).join(' · ') || o.titulo) + '</span>' +
+      '<span class="md-enoc' + (o.factura ? '' : ' sin') + '">' + (o.anulada ? '⛔ Compra anulada · ' : '') +
+        (o.factura ? '✅ ' + esc(textoFacturaOrden(o.factura)) + (o.factura.cargada ? ' · cargada en Albor' : '') : '🧾 Sin factura') + '</span></button>' +
+    (ab ? '<div class="md-cuerpo">' + htmlOrdenAbierta(o) + '</div>' : '') + '</div>';
+}
+
+/** Los pedidos (título, razón, sitio, quién) y lo comprado de una compra: lo usan las órdenes y "Adjuntar a una orden de compra". */
+function htmlDetalleCompra(c) {
+  let h = '<div class="od-peds">' + c.pedidos.map(function (p) {
+    return '<p><b>' + esc(p.titulo || p.ref) + '</b>' + (p.razon ? '<br>Razón: ' + esc(p.razon) : '') +
+           '<br><small class="nota">' + esc([p.sitio, p.solicitante ? 'lo pidió ' + p.solicitante : '', p.ref].filter(Boolean).join(' · ')) + '</small></p>';
+  }).join('') + '</div>';
+  if (c.productos.length) {
+    h += '<div class="mf-det od-prod"><table><thead><tr><th>Cant.</th><th>Producto</th><th>Precio unit.</th></tr></thead><tbody>' + c.productos.map(function (x) {
+      return '<tr><td>' + esc(x.cantidad) + '</td><td>' + esc(x.producto) + (x.texto && sinTildes(x.texto) !== sinTildes(x.producto) ? '<br><small class="nota">' + esc(x.texto) + '</small>' : '') +
+             '</td><td>' + esc(dinero(x.precio, c.moneda)) + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+  if (c.total !== null && c.total !== undefined) h += '<p>Total de la compra: <b>' + esc(dinero(c.total, c.moneda)) + '</b> sin IVA</p>';
+  return h;
+}
+
+function htmlOrdenAbierta(o) {
+  let h = '<h3 class="md-tit">Orden de compra ' + esc(o.numero) + '</h3>' +
+          '<p class="md-lugar">' + esc([o.proveedor, o.cuit ? 'CUIT ' + o.cuit : '', o.columna ? 'En Compras: ' + o.columna : ''].filter(Boolean).join(' · ')) + '</p>';
+  if (o.anulada) h += '<p class="mf-aviso">⛔ La compra se anuló (la orden está para anular en Albor).</p>';
+  h += htmlDetalleCompra(o);
+  const f = o.factura;
+  if (f) {
+    h += '<div class="caja od-fac"><b>✅ ' + esc(textoFacturaOrden(f)) + '</b><small class="nota">' +
+         esc(f.mail ? (f.sola ? 'La adjuntó sola la app' : 'La adjuntó ' + (f.quien || 'una persona')) + (/^SUB/.test(f.mail) ? ' (subida a mano)' : ' (llegó por mail)') : 'La adjuntó ' + (f.quien || 'una persona') + ' desde Pedidos') +
+         (f.cuando ? ' el ' + esc(fechaCt(f.cuando)) : '') + (f.cargada ? ' · cargada en Albor' : '') + '</small><div class="mf-botones">' +
+         (f.archivo ? '<button type="button" class="btn2" data-ver="' + esc(f.archivo) + '">Ver factura</button>' : '') +
+         '<button type="button" class="btn2" data-ordtar="' + esc(o.id) + '">Ver en Pedidos</button>' +
+         (f.cargada ? '<span class="nota">Ya está cargada en Albor: no se desadjunta.</span>' : '<button type="button" class="btn2 peligro-btn2" data-orddes="' + esc(o.id) + '">Desadjuntar (vuelve a Facturas)</button>') +
+         '</div></div>';
+  } else if (o.adjuntable) {
+    h += '<div class="mf-botones"><button type="button" class="btn" data-ordadj="' + esc(o.id) + '">🔗 Adjuntar una factura</button></div>';
+  } else {
+    h += '<p class="nota">La compra no está en Entregas (' + esc(o.columna || 'sin columna') + '): no se le puede adjuntar la factura.</p>';
+  }
+  return h;
+}
+
+/** Desde una factura (Documentos o el tablero de Facturas): ir a su orden en Documentos → Órdenes de compra, abierta. */
+async function irAOrden(wid) {
+  MF.sec = 'ordenes';
+  MF.ordAbiertas[wid] = true;
+  if (!pila.length || pila[pila.length - 1].id !== 'cfacturas') abrir('cfacturas');
+  else pintarMails();
+  await cargarOrdenesDoc();
+  const el = $('ord-' + wid);
+  if (el) el.scrollIntoView({ block: 'center' });
+}
+
+async function adjuntarFacturaAOrdenUI(wid) {
+  notaMF('Buscando las facturas…');
+  const r = await api('facturasParaOrden', wid);
+  if (!r.ok) return notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error);
+  notaMF('');
+  const c = document.createElement('div');
+  c.className = 'cuerpo fc-compras';
+  c.innerHTML = !r.facturas.length ? '<p class="nota">No hay facturas leídas en el tablero de Facturas para adjuntar.</p>' :
+    r.facturas.map(function (f) {
+      return '<div class="fc-compra od-elegir"><b>' + esc(f.proveedor || 'Sin proveedor') + '</b>' + (f.mismo ? ' <span class="tag">mismo CUIT</span>' : '') +
+             (f.oc ? ' <span class="tag">dice OC ' + esc(f.oc) + '</span>' : '') +
+             '<small>' + esc(['Factura ' + (f.numero || 'sin número'), f.fecha, f.total !== null ? dinero(f.total, f.moneda) + ' con IVA' : '', f.neto !== null ? dinero(f.neto, f.moneda) + ' neto' : '',
+                              'en ' + (NOMBRE_COL_FC[f.columna] || 'Entrantes')].filter(Boolean).join(' · ')) + '</small>' +
+             '<div class="mf-botones">' + (f.archivo ? '<button type="button" class="btn2" data-dver="' + esc(f.archivo) + '">Ver</button>' : '') +
+             '<button type="button" class="btn" data-dfac="' + esc(f.id) + '">Adjuntar esta</button></div></div>';
+    }).join('');
+  let elegida = null;
+  await dialogo({ titulo: 'Factura para la ' + (r.orden.numero || 'compra') + ' (' + (r.orden.proveedor || '') + (r.orden.total ? ', ' + dinero(r.orden.total, r.orden.moneda) + ' sin IVA' : '') + ')',
+    cuerpo: c, botones: [{ texto: 'Volver', valor: null }],
+    alAbrir: function () {
+      c.querySelectorAll('[data-dfac]').forEach(function (b) { b.addEventListener('click', function () { elegida = b.dataset.dfac; if (cerrarDialogoActual) cerrarDialogoActual(null); }); });
+      c.querySelectorAll('[data-dver]').forEach(function (b) { b.addEventListener('click', function () { verArchivo(b.dataset.dver); }); });
+    } });
+  if (!elegida) return;
+  notaMF('🔗 Adjuntando… (la compara con la compra)');
+  const x = await apiLenta('elegirCompraMail', elegida, wid);
+  if (!x.ok) return notaMF(x.sinConexion ? '📶 Hace falta señal.' : x.error);
+  notaMF('');
+  aviso('Listo: la factura quedó en la orden (tablero de Pedidos).' + (x.pegado && x.pegado.avisos && x.pegado.avisos.length ? ' Revisala: ' + x.pegado.avisos.join(' ') : ''));
+  MF.docs = {};
+  cargarOrdenesDoc();
+  cargarMails();
+}
+
+async function desadjuntarOrdenUI(wid) {
+  const o = (MF.ordenes || []).filter(function (x) { return x.id === wid; })[0];
+  if (!o || !o.factura) return;
+  if (!(await dialogo({ titulo: 'Desadjuntar la factura', texto: 'La ' + textoFacturaOrden(o.factura) + ' sale de la orden ' + o.numero + ' y vuelve al tablero de Facturas (Entrantes). ¿Seguro?',
+      botones: [{ texto: 'Sí, desadjuntar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] }))) return;
+  notaMF('Desadjuntando…');
+  const r = await api('desadjuntarFacturaOrden', wid);
+  if (!r.ok) return notaMF(r.sinConexion ? '📶 Hace falta señal.' : r.error);
+  notaMF('');
+  aviso('Listo: la factura volvió al tablero de Facturas.' + (r.leer ? ' 🤖 Leyéndola…' : ''));
+  MF.docs = {};
+  cargarOrdenesDoc();
+  cargarMails();
+  if (r.leer) {      // la que se había adjuntado a mano en Pedidos: se lee para que se pueda adjuntar a otra
+    const x = await apiLenta('leerDocumentoAhora', r.id);
+    aviso(x.ok ? 'Listo: la factura volvió al tablero de Facturas y ya se leyó.' : 'La factura volvió al tablero de Facturas; se lee sola en unos minutos.');
+    cargarMails();
+  }
 }
 
 /* ---------- Ajustes → 📥 Mails e impresora (Feli): conectar, la lectura, el pegado y la impresora ---------- */
@@ -1631,7 +1806,7 @@ function htmlAccionesFactura(d) {
   else if (col === 'aprobacion') bs.push(b('controlando', 'Mandar a controlar'), b('lista', 'Lista para cargar'));
   else if (col === 'lista') bs.push(b('cargada', 'Ya la cargué en Albor', 'btn'), b('controlando', 'Mandar a controlar'), b('aprobar-pedir', 'Mandar a aprobar'));
   else bs.push(b('entrantes', 'Volver a Entrantes'));
-  if (col !== 'finalizado' && col !== 'historial') bs.push(b('compra', 'Es de una compra…', 'link-gris'), b('descartar', '🗑️ Descartar', 'link-gris'));
+  if (col !== 'finalizado' && col !== 'historial') bs.push(b('compra', '🔗 Adjuntar a una orden de compra'), b('descartar', '🗑️ Descartar', 'link-gris'));
   return h + '<div class="mf-botones fc-acciones">' + bs.join('') + '</div>';
 }
 
@@ -1686,19 +1861,25 @@ async function accionFactura(que) {
 
 /** "Es de una compra…": las compras sin factura (primero las de ese proveedor); al elegir una, la factura pasa a Pedidos. */
 async function elegirCompraDeFactura(d) {
-  aviso('Buscando las compras…');
+  aviso('Buscando las órdenes de compra…');
   const r = await api('comprasParaFactura', d.id);
   if (!r.ok) return aviso(r.sinConexion ? '📶 Hace falta señal.' : r.error, 'bad');
   aviso('');
+  // Feli (20/11): cada orden se despliega con lo que se compró y la razón del pedido; al final, las compras sin orden
   const c = document.createElement('div');
   c.className = 'cuerpo fc-compras';
+  const una = function (x) {
+    return '<details class="od-compra"><summary><b>' + esc(x.orden ? 'OC ' + x.orden : x.titulo || x.id) + ' · ' + esc(x.proveedor || 'Sin proveedor') + '</b>' +
+           (x.mismo ? ' <span class="tag">mismo CUIT</span>' : '') +
+           '<small>' + esc([x.sitios.join(', '), razonesCompra(x), x.total !== null && x.total !== undefined ? dinero(x.total, x.moneda) + ' sin IVA' : '', x.donde, fechaCt(x.fecha)].filter(Boolean).join(' · ')) + '</small></summary>' +
+           htmlDetalleCompra(x) + '<div class="mf-botones"><button type="button" class="btn" data-w="' + esc(x.id) + '">Adjuntar a esta</button></div></details>';
+  };
+  const con = r.compras.filter(function (x) { return !x.sinOrden; }), sin = r.compras.filter(function (x) { return x.sinOrden; });
   c.innerHTML = !r.compras.length ? '<p class="nota">No hay compras sin factura en Compradas ni en Recibidas.</p>' :
-    r.compras.map(function (x) {
-      return '<button type="button" class="fc-compra" data-w="' + esc(x.id) + '"><b>' + esc(x.proveedor || 'Sin proveedor') + '</b>' + (x.mismo ? ' <span class="tag">mismo CUIT</span>' : '') +
-             '<small>' + htmlCompraCorta(Object.assign({}, x, { proveedor: '' })) + '</small></button>';
-    }).join('');
+    (con.length ? con.map(una).join('') : '<p class="nota">No hay órdenes de compra sin factura.</p>') +
+    (sin.length ? '<p class="od-sub">Compras sin orden de compra</p>' + sin.map(una).join('') : '');
   let elegida = null;
-  await dialogo({ titulo: '¿De qué compra es?', cuerpo: c, botones: [{ texto: 'Volver', valor: null }],
+  await dialogo({ titulo: '¿A qué orden de compra la adjuntás?', cuerpo: c, botones: [{ texto: 'Volver', valor: null }],
     alAbrir: function () {
       c.querySelectorAll('[data-w]').forEach(function (b) { b.addEventListener('click', function () { elegida = b.dataset.w; if (cerrarDialogoActual) cerrarDialogoActual(null); }); });
     } });
@@ -1707,6 +1888,7 @@ async function elegirCompraDeFactura(d) {
   const x = await apiLenta('elegirCompraMail', d.id, elegida);
   if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal.' : x.error, 'bad');
   aviso('Listo: la factura quedó en su compra (tablero de Pedidos).');
+  MF.ordenes = null;
   cargarFacturasT();
   abrir('ctarjeta', { id: elegida });
 }
@@ -1722,6 +1904,7 @@ $('s-cdoc').addEventListener('click', function (e) {
   else if (b.dataset.nota) agregarNotaUI(b, cargarDoc);
   else if (b.dataset.peg) accionPegado(b, function () { cargarDoc(); cargarFacturasT(); });
   else if (b.dataset.entablero) { if (CD.d && CD.d.enCompra) abrir('ctarjeta', { id: CD.d.enCompra.id }); }
+  else if (b.dataset.irorden) irAOrden(b.dataset.irorden);
 });
 
 /* Al instante: el canal de siempre avisa cuando cambia algo (y sin canal, cada 20 s mientras se mira) */

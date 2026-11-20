@@ -1322,6 +1322,20 @@ body[data-pantalla="cimpresora"] .contenido{max-width:700px}
 .fc-compra{text-align:left;background:transparent;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:inherit;cursor:pointer;font:inherit}
 .fc-compra small{display:block;color:var(--muted);margin-top:2px}
 .fc-compra:hover{border-color:var(--accent)}
+.md-enoc{display:block;font-size:12px;font-weight:600;color:var(--accent);margin-top:3px}
+.md-enoc.sin{color:var(--muted);font-weight:400}
+.md-oc-link{display:inline;width:auto;padding:0;font-size:inherit;text-decoration:underline}
+.od-peds p{margin:6px 0;font-size:14px}
+.od-prod td:nth-child(2),.od-prod th:nth-child(2){text-align:left}
+.od-fac{border-left:4px solid var(--accent);margin-top:10px}
+.od-fac small{display:block;margin-top:2px}
+.od-elegir{cursor:default}
+.od-elegir .mf-botones{margin-top:6px}
+details.od-compra{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+details.od-compra[open]{border-color:var(--accent)}
+details.od-compra summary{cursor:pointer;list-style:revert}
+details.od-compra summary small{display:block;color:var(--muted);margin-top:2px}
+.od-sub{margin:10px 0 2px;font-size:13px;color:var(--muted);font-weight:600}
 .ct-albor-todas{width:100%;margin:0 0 10px}
 .ct-sinoc{font-size:12px;color:var(--muted);margin-bottom:4px}
 .ct-pend{border:2px solid var(--danger)}
