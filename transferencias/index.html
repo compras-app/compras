@@ -668,6 +668,23 @@
   .hresultado .notaedit-h textarea{display:block;width:100%;margin-top:6px;font:inherit;color:var(--ink);background:var(--panel);
                                    border:1px solid var(--line-strong);border-radius:6px;padding:7px 9px;resize:vertical}
   @media (max-width:700px){ .hresultado{overflow-x:auto} .hresultado table{min-width:560px} }
+  /* Historial de Consumo mensual por vuelta y proveedor (Feli, 20/11) */
+  .hc-vuelta{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:10px 12px;margin-bottom:12px}
+  .hc-cab{font-size:13.5px;margin-bottom:8px}
+  .hc-cab small{color:var(--ink-soft)}
+  .hc-prov{border:1px solid var(--line);border-radius:8px;margin-top:6px;background:var(--bg)}
+  .hc-prov[open]{border-color:var(--accent)}
+  .hc-prov summary{cursor:pointer;padding:8px 10px;font-size:13.5px}
+  .hc-prov summary small{color:var(--ink-soft)}
+  .hc-cuerpo{padding:0 10px 10px}
+  .hc-cuerpo table{font-size:12.5px;width:100%}
+  .hc-cuerpo th small{display:block;font-weight:400;color:var(--ink-soft)}
+  .hc-cuerpo td.anul, .hc-cuerpo th.anul{text-decoration:line-through;color:var(--ink-faint)}
+  .hc-cuerpo tfoot td{font-weight:600;border-top:1px solid var(--line-strong)}
+  .hc-cuerpo .acciones{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .hc-cuerpo .hc-num{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font:inherit}
+  .hc-cotiz{margin-top:14px}
+  @media (max-width:700px){ .hc-cuerpo{overflow-x:auto} .hc-cuerpo table{min-width:520px} }
 
   /* Consumo mensual (Fase 6-ter, Paso 1; Feli, 13/11) */
   .cm-cab .fila{gap:6px 18px}
@@ -4086,7 +4103,132 @@
             '<td class="num">' + x.insumos + '</td>', '<td class="num">' + fmt(x.unidades) + '</td>'];
   }
 
+  /* Feli (20/11): Consumo mensual por vuelta. Cada vez que se hicieron las órdenes, un desplegable por proveedor con un cuadro
+     (una fila por producto, una columna por oficina) y "Bajar las órdenes". Los pedidos de cotización quedan en la lista de abajo. */
+  var OFIS_HC = [{ k: 'JM', t: 'JM' }, { k: 'LC50', t: 'LC 50' }, { k: 'CASA', t: 'CASA' }];
+  function pintarHistConsumo(total){
+    var L = HIST.resultados, ordenes = [], cotiz = [];
+    L.forEach(function(x, i){ (x.tipo === 'Orden' ? ordenes : cotiz).push(i); });
+    if(!L.length){ $('hresultado').innerHTML = '<div class="empty">No hay nada con esos filtros.</div>'; return; }
+    HIST.hcAbiertos = HIST.hcAbiertos || {};
+    var vueltas = {}, orden = [];
+    ordenes.forEach(function(i){
+      var x = L[i], v = vueltas[x.lote];
+      if(!v){ v = vueltas[x.lote] = { lote: x.lote, fecha: x.fecha, quien: x.quien, provs: {}, orden: [] }; orden.push(v); }
+      if(x.fecha < v.fecha) v.fecha = x.fecha;
+      var p = v.provs[x.proveedorId || x.proveedor];
+      if(!p){ p = v.provs[x.proveedorId || x.proveedor] = { clave: x.lote + '|' + (x.proveedorId || x.proveedor), nombre: x.proveedor, ords: [] }; v.orden.push(p); }
+      p.ords.push(x);
+    });
+    orden.sort(function(a, b){ return (b.fecha || '').localeCompare(a.fecha || ''); });
+    var h = ['<div class="cuenta">' + (total > L.length ? 'Los ' + L.length + ' más nuevos de ' + total + ' · ' : '') +
+             orden.length + (orden.length === 1 ? ' vez que se hicieron órdenes' : ' veces que se hicieron órdenes') + ' · tocá un proveedor para ver el cuadro</div>'];
+    orden.forEach(function(v){
+      var tot = 0;
+      v.orden.forEach(function(p){ p.ords.forEach(function(o){ if(!o.anulada && o.estado !== 'Anulada') tot += o.total || 0; }); });
+      h.push('<div class="hc-vuelta"><div class="hc-cab"><b>Órdenes del ' + esc(fechaCorta(v.fecha)) + '</b> <small>· ' + esc(v.quien) + ' · ' +
+             v.orden.length + (v.orden.length === 1 ? ' proveedor' : ' proveedores') + ' · $ ' + fmt(Math.round(tot * 100) / 100) + ' sin IVA</small></div>');
+      v.orden.sort(function(a, b){ return a.nombre.localeCompare(b.nombre, 'es'); });
+      v.orden.forEach(function(p){ h.push(htmlProvConsumo(p)); });
+      h.push('</div>');
+    });
+    if(cotiz.length){
+      var cols = COLS_HIST.consumo;
+      h.push('<div class="hc-cotiz"><div class="cuenta">📤 Pedidos de cotización · tocá uno para ver el detalle</div><table><thead><tr>');
+      cols.forEach(function(c){ h.push('<th class="name">' + esc(c) + '</th>'); });
+      h.push('</tr></thead><tbody>');
+      cotiz.forEach(function(i){
+        var x = L[i], celdas = filaHistorial(x).map(function(c, n){ return c.replace(/^<td/, '<td data-l="' + esc(cols[n]) + '"'); });
+        h.push('<tr class="uno' + (HIST.abierto === i ? ' abierto' : '') + '" data-h="' + i + '">' + celdas.join('') + '</tr>');
+        if(HIST.abierto === i) h.push('<tr class="det"><td colspan="' + cols.length + '" id="hdet">' + (HIST.detalle || 'Abriendo…') + '</td></tr>');
+      });
+      h.push('</tbody></table></div>');
+    }
+    $('hresultado').innerHTML = h.join('');
+  }
+
+  function htmlProvConsumo(p){
+    var porOfi = {}, prods = [], idx = {}, tot = 0, totOfi = {}, prueba = false;
+    p.ords.forEach(function(o){
+      var anul = !!o.anulada || o.estado === 'Anulada';
+      if(o.prueba) prueba = true;
+      (porOfi[o.ofi] = porOfi[o.ofi] || []).push(o);
+      o.prods.forEach(function(x){
+        var k = x.codigo || x.producto;
+        if(idx[k] === undefined){ idx[k] = prods.length; prods.push({ producto: x.producto, codigo: x.codigo, precio: 0, cant: {}, anul: {} }); }
+        var r = prods[idx[k]];
+        if(x.precio && !r.precio) r.precio = x.precio;
+        if(anul) r.anul[o.ofi] = (r.anul[o.ofi] || 0) + x.cantidad;
+        else {
+          r.cant[o.ofi] = (r.cant[o.ofi] || 0) + x.cantidad;
+          var imp = x.cantidad * x.precio;
+          tot += imp; totOfi[o.ofi] = (totOfi[o.ofi] || 0) + imp;
+        }
+      });
+    });
+    prods.sort(function(a, b){ return a.producto.localeCompare(b.producto, 'es'); });
+    var lugar = function(o){ var i = ['JM', 'LC50', 'CASA'].indexOf(o.ofi); return i < 0 ? 9 : i; };
+    p.ords.sort(function(a, b){ return lugar(a) - lugar(b); });
+    var vivas = p.ords.filter(function(o){ return !o.anulada && o.estado !== 'Anulada'; });
+    var nums = vivas.map(function(o){ return o.numero || '(sin número)'; });
+    var problemas = vivas.filter(function(o){ return o.estado !== 'Mandada'; }).length;
+    var ab = !!HIST.hcAbiertos[p.clave];
+    var h = '<details class="hc-prov" data-hc="' + esc(p.clave) + '"' + (ab ? ' open' : '') + '><summary><b>' + (prueba ? '🧪 ' : '') + esc(p.nombre) + '</b> <small>· ' +
+            esc(nums.join(' · ')) + ' · $ ' + fmt(Math.round(tot * 100) / 100) + ' sin IVA' +
+            (problemas ? ' · ⚠️ ' + problemas + (problemas === 1 ? ' sin mandar' : ' sin mandar') : '') + '</small></summary><div class="hc-cuerpo">';
+    if(!ab) return h + '</div></details>';
+    // Una columna por oficina: arriba, el número (toca y baja el PDF) y si se mandó
+    var cab = '<th class="name">Producto</th>' + OFIS_HC.map(function(of){
+      var os = porOfi[of.k] || [];
+      if(!os.length) return '<th>' + esc(of.t) + '<small>sin orden</small></th>';
+      var anulTodo = os.every(function(o){ return o.anulada || o.estado === 'Anulada'; });
+      return '<th' + (anulTodo ? ' class="anul"' : '') + '>' + esc(of.t) + os.map(function(o){
+        var anul = o.anulada || o.estado === 'Anulada';
+        var marca = anul ? '🚫 anulada' : o.estado === 'Mandada' ? '✅ mandada' : o.estado === 'Guardada' ? '⚠️ sin mandar' : esc(o.estado);
+        var num = o.numero || '(sin número)';
+        return '<small>' + (o.url && !anul ? '<button type="button" class="hc-num" data-hcbajar="' + esc(o.id) + '">' + esc(num) + '</button>' : esc(num)) + ' · ' + marca + '</small>';
+      }).join('') + '</th>';
+    }).join('') + '<th>Precio unit.</th><th>Total</th>';
+    var filas = prods.map(function(r){
+      var cant = 0;
+      var tds = OFIS_HC.map(function(of){
+        var c = r.cant[of.k], a = r.anul[of.k];
+        cant += c || 0;
+        if(c) return '<td class="num">' + fmt(c) + '</td>';
+        if(a) return '<td class="num anul" title="Orden anulada">' + fmt(a) + '</td>';
+        return '<td class="num">—</td>';
+      }).join('');
+      return '<tr><td>' + esc(r.producto) + ' <small style="color:var(--ink-faint)">' + esc(r.codigo) + '</small></td>' + tds +
+             '<td class="num">$ ' + fmt(r.precio) + '</td><td class="num">$ ' + fmt(Math.round(cant * r.precio * 100) / 100) + '</td></tr>';
+    }).join('');
+    var pie = '<tr><td>Total sin IVA</td>' + OFIS_HC.map(function(of){
+      return '<td class="num">' + (totOfi[of.k] ? '$ ' + fmt(Math.round(totOfi[of.k] * 100) / 100) : '—') + '</td>';
+    }).join('') + '<td></td><td class="num">$ ' + fmt(Math.round(tot * 100) / 100) + '</td></tr>';
+    var bajables = vivas.filter(function(o){ return o.url; });
+    h += '<table><thead><tr>' + cab + '</tr></thead><tbody>' + filas + '</tbody><tfoot>' + pie + '</tfoot></table>';
+    p.ords.forEach(function(o){ if(o.anulada) h += '<div class="notah">🚫 ' + esc(o.numero || '') + ' (' + esc(OFIS_HC.filter(function(of){ return of.k === o.ofi; }).map(function(of){ return of.t; })[0] || o.ofi) + '): ' + esc(o.anulada.nota) + '</div>'; });
+    if(bajables.length) h += '<div class="acciones"><button type="button" class="btn" data-hcbajartodas="' + esc(p.clave) + '">⬇️ Bajar ' + (bajables.length === 1 ? 'la orden' : 'las ' + bajables.length + ' órdenes') + '</button>' +
+                            (bajables.length < vivas.length ? '<span class="notah">Alguna orden no tiene su PDF guardado.</span>' : '') + '</div>';
+    return h + '</div></details>';
+  }
+
+  /** Baja los PDF de las órdenes (uno por uno, con su nombre). Si el navegador no deja, los abre. */
+  async function bajarOrdenesConsumo(ords){
+    for(var i = 0; i < ords.length; i++){
+      var o = ords[i], nombre = o.archivo || ('Orden de compra ' + (o.numero || '') + '.pdf');
+      try{
+        var r = await fetch(o.url);
+        if(!r.ok) throw new Error(r.status);
+        var u = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+        a.href = u; a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(x){ return function(){ URL.revokeObjectURL(x); }; }(u), 10000);
+      }catch(e){ window.open(o.url, '_blank', 'noopener'); }
+      if(i < ords.length - 1) await new Promise(function(ok){ setTimeout(ok, 600); });
+    }
+  }
+
   function pintarHistorial(total){
+    if(HIST.cual === 'consumo'){ pintarHistConsumo(total === undefined ? HIST.totalConsumo : total); if(total !== undefined) HIST.totalConsumo = total; return; }
     var L = HIST.resultados, cols = COLS_HIST[HIST.cual];
     if(!L.length){ $('hresultado').innerHTML = '<div class="empty">No hay nada con esos filtros.</div>'; return; }
     var h = ['<div class="cuenta">' + (total > L.length ? 'Los ' + L.length + ' más nuevos de ' + total : L.length) +
@@ -4405,6 +4547,15 @@
     buscarHistorial();
   });
   // Modificar un conteo: la diferencia se recalcula al escribir
+  // Consumo mensual (Feli, 20/11): el cuadro de un proveedor se arma al abrir su desplegable
+  $('hresultado').addEventListener('toggle', function(e){
+    var d = e.target;
+    if(!d.classList || !d.classList.contains('hc-prov')) return;
+    var k = d.getAttribute('data-hc');
+    if(!!HIST.hcAbiertos[k] === d.open) return;
+    HIST.hcAbiertos[k] = d.open;
+    pintarHistorial();
+  }, true);
   $('hresultado').addEventListener('input', function(e){
     var x = e.target.closest('.hce-real');
     if(!x) return;
@@ -4423,6 +4574,16 @@
     if(e.target.closest('[data-hceguardar]')){ guardarEdicionConteo(); return; }
     var an = e.target.closest('[data-hanular]');
     if(an){ anularHistorial(an.getAttribute('data-hanular') === 'si'); return; }
+    var hb = e.target.closest('[data-hcbajar]');           // Consumo mensual (Feli, 20/11): bajar una orden
+    if(hb){ e.preventDefault(); bajarOrdenesConsumo(HIST.resultados.filter(function(x){ return x.id === hb.getAttribute('data-hcbajar'); })); return; }
+    var hbt = e.target.closest('[data-hcbajartodas]');
+    if(hbt){
+      var cl = hbt.getAttribute('data-hcbajartodas');
+      bajarOrdenesConsumo(HIST.resultados.filter(function(x){ return x.tipo === 'Orden' && x.url && !x.anulada && x.estado !== 'Anulada' && x.lote + '|' + (x.proveedorId || x.proveedor) === cl; })
+        .sort(function(a, b){ return ['JM', 'LC50', 'CASA'].indexOf(a.ofi) - ['JM', 'LC50', 'CASA'].indexOf(b.ofi); }));
+      return;
+    }
+    if(e.target.closest('.hc-prov')) return;
     if(e.target.closest('#hdet')) return;            // escribir en la nota no cierra el detalle
     var tr = e.target.closest('tr.uno');
     if(tr) abrirHistorial(Number(tr.getAttribute('data-h')));
