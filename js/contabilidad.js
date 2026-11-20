@@ -748,7 +748,7 @@ function pintarImprimir() {
   $('ci-imprimir').disabled = !elegidas.length;
   $('ci-lista').innerHTML = !CI.lista ? '' : l.map(function (f) {
     return '<div class="ci-fila"><label><input type="checkbox" data-ci="' + esc(f.id) + '"' + (CI.fuera[f.id] ? '' : ' checked') + '>' +
-      '<span><span class="ci-t">' + (f.prueba ? '🧪 ' : '') + '<b>' + esc(f.proveedor || 'Sin proveedor') + '</b> · ' + esc(f.numero ? 'Factura ' + f.numero : f.nombre) +
+      '<span><span class="ci-t">' + (f.prueba ? '🧪 ' : '') + '<b>' + esc(f.proveedor || 'Sin proveedor') + '</b> · ' + esc(f.numero ? (f.papel || 'Factura') + ' ' + f.numero : f.nombre) +
         (f.fecha ? ' · ' + esc(fechaDia(f.fecha)) : '') + ' · ' + esc(f.orden ? 'OC ' + f.orden : 'Sin orden de compra') + '</span>' +
       '<span class="ci-s">' + esc([f.sitio, f.cuenta, f.donde, f.albor ? 'Albor: ' + f.albor : '', textoImpresa(f.impresa)].filter(Boolean).join(' · ')) + '</span></span></label>' +
       '<button type="button" class="btn2" data-ci-ver="' + esc(f.archivo) + '">Ver</button></div>';
@@ -815,7 +815,7 @@ async function textosDeHojas(bytes) {
 function lineaDeFactura(f) {
   // Una factura que llegó por mail y todavía no está en una compra (Fase 7): su proveedor y el día que llegó
   const sinCompra = f.donde === 'Mail' ? (f.proveedor || '') + (f.llego ? '  ·  Llegó por mail el ' + new Date(f.llego).toLocaleDateString('es-AR') : '') : '';
-  return [f.orden ? 'OC ' + f.orden : (sinCompra ? '' : 'Sin orden de compra'), sinCompra, f.sitio, f.cuenta, f.albor ? 'Albor: ' + f.albor : '']
+  return [f.papel && f.papel !== 'Factura' ? f.papel.toUpperCase() : '', f.orden ? 'OC ' + f.orden : (sinCompra ? '' : 'Sin orden de compra'), sinCompra, f.sitio, f.cuenta, f.albor ? 'Albor: ' + f.albor : '']
     .filter(Boolean).join('  ·  ').replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
 }
 
