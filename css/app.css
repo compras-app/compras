@@ -1335,6 +1335,7 @@ details.od-compra{border:1px solid var(--line);border-radius:8px;padding:8px 10p
 details.od-compra[open]{border-color:var(--accent)}
 details.od-compra summary{cursor:pointer;list-style:revert}
 details.od-compra summary small{display:block;color:var(--muted);margin-top:2px}
+.od-buscar{width:100%;box-sizing:border-box;position:sticky;top:0;z-index:1;margin-bottom:4px}
 .od-sub{margin:10px 0 2px;font-size:13px;color:var(--muted);font-weight:600}
 .ct-albor-todas{width:100%;margin:0 0 10px}
 .ct-sinoc{font-size:12px;color:var(--muted);margin-bottom:4px}

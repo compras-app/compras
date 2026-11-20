@@ -1377,6 +1377,29 @@ function htmlOrdenAbierta(o) {
   return h;
 }
 
+/** Feli (20/11): un buscador arriba de una lista de un diálogo. Cada elemento lleva en data-q lo que se busca (sin tildes);
+    con varias palabras, tienen que estar todas. Los títulos (data-sub) se esconden si su grupo queda vacío. */
+function buscadorEnLista(c, placeholder) {
+  const q = document.createElement('input');
+  q.type = 'search'; q.placeholder = placeholder; q.autocomplete = 'off'; q.className = 'od-buscar';
+  const nada = document.createElement('p');
+  nada.className = 'nota'; nada.textContent = 'Nada coincide con la búsqueda.'; nada.hidden = true;
+  c.prepend(q);
+  c.appendChild(nada);
+  q.addEventListener('input', function () {
+    const ps = sinTildes(q.value.trim()).split(/\s+/).filter(Boolean);
+    let alguno = false;
+    c.querySelectorAll('[data-q]').forEach(function (el) {
+      const t = el.dataset.q, ve = ps.every(function (p) { return t.indexOf(p) !== -1 || t.replace(/[.\s-]/g, '').indexOf(p.replace(/[.\s-]/g, '')) !== -1; });
+      el.hidden = !ve;
+      if (ve) alguno = true;
+    });
+    c.querySelectorAll('[data-sub]').forEach(function (el) { el.hidden = !c.querySelector('[data-q][data-grupo="' + el.dataset.sub + '"]:not([hidden])'); });
+    nada.hidden = alguno;
+  });
+  return q;
+}
+
 /** Desde una factura (Documentos o el tablero de Facturas): ir a su orden en Documentos → Órdenes de compra, abierta. */
 async function irAOrden(wid) {
   MF.sec = 'ordenes';
@@ -1397,7 +1420,8 @@ async function adjuntarFacturaAOrdenUI(wid) {
   c.className = 'cuerpo fc-compras';
   c.innerHTML = !r.facturas.length ? '<p class="nota">No hay facturas leídas en el tablero de Facturas para adjuntar.</p>' :
     r.facturas.map(function (f) {
-      return '<div class="fc-compra od-elegir"><b>' + esc(f.proveedor || 'Sin proveedor') + '</b>' + (f.mismo ? ' <span class="tag">mismo CUIT</span>' : '') +
+      const q = sinTildes([f.numero, f.cuit, (f.cuit || '').replace(/\D/g, ''), f.proveedor, f.total, dinero(f.total, f.moneda), f.neto, dinero(f.neto, f.moneda), f.oc, f.asunto, f.de, f.nombre, f.items, f.fecha].join(' '));
+      return '<div class="fc-compra od-elegir" data-q="' + esc(q) + '"><b>' + esc(f.proveedor || 'Sin proveedor') + '</b>' + (f.mismo ? ' <span class="tag">mismo CUIT</span>' : '') +
              (f.oc ? ' <span class="tag">dice OC ' + esc(f.oc) + '</span>' : '') +
              '<small>' + esc(['Factura ' + (f.numero || 'sin número'), f.fecha, f.total !== null ? dinero(f.total, f.moneda) + ' con IVA' : '', f.neto !== null ? dinero(f.neto, f.moneda) + ' neto' : '',
                               'en ' + (NOMBRE_COL_FC[f.columna] || 'Entrantes')].filter(Boolean).join(' · ')) + '</small>' +
@@ -1408,6 +1432,7 @@ async function adjuntarFacturaAOrdenUI(wid) {
   await dialogo({ titulo: 'Factura para la ' + (r.orden.numero || 'compra') + ' (' + (r.orden.proveedor || '') + (r.orden.total ? ', ' + dinero(r.orden.total, r.orden.moneda) + ' sin IVA' : '') + ')',
     cuerpo: c, botones: [{ texto: 'Volver', valor: null }],
     alAbrir: function () {
+      if (r.facturas.length) buscadorEnLista(c, 'Buscar por número, CUIT, monto, proveedor o producto…').focus();
       c.querySelectorAll('[data-dfac]').forEach(function (b) { b.addEventListener('click', function () { elegida = b.dataset.dfac; if (cerrarDialogoActual) cerrarDialogoActual(null); }); });
       c.querySelectorAll('[data-dver]').forEach(function (b) { b.addEventListener('click', function () { verArchivo(b.dataset.dver); }); });
     } });
@@ -1869,7 +1894,10 @@ async function elegirCompraDeFactura(d) {
   const c = document.createElement('div');
   c.className = 'cuerpo fc-compras';
   const una = function (x) {
-    return '<details class="od-compra"><summary><b>' + esc(x.orden ? 'OC ' + x.orden : x.titulo || x.id) + ' · ' + esc(x.proveedor || 'Sin proveedor') + '</b>' +
+    const q = sinTildes([x.orden, x.titulo, x.proveedor, x.cuit, (x.cuit || '').replace(/\D/g, ''), x.total, dinero(x.total, x.moneda), x.sitios.join(' '), x.donde,
+      x.pedidos.map(function (p) { return [p.ref, p.titulo, p.razon, p.solicitante].join(' '); }).join(' '),
+      x.productos.map(function (y) { return y.producto + ' ' + y.texto; }).join(' ')].join(' '));
+    return '<details class="od-compra" data-q="' + esc(q) + '" data-grupo="' + (x.sinOrden ? 'sin' : 'con') + '"><summary><b>' + esc(x.orden ? 'OC ' + x.orden : x.titulo || x.id) + ' · ' + esc(x.proveedor || 'Sin proveedor') + '</b>' +
            (x.mismo ? ' <span class="tag">mismo CUIT</span>' : '') +
            '<small>' + esc([x.sitios.join(', '), razonesCompra(x), x.total !== null && x.total !== undefined ? dinero(x.total, x.moneda) + ' sin IVA' : '', x.donde, fechaCt(x.fecha)].filter(Boolean).join(' · ')) + '</small></summary>' +
            htmlDetalleCompra(x) + '<div class="mf-botones"><button type="button" class="btn" data-w="' + esc(x.id) + '">Adjuntar a esta</button></div></details>';
@@ -1877,10 +1905,11 @@ async function elegirCompraDeFactura(d) {
   const con = r.compras.filter(function (x) { return !x.sinOrden; }), sin = r.compras.filter(function (x) { return x.sinOrden; });
   c.innerHTML = !r.compras.length ? '<p class="nota">No hay compras sin factura en Compradas ni en Recibidas.</p>' :
     (con.length ? con.map(una).join('') : '<p class="nota">No hay órdenes de compra sin factura.</p>') +
-    (sin.length ? '<p class="od-sub">Compras sin orden de compra</p>' + sin.map(una).join('') : '');
+    (sin.length ? '<p class="od-sub" data-sub="sin">Compras sin orden de compra</p>' + sin.map(una).join('') : '');
   let elegida = null;
   await dialogo({ titulo: '¿A qué orden de compra la adjuntás?', cuerpo: c, botones: [{ texto: 'Volver', valor: null }],
     alAbrir: function () {
+      if (r.compras.length) buscadorEnLista(c, 'Buscar por número de orden, proveedor, producto, sitio o razón…').focus();
       c.querySelectorAll('[data-w]').forEach(function (b) { b.addEventListener('click', function () { elegida = b.dataset.w; if (cerrarDialogoActual) cerrarDialogoActual(null); }); });
     } });
   if (!elegida) return;
