@@ -548,37 +548,90 @@ async function leerFacturaUI(id) {
 /** ✏️ Corregir lo leído: cabecera, cada renglón y los totales. El servidor rehace las cuentas y la comparación. */
 async function corregirFacturaUI(fDoc, guardarDoc) {
   // Feli (18/11): la misma ventana para una factura del mail (fDoc: la leída; guardarDoc: cómo se guarda)
+  // Paso 6B (Feli, 21/11): se pueden cambiar los nombres, sacar y sumar productos; el importe, el neto, el IVA y el total se rehacen solos
   const r = CT.tarjeta, f = fDoc && fDoc.renglones ? fDoc : r && r.lectura && r.lectura.datos;
   if (!f) return;
   f.iva = f.iva || [];
   const num = function (n) { return n === null || n === undefined ? '' : String(n).replace('.', ','); };
+  const numDe = function (t) { const v = numDeInput(t); return v === null ? null : v; };
+  const r2 = function (n) { return Math.round(n * 100) / 100; };
+  // Lo que no es neto ni IVA (percepciones, exento, no gravado): se mantiene al rehacer el total
+  const ivaOrig = f.iva.reduce(function (a, x) { return a + (Number(x.importe) || 0); }, 0);
+  const otros = f.total !== null && f.total !== undefined && f.neto !== null && f.neto !== undefined ? r2(f.total - f.neto - ivaOrig) : 0;
   const campo = function (id, rotulo, valor, ancho) {
     return '<div class="campo"' + (ancho ? ' style="flex:' + ancho + '"' : '') + '><label for="' + id + '">' + rotulo + '</label><input type="text" id="' + id + '" value="' + esc(valor) + '" autocomplete="off"></div>';
+  };
+  const fila = function (x) {
+    return '<tr data-n="' + (x.n === undefined ? '' : x.n) + '"><td><input type="text" data-k="texto" value="' + esc(x.texto || '') + '" placeholder="Producto"></td>' +
+      ['cant', 'precio', 'iva', 'importe'].map(function (k) { return '<td><input type="text" inputmode="decimal" data-k="' + k + '" value="' + esc(num(x[k])) + '"></td>'; }).join('') +
+      '<td><button type="button" class="link-gris" data-quitar-r title="Sacar este producto">🗑</button></td></tr>';
   };
   const cuerpo = document.createElement('div');
   cuerpo.className = 'cuerpo cx-corregir';
   cuerpo.innerHTML = '<div class="fila-campos">' + campo('cf-letra', 'Letra', f.letra, 1) + campo('cf-numero', 'Número', f.numero, 3) + campo('cf-fecha', 'Fecha', f.fecha, 2) + '</div>' +
     '<div class="fila-campos">' + campo('cf-emisor', 'Proveedor', f.emisor, 3) + campo('cf-cuit', 'CUIT', f.cuit, 2) + '</div>' +
-    '<table class="cx-tabla"><thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>IVA %</th><th>Importe</th></tr></thead><tbody>' +
-    f.renglones.map(function (x) {
-      return '<tr data-n="' + x.n + '"><td>' + esc(x.texto) + '</td>' + ['cant', 'precio', 'iva', 'importe'].map(function (k) {
-        return '<td><input type="text" inputmode="decimal" data-k="' + k + '" value="' + esc(num(x[k])) + '"></td>'; }).join('') + '</tr>';
-    }).join('') + '</tbody></table>' +
+    '<table class="cx-tabla"><thead><tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>IVA %</th><th>Importe</th><th></th></tr></thead><tbody id="cf-renglones">' +
+    f.renglones.map(fila).join('') + '</tbody></table>' +
+    '<div class="mf-botones"><button type="button" class="btn2" id="cf-mas">＋ Agregar producto</button></div>' +
     '<div class="fila-campos">' + campo('cf-neto', 'Neto gravado', num(f.neto), 2) + campo('cf-total', 'Total', num(f.total), 2) + '</div>' +
-    '<div class="fila-campos">' + campo('cf-iva-t', 'IVA %', num((f.iva[0] || {}).tasa), 1) + campo('cf-iva', 'IVA', num((f.iva[0] || {}).importe), 2) + '</div>' +
-    (f.iva.length > 1 ? '<p class="nota">Tiene más de una tasa de IVA: acá se corrige la primera.</p>' : '') +
-    '<p class="nota">Con coma para los decimales (1234,56). Al guardar, la app rehace las cuentas y la compara de nuevo con la compra.</p>';
+    '<div id="cf-ivas"></div>' +
+    '<p class="nota">Con coma para los decimales (1234,56). Al cambiar un producto, el importe (cantidad × precio), el neto, el IVA y el total se rehacen solos; igual los podés escribir a mano.</p>';
+  const tb = function () { return cuerpo.querySelector('#cf-renglones'); };
+  const pintarIvas = function (ivas) {
+    cuerpo.querySelector('#cf-ivas').innerHTML = '<div class="fila-campos">' + ivas.map(function (x, i) {
+      return campo('cf-iva-t' + i, 'IVA %', num(x.tasa), 1) + campo('cf-iva' + i, 'IVA', num(x.importe), 2);
+    }).join('') + '</div>';
+  };
+  pintarIvas(f.iva.length ? f.iva : [{ tasa: 21, importe: null }]);
+  const rehacer = function () {
+    let neto = 0;
+    const porTasa = {};
+    tb().querySelectorAll('tr').forEach(function (tr) {
+      const imp = numDe(tr.querySelector('[data-k="importe"]').value), tasa = numDe(tr.querySelector('[data-k="iva"]').value);
+      if (imp === null) return;
+      neto += imp;
+      if (tasa !== null) porTasa[tasa] = (porTasa[tasa] || 0) + imp * tasa / 100;
+    });
+    const ivas = Object.keys(porTasa).map(function (t) { return { tasa: Number(t), importe: r2(porTasa[t]) }; });
+    $('cf-neto').value = num(r2(neto));
+    if (ivas.length) pintarIvas(ivas);
+    const ivaT = ivas.reduce(function (a, x) { return a + x.importe; }, 0);
+    $('cf-total').value = num(r2(neto + ivaT + otros));
+  };
+  const conectar = function (tr) {
+    tr.querySelectorAll('input').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        if (inp.dataset.k === 'cant' || inp.dataset.k === 'precio') {
+          const c = numDe(tr.querySelector('[data-k="cant"]').value), p = numDe(tr.querySelector('[data-k="precio"]').value);
+          if (c !== null && p !== null) tr.querySelector('[data-k="importe"]').value = num(r2(c * p));
+        }
+        if (inp.dataset.k !== 'texto') rehacer();
+      });
+    });
+    tr.querySelector('[data-quitar-r]').addEventListener('click', function () { tr.remove(); rehacer(); });
+  };
+  tb().querySelectorAll('tr').forEach(conectar);
+  cuerpo.querySelector('#cf-mas').addEventListener('click', function () {
+    const tmp = document.createElement('tbody');
+    tmp.innerHTML = fila({ texto: '', cant: 1, precio: null, iva: (f.iva[0] || {}).tasa || 21, importe: null });
+    const tr = tmp.firstChild;
+    tb().appendChild(tr);
+    conectar(tr);
+    tr.querySelector('[data-k="texto"]').focus();
+  });
   const ok = await dialogo({ titulo: 'Corregir la factura', cuerpo: cuerpo,
     botones: [{ texto: 'Guardar', clase: 'btn', valor: function () {
       const v = function (id) { return $(id).value.trim(); };
-      const c = { letra: v('cf-letra'), numero: v('cf-numero'), fecha: v('cf-fecha'), emisor: v('cf-emisor'), cuit: v('cf-cuit'), neto: v('cf-neto'), total: v('cf-total'),
-                  renglones: [].map.call(cuerpo.querySelectorAll('tr[data-n]'), function (tr) {
-                    const o = { n: Number(tr.dataset.n) };
+      const c = { completo: true, letra: v('cf-letra'), numero: v('cf-numero'), fecha: v('cf-fecha'), emisor: v('cf-emisor'), cuit: v('cf-cuit'), neto: v('cf-neto'), total: v('cf-total'),
+                  renglones: [].map.call(tb().querySelectorAll('tr'), function (tr) {
+                    const o = tr.dataset.n === '' ? {} : { n: Number(tr.dataset.n) };
                     tr.querySelectorAll('input').forEach(function (i) { o[i.dataset.k] = i.value.trim(); });
                     return o;
-                  }) };
-      const iva = [{ tasa: v('cf-iva-t'), importe: v('cf-iva') }].concat(f.iva.slice(1).map(function (x) { return { tasa: num(x.tasa), importe: num(x.importe) }; }));
-      c.iva = iva;
+                  }).filter(function (o) { return o.texto || o.importe; }) };
+      c.iva = [].map.call(cuerpo.querySelectorAll('#cf-ivas input[id^="cf-iva-t"]'), function (inp) {
+        const i = inp.id.replace('cf-iva-t', '');
+        return { tasa: inp.value.trim(), importe: $('cf-iva' + i).value.trim() };
+      });
       return c;
     } }, { texto: 'Volver', valor: null }] });
   if (!ok) return;
@@ -1223,7 +1276,7 @@ function htmlDocumento(d, op) {
   if (d.noSePudo) return '<p class="mf-mal">⚠️ Este mail no se pudo traer (era muy pesado para el servidor): abrilo en Gmail.</p>' + htmlVerMailDoc(d);
   const notas = htmlNotasCt(d.comentarios, d.notasEn || d.id);
   let h = '<h3 class="md-tit">' + esc(tituloDoc(d)) + '</h3>' + htmlLugarDoc(d);
-  if (op.tablero) h += htmlAccionesFactura(d) + notas;
+  if (op.tablero) h += htmlAccionesFactura(d) + htmlImputacionDoc(d) + notas;
   h += htmlLecturaDoc(d);
   if (op.tablero) h += htmlPegadoDoc(d);
   else h += notas;
@@ -1921,6 +1974,7 @@ function htmlAccionesFactura(d) {
 async function accionFactura(que) {
   const d = CD.d, id = d.id;
   let x;
+  if (que === 'lista' && d.imputacion && !d.imputacion.completa) return aviso(d.imputacion.falta, 'bad');     // Paso 6B (Feli, 21/11)
   if (['controlando', 'lista', 'entrantes'].indexOf(que) !== -1) {
     if (que === 'lista' && d.columna === 'aprobacion' && !(await dialogo({ titulo: 'Lista para cargar', texto: 'Todavía espera la aprobación de ' + d.tablero.aprobacion.aprueba + '. ¿La pasás igual?',
         botones: [{ texto: 'Sí, pasarla', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] }))) return;
@@ -2017,6 +2071,8 @@ $('s-cdoc').addEventListener('click', function (e) {
   else if (b.dataset.peg) accionPegado(b, function () { cargarDoc(); cargarFacturasT(); });
   else if (b.dataset.entablero) { if (CD.d && CD.d.enCompra) abrir('ctarjeta', { id: CD.d.enCompra.id }); }
   else if (b.dataset.irorden) irAOrden(b.dataset.irorden);
+  else if (b.dataset.impEditar) editarImputacionUI();
+  else if (b.dataset.impSug) usarSugerenciaImp();
 });
 
 /* Al instante: el canal de siempre avisa cuando cambia algo (y sin canal, cada 20 s mientras se mira) */
@@ -2137,3 +2193,95 @@ $('ip-compu').addEventListener('click', async function () {
     alAbrir: function () { campo.select(); }, botones: [{ texto: 'Guardar', clase: 'btn', valor: function () { return campo.value.trim(); } }, { texto: 'Volver', valor: null }] });
   if (v) { try { guardado.guardar(K_COMPU_IMPRESORA, v); } catch (e) { /* queda el de siempre */ } pintarImpresora(); }
 });
+
+/* ---------- Fase 7, Paso 6B (Feli, 21/11): la imputación de una factura varia (cuenta, unidad de negocio y centro de costos) ----------
+   En la tarjeta del tablero de Facturas, debajo de los botones: cada producto con la suya, "✏️ Editar imputación" (para todos o de a
+   uno) y, si el proveedor ya tuvo una, "Usar la de la última factura". Sin la imputación completa no pasa a Lista para cargar. */
+function textoImp(x) { return x ? x.cuentaNombre + ' · ' + x.unidadNombre + ' · ' + x.centroNombre : ''; }
+function htmlImputacionDoc(d) {
+  const im = d.imputacion;
+  if (!im) return '';
+  const cargada = d.tablero && d.tablero.albor && d.tablero.albor.estado === 'Cargada';
+  let h = '<div class="caja fc-imp' + (im.completa ? '' : ' falta') + '"><h3>📒 Imputación' + (cargada || !im.renglones.length ? '' : ' <button type="button" class="btn-chico" data-imp-editar="1">✏️ Editar</button>') + '</h3>';
+  if (!im.renglones.length) return h + '<p class="nota">' + esc(im.falta) + '</p></div>';
+  h += '<ul class="fc-imp-l">' + im.renglones.map(function (x) {
+    return '<li><b>' + esc(x.texto || 'Producto') + '</b>' + (x.importe !== null && x.importe !== undefined ? ' <small>' + esc(dinero(x.importe)) + '</small>' : '') +
+           '<div class="cx-cta-prod' + (x.imp ? '' : ' sin') + '">📒 ' + esc(x.imp ? textoImp(x.imp) : 'Sin imputar') + '</div></li>';
+  }).join('') + '</ul>';
+  if (!im.completa) h += '<p class="nota">' + esc(im.falta) + '</p>';
+  if (im.sugerida && !cargada) h += '<div class="mf-botones"><button type="button" class="btn2" data-imp-sug="1">Usar la de la última factura: ' + esc(textoImp(im.sugerida)) + '</button></div>';
+  return h + '</div>';
+}
+
+async function guardarImp(cambios) {
+  aviso('Guardando…');
+  const x = await api('guardarImputacionFactura', CD.d.id, cambios);
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal para guardar la imputación.' : x.error, 'bad');
+  aviso('Listo: se guardó la imputación.');
+  CD.d = x; pintarDoc(); if (typeof cargarFacturasT === 'function') cargarFacturasT();
+}
+function usarSugerenciaImp() {
+  const im = CD.d && CD.d.imputacion;
+  if (!im || !im.sugerida) return;
+  guardarImp(im.renglones.filter(function (x) { return !x.imp; }).map(function (x) { return { n: x.n, cuenta: im.sugerida.cuenta, unidad: im.sugerida.unidad, centro: im.sugerida.centro }; }));
+}
+
+async function editarImputacionUI() {
+  const d = CD.d, im = d.imputacion, op = d.opcionesImp;
+  if (!im || !op) return;
+  const sel = {};
+  im.renglones.forEach(function (x) { const v = x.imp || {}; sel[x.n] = { cuenta: v.cuenta || '', unidad: v.unidad || '', centro: v.centro || '' }; });
+  const cuentaDe = function (c) { return op.cuentas.filter(function (x) { return x.codigo === c; })[0]; };
+  const unidadDe = function (u) { return op.unidades.filter(function (x) { return x.id === u; })[0]; };
+  // Al elegir la cuenta, si deja una sola unidad (o la unidad un solo centro), queda elegida
+  const ajustar = function (v) {
+    const c = cuentaDe(v.cuenta);
+    if (!c) { v.unidad = ''; v.centro = ''; return; }
+    if (c.unidades.indexOf(v.unidad) === -1) v.unidad = c.unidades.length === 1 ? c.unidades[0] : '';
+    const u = unidadDe(v.unidad);
+    if (!u || !u.centros.some(function (x) { return x.id === v.centro; })) v.centro = u && u.centros.length === 1 ? u.centros[0].id : '';
+  };
+  const opc = function (lista, v, vacio) {
+    return '<option value="">' + esc(vacio) + '</option>' + lista.map(function (x) { return '<option value="' + esc(x.v) + '"' + (x.v === v ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');
+  };
+  const selects = function (v, attr) {
+    const c = cuentaDe(v.cuenta), u = unidadDe(v.unidad);
+    let grupo = null;
+    const cs = '<option value="">Elegí la cuenta</option>' + op.cuentas.map(function (x) {
+      let g = '';
+      if (grupo !== x.activo) { g = (grupo === null ? '' : '</optgroup>') + '<optgroup label="' + (x.activo ? 'Cuentas de activo' : 'Cuentas de resultado') + '">'; grupo = x.activo; }
+      return g + '<option value="' + esc(x.codigo) + '"' + (x.codigo === v.cuenta ? ' selected' : '') + '>' + esc(x.nombre + ' (' + x.codigo + ')') + '</option>';
+    }).join('') + (grupo === null ? '' : '</optgroup>');
+    return '<select ' + attr + ' data-k="cuenta">' + cs + '</select>' +
+      '<select ' + attr + ' data-k="unidad"' + (c ? '' : ' disabled') + '>' + opc(c ? c.unidades.map(function (id) { const x = unidadDe(id); return { v: id, t: x ? x.nombre : id }; }) : [], v.unidad, 'Unidad de negocio') + '</select>' +
+      '<select ' + attr + ' data-k="centro"' + (u ? '' : ' disabled') + '>' + opc(u ? u.centros.map(function (x) { return { v: x.id, t: x.nombre }; }) : [], v.centro, u && !u.centros.length ? 'Esta unidad no tiene centros en Albor' : 'Centro de costos') + '</select>';
+  };
+  const todos = { cuenta: '', unidad: '', centro: '' };
+  const c = document.createElement('div');
+  c.className = 'cuerpo ec-cuentas';
+  const pintar = function () {
+    c.innerHTML = (im.renglones.length > 1 ? '<div class="ec-fila ec-todos"><b>Para toda la factura</b>' + selects(todos, 'data-tc="1"') +
+                   '<button type="button" class="btn2" data-tc-aplicar' + (todos.cuenta && todos.unidad && todos.centro ? '' : ' disabled') + '>Aplicar a todos</button></div>' : '') +
+      im.renglones.map(function (x) {
+        return '<div class="ec-fila"><b>' + esc(x.texto || 'Producto') + (x.importe !== null && x.importe !== undefined ? ' · ' + esc(dinero(x.importe)) : '') + '</b>' + selects(sel[x.n], 'data-ec="' + x.n + '"') + '</div>';
+      }).join('');
+    c.querySelectorAll('select').forEach(function (sl) {
+      sl.addEventListener('change', function () {
+        const v = sl.dataset.tc ? todos : sel[sl.dataset.ec];
+        v[sl.dataset.k] = sl.value;
+        if (sl.dataset.k === 'cuenta') v.unidad = v.unidad || '';
+        ajustar(v);
+        pintar();
+      });
+    });
+    const ta = c.querySelector('[data-tc-aplicar]');
+    if (ta) ta.addEventListener('click', function () { im.renglones.forEach(function (x) { sel[x.n] = Object.assign({}, todos); }); pintar(); });
+  };
+  pintar();
+  const ok = await dialogo({ titulo: 'La imputación de la factura', cuerpo: c, botones: [{ texto: 'Guardar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+  if (!ok) return;
+  const cambios = im.renglones.map(function (x) { const v = sel[x.n]; return { n: x.n, cuenta: v.cuenta, unidad: v.unidad, centro: v.centro }; });
+  if (cambios.some(function (x) { return x.cuenta && (!x.unidad || !x.centro); })) return aviso('A algún producto le falta la unidad de negocio o el centro de costos.', 'bad');
+  guardarImp(cambios);
+}
+

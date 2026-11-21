@@ -1376,3 +1376,11 @@ body[data-pantalla="cfac"] .contenido{max-width:none}
 .ec-fila select{width:100%}
 .ec-todos{background:rgba(127,127,127,.08);border-radius:8px;padding:8px}
 .ec-todos .btn2{width:auto;justify-self:start}
+/* Fase 7, Paso 6B (Feli, 21/11): la imputación de una factura varia */
+.fc-imp.falta{border-left:4px solid var(--warn)}
+.fc-imp-l{list-style:none;padding:0;margin:0}
+.fc-imp-l li{padding:6px 0;border-bottom:1px solid var(--line)}
+.fc-imp-l li:last-child{border-bottom:0}
+.cx-corregir .cx-tabla{display:block;overflow-x:auto}
+.cx-corregir .cx-tabla input[data-k="texto"]{min-width:150px}
+.cx-corregir .cx-tabla [data-quitar-r]{padding:4px}
