@@ -2197,7 +2197,11 @@ $('ip-compu').addEventListener('click', async function () {
 /* ---------- Fase 7, Paso 6B (Feli, 21/11): la imputación de una factura varia (cuenta, unidad de negocio y centro de costos) ----------
    En la tarjeta del tablero de Facturas, debajo de los botones: cada producto con la suya, "✏️ Editar imputación" (para todos o de a
    uno) y, si el proveedor ya tuvo una, "Usar la de la última factura". Sin la imputación completa no pasa a Lista para cargar. */
-function textoImp(x) { return x ? x.cuentaNombre + ' · ' + x.unidadNombre + ' · ' + x.centroNombre : ''; }
+function textoImp(x) {
+  if (!x) return '';
+  if (x.tipo === 'gasto') return '🚜 ' + x.bienNombre + ' · ' + x.tipoCostoNombre + ' · ' + x.unidadNombre + ' · ' + x.centroNombre;     // Paso 6C
+  return x.cuentaNombre + ' · ' + x.unidadNombre + ' · ' + x.centroNombre;
+}
 function htmlImputacionDoc(d) {
   const im = d.imputacion;
   if (!im) return '';
@@ -2223,45 +2227,72 @@ async function guardarImp(cambios) {
 function usarSugerenciaImp() {
   const im = CD.d && CD.d.imputacion;
   if (!im || !im.sugerida) return;
-  guardarImp(im.renglones.filter(function (x) { return !x.imp; }).map(function (x) { return { n: x.n, cuenta: im.sugerida.cuenta, unidad: im.sugerida.unidad, centro: im.sugerida.centro }; }));
+  const g = im.sugerida;
+  guardarImp(im.renglones.filter(function (x) { return !x.imp; }).map(function (x) {
+    return g.tipo === 'gasto' ? { n: x.n, tipo: 'gasto', tipoBien: g.tipoBien, bien: g.bien, tipoCosto: g.tipoCosto, unidad: g.unidad, centro: g.centro }
+                              : { n: x.n, cuenta: g.cuenta, unidad: g.unidad, centro: g.centro };
+  }));
 }
 
 async function editarImputacionUI() {
   const d = CD.d, im = d.imputacion, op = d.opcionesImp;
   if (!im || !op) return;
+  // Cada fila: tipo '' (cuenta contable) o 'gasto' (gasto de bien de uso, Paso 6C: tipo de bien, bien, tipo de costo, unidad y centro)
+  const vacio = function () { return { tipo: '', cuenta: '', tipoBien: '', bien: '', tipoCosto: '', unidad: '', centro: '' }; };
   const sel = {};
-  im.renglones.forEach(function (x) { const v = x.imp || {}; sel[x.n] = { cuenta: v.cuenta || '', unidad: v.unidad || '', centro: v.centro || '' }; });
+  im.renglones.forEach(function (x) { sel[x.n] = Object.assign(vacio(), x.imp ? JSON.parse(JSON.stringify(x.imp)) : {}); if (sel[x.n].tipo !== 'gasto') sel[x.n].tipo = ''; });
   const cuentaDe = function (c) { return op.cuentas.filter(function (x) { return x.codigo === c; })[0]; };
   const unidadDe = function (u) { return op.unidades.filter(function (x) { return x.id === u; })[0]; };
-  // Al elegir la cuenta, si deja una sola unidad (o la unidad un solo centro), queda elegida
+  const costoDe = function (c) { return (op.tiposCosto || []).filter(function (x) { return x.id === c; })[0]; };
+  const bienDe = function (b) { return (op.bienes || []).filter(function (x) { return x.id === b; })[0]; };
+  const unidadesDe = function (v) { if (v.tipo === 'gasto') { const tc = costoDe(v.tipoCosto); return tc ? tc.unidades : []; } const c = cuentaDe(v.cuenta); return c ? c.unidades : []; };
+  // Si queda una sola opción (unidad o centro), queda elegida
   const ajustar = function (v) {
-    const c = cuentaDe(v.cuenta);
-    if (!c) { v.unidad = ''; v.centro = ''; return; }
-    if (c.unidades.indexOf(v.unidad) === -1) v.unidad = c.unidades.length === 1 ? c.unidades[0] : '';
+    if (v.tipo === 'gasto' && v.bien && !(bienDe(v.bien) && bienDe(v.bien).tipo === v.tipoBien)) v.bien = '';
+    const us = unidadesDe(v);
+    if (us.indexOf(v.unidad) === -1) v.unidad = us.length === 1 ? us[0] : '';
     const u = unidadDe(v.unidad);
     if (!u || !u.centros.some(function (x) { return x.id === v.centro; })) v.centro = u && u.centros.length === 1 ? u.centros[0].id : '';
   };
-  const opc = function (lista, v, vacio) {
-    return '<option value="">' + esc(vacio) + '</option>' + lista.map(function (x) { return '<option value="' + esc(x.v) + '"' + (x.v === v ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');
+  const opc = function (lista, v, vacioT) {
+    return '<option value="">' + esc(vacioT) + '</option>' + lista.map(function (x) { return '<option value="' + esc(x.v) + '"' + (x.v === v ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');
+  };
+  // Los tipos de costo: primero los que empiezan como el bien (EST, GAN, AGR, MAQ, PAB)
+  const costosPara = function (v) {
+    const b = bienDe(v.bien), pre = b ? (b.nombre.match(/^(EST|GAN|AGR|MAQ|PAB)\b/i) || [])[1] : '';
+    const l = (op.tiposCosto || []).slice();
+    if (pre) l.sort(function (a, c) { return (c.nombre.toUpperCase().indexOf(pre.toUpperCase()) === 0) - (a.nombre.toUpperCase().indexOf(pre.toUpperCase()) === 0); });
+    return l.map(function (x) { return { v: x.id, t: x.nombre }; });
   };
   const selects = function (v, attr) {
-    const c = cuentaDe(v.cuenta), u = unidadDe(v.unidad);
-    let grupo = null;
-    const cs = '<option value="">Elegí la cuenta</option>' + op.cuentas.map(function (x) {
-      let g = '';
-      if (grupo !== x.activo) { g = (grupo === null ? '' : '</optgroup>') + '<optgroup label="' + (x.activo ? 'Cuentas de activo' : 'Cuentas de resultado') + '">'; grupo = x.activo; }
-      return g + '<option value="' + esc(x.codigo) + '"' + (x.codigo === v.cuenta ? ' selected' : '') + '>' + esc(x.nombre + ' (' + x.codigo + ')') + '</option>';
-    }).join('') + (grupo === null ? '' : '</optgroup>');
-    return '<select ' + attr + ' data-k="cuenta">' + cs + '</select>' +
-      '<select ' + attr + ' data-k="unidad"' + (c ? '' : ' disabled') + '>' + opc(c ? c.unidades.map(function (id) { const x = unidadDe(id); return { v: id, t: x ? x.nombre : id }; }) : [], v.unidad, 'Unidad de negocio') + '</select>' +
-      '<select ' + attr + ' data-k="centro"' + (u ? '' : ' disabled') + '>' + opc(u ? u.centros.map(function (x) { return { v: x.id, t: x.nombre }; }) : [], v.centro, u && !u.centros.length ? 'Esta unidad no tiene centros en Albor' : 'Centro de costos') + '</select>';
+    let h = '<select ' + attr + ' data-k="tipo">' + '<option value=""' + (v.tipo ? '' : ' selected') + '>Cuenta contable</option>' +
+            ((op.tiposCosto || []).length ? '<option value="gasto"' + (v.tipo === 'gasto' ? ' selected' : '') + '>Gasto de bien de uso</option>' : '') + '</select>';
+    if (v.tipo === 'gasto') {
+      h += '<select ' + attr + ' data-k="tipoBien">' + opc((op.tiposBien || []).map(function (x) { return { v: x.id, t: x.nombre }; }), v.tipoBien, 'Tipo de bien de uso') + '</select>' +
+           '<select ' + attr + ' data-k="bien"' + (v.tipoBien ? '' : ' disabled') + '>' + opc((op.bienes || []).filter(function (x) { return x.tipo === v.tipoBien; }).map(function (x) { return { v: x.id, t: x.nombre }; }), v.bien, 'Bien de uso') + '</select>' +
+           '<select ' + attr + ' data-k="tipoCosto"' + (v.bien ? '' : ' disabled') + '>' + opc(costosPara(v), v.tipoCosto, 'Tipo de costo') + '</select>';
+      const tc = costoDe(v.tipoCosto);
+      if (tc) h += '<small class="nota">Cuenta: ' + esc(tc.cuentaNombre + ' (' + tc.cuenta + ')') + '</small>';
+    } else {
+      let grupo = null;
+      h += '<select ' + attr + ' data-k="cuenta"><option value="">Elegí la cuenta</option>' + op.cuentas.map(function (x) {
+        let g = '';
+        if (grupo !== x.activo) { g = (grupo === null ? '' : '</optgroup>') + '<optgroup label="' + (x.activo ? 'Cuentas de activo' : 'Cuentas de resultado') + '">'; grupo = x.activo; }
+        return g + '<option value="' + esc(x.codigo) + '"' + (x.codigo === v.cuenta ? ' selected' : '') + '>' + esc(x.nombre + ' (' + x.codigo + ')') + '</option>';
+      }).join('') + (grupo === null ? '' : '</optgroup>') + '</select>';
+    }
+    const us = unidadesDe(v), u = unidadDe(v.unidad);
+    h += '<select ' + attr + ' data-k="unidad"' + (us.length ? '' : ' disabled') + '>' + opc(us.map(function (id) { const x = unidadDe(id); return { v: id, t: x ? x.nombre : id }; }), v.unidad, 'Unidad de negocio') + '</select>' +
+         '<select ' + attr + ' data-k="centro"' + (u ? '' : ' disabled') + '>' + opc(u ? u.centros.map(function (x) { return { v: x.id, t: x.nombre }; }) : [], v.centro, u && !u.centros.length ? 'Esta unidad no tiene centros en Albor' : 'Centro de costos') + '</select>';
+    return h;
   };
-  const todos = { cuenta: '', unidad: '', centro: '' };
+  const completo = function (v) { return v.tipo === 'gasto' ? !!(v.tipoBien && v.bien && v.tipoCosto && v.unidad && v.centro) : !!(v.cuenta && v.unidad && v.centro); };
+  const todos = vacio();
   const c = document.createElement('div');
   c.className = 'cuerpo ec-cuentas';
   const pintar = function () {
     c.innerHTML = (im.renglones.length > 1 ? '<div class="ec-fila ec-todos"><b>Para toda la factura</b>' + selects(todos, 'data-tc="1"') +
-                   '<button type="button" class="btn2" data-tc-aplicar' + (todos.cuenta && todos.unidad && todos.centro ? '' : ' disabled') + '>Aplicar a todos</button></div>' : '') +
+                   '<button type="button" class="btn2" data-tc-aplicar' + (completo(todos) ? '' : ' disabled') + '>Aplicar a todos</button></div>' : '') +
       im.renglones.map(function (x) {
         return '<div class="ec-fila"><b>' + esc(x.texto || 'Producto') + (x.importe !== null && x.importe !== undefined ? ' · ' + esc(dinero(x.importe)) : '') + '</b>' + selects(sel[x.n], 'data-ec="' + x.n + '"') + '</div>';
       }).join('');
@@ -2269,7 +2300,7 @@ async function editarImputacionUI() {
       sl.addEventListener('change', function () {
         const v = sl.dataset.tc ? todos : sel[sl.dataset.ec];
         v[sl.dataset.k] = sl.value;
-        if (sl.dataset.k === 'cuenta') v.unidad = v.unidad || '';
+        if (sl.dataset.k === 'tipo') Object.assign(v, vacio(), { tipo: sl.value });
         ajustar(v);
         pintar();
       });
@@ -2280,8 +2311,13 @@ async function editarImputacionUI() {
   pintar();
   const ok = await dialogo({ titulo: 'La imputación de la factura', cuerpo: c, botones: [{ texto: 'Guardar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
   if (!ok) return;
-  const cambios = im.renglones.map(function (x) { const v = sel[x.n]; return { n: x.n, cuenta: v.cuenta, unidad: v.unidad, centro: v.centro }; });
-  if (cambios.some(function (x) { return x.cuenta && (!x.unidad || !x.centro); })) return aviso('A algún producto le falta la unidad de negocio o el centro de costos.', 'bad');
+  const cambios = im.renglones.map(function (x) {
+    const v = sel[x.n];
+    return v.tipo === 'gasto' ? { n: x.n, tipo: 'gasto', tipoBien: v.tipoBien, bien: v.bien, tipoCosto: v.tipoCosto, unidad: v.unidad, centro: v.centro }
+                              : { n: x.n, cuenta: v.cuenta, unidad: v.unidad, centro: v.centro };
+  });
+  if (im.renglones.some(function (x) { const v = sel[x.n]; return (v.tipo === 'gasto' || v.cuenta) && !completo(v); }))
+    return aviso('A algún producto le falta completar la imputación (unidad, centro o, en un gasto de bien de uso, el bien o el tipo de costo).', 'bad');
   guardarImp(cambios);
 }
 
