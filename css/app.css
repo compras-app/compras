@@ -1367,3 +1367,12 @@ body[data-pantalla="cfac"] .contenido{max-width:none}
 .cx-revisada{font-size:14px;color:var(--accent);margin:6px 0}
 .cx-fac-r.revisada{border-left-color:var(--line);background:transparent}
 .cx-fac-r.revisada b{color:var(--accent)}
+/* Fase 7, Paso 6A (Feli, 21/11): la cuenta de cada producto en Contabilidad y "✏️ Editar cuentas" */
+.cx-cta-prod{font-size:12px;color:var(--muted);margin-top:2px}
+.cx-cta-prod.sin{color:var(--warn)}
+.caja h3 .btn-chico{margin-left:8px;vertical-align:middle}
+.ec-cuentas{display:flex;flex-direction:column;gap:10px;max-height:65vh;overflow:auto}
+.ec-fila{display:grid;grid-template-columns:1fr;gap:4px;border-bottom:1px solid var(--line);padding-bottom:8px}
+.ec-fila select{width:100%}
+.ec-todos{background:rgba(127,127,127,.08);border-radius:8px;padding:8px}
+.ec-todos .btn2{width:auto;justify-self:start}

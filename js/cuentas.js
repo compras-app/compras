@@ -256,7 +256,9 @@ $('aj-f6-borrar').addEventListener('click', async function () {
 function pintarImputacion() {
   const b = $('tj-cuenta-b');
   if (!b) return;
-  const d = TB.detalle, im = d && d.imputacion;
+  // Fase 7, Paso 6A (Feli, 21/11): la cuenta contable ya no se ve en la tarjeta de Compras (solo en Contabilidad, debajo de cada
+  // producto); queda solo el bien de uso, que sí importa para comprar
+  const d = TB.detalle, im = d && d.imputacion && d.imputacion.filter(function (x) { return x.cuenta && x.cuenta.tipo === 'bien'; });
   b.hidden = !im || !im.length || TB.tipo === 'tarea';
   if (b.hidden) return;
   const varios = im.length > 1;

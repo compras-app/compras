@@ -128,8 +128,7 @@ function htmlTarjetaCt(t) {
                    : pendiente ? '<div class="ct-orden">⚠️ Orden de compra pendiente</div>'
                    : t.sinOrden ? '<div class="ct-sinoc">Sin orden de compra</div>' : '') +
     '<div class="t">' + esc(t.titulo) + '</div>' +
-    // Feli (16/11): la cuenta contable, quién la pidió y para qué granja
-    (t.cuentas && t.cuentas.length ? htmlCuentaCt(t.cuentas.join(' / ')) : '') +
+    // Fase 7, Paso 6A (Feli, 21/11): la cuenta ya no va arriba de la tarjeta (se ve debajo de cada producto, al abrirla)
     // Feli (31/10): un pedido que pasó entero a Entregas (sin comprar en la app) no tiene proveedor: quién lo pidió
     (t.entero ? '<div class="sub-t">' + esc(['Pasó entero a Entregas', t.solicitante].filter(Boolean).join(' · ')) + '</div>'
               : '<div class="sub-t">🏪 ' + esc(t.proveedor || 'Sin proveedor') + (t.cuit ? ' · CUIT ' + esc(t.cuit) : '') + '</div>') +
@@ -231,7 +230,7 @@ function htmlCuentaPedido(p) {
 
 function htmlPedidoCt(p, conTitulo) {
   return '<div class="caja cx-pedido">' + (conTitulo ? '<h3>' + esc(p.titulo || p.ref) + (p.prueba ? ' · 🧪 ' + esc(p.prueba) : '') + '</h3>' : '') +
-    htmlCuentaPedido(p) +
+    (p.cuenta && p.cuenta.tipo === 'bien' ? htmlCuentaCt(p.cuenta.texto) : '') +
     '<dl class="ad-datos"><dt>Sitio</dt><dd>' + esc(p.sitio || '—') + '</dd><dt>Pidió</dt><dd>' + esc(p.solicitante || '—') + '</dd>' +
     '<dt>Razón</dt><dd>' + esc(p.razon || '—') + '</dd><dt>Pedido</dt><dd>' + esc(p.ref) + ' · ' + esc(fechaCt(p.fecha)) + '</dd></dl></div>';
 }
@@ -271,8 +270,89 @@ function htmlOrdenesCt(l) {
 function htmlProductosCt(l) {
   return '<ul class="cx-prods">' + l.map(function (x) {
     return '<li><b>' + esc(x.cantidad) + ' × ' + esc(x.nombre) + '</b>' + (x.especificacion ? ' <small>(' + esc(x.especificacion) + ')</small>' : '') +
-      (x.comprado ? ' <span class="tag">Comprado</span>' : '') + '</li>';
+      (x.comprado ? ' <span class="tag">Comprado</span>' : '') + htmlCuentaProd(x.cuenta) + '</li>';
   }).join('') + '</ul>';
+}
+
+/* ---------- Fase 7, Paso 6A (Feli, 21/11): la cuenta contable de cada producto, debajo del producto; "✏️ Editar" las cambia ---------- */
+function htmlCuentaProd(c) {
+  if (!c) return '';
+  return '<div class="cx-cta-prod' + (c.tipo === 'sin' ? ' sin' : '') + '">📒 ' + esc(c.texto) + '</div>';
+}
+function cuentaDeProductoCt(linea) {
+  const p = ((CT.tarjeta && CT.tarjeta.productos) || []).filter(function (x) { return x.id === linea; })[0];
+  return p ? p.cuenta : null;
+}
+function botonEditarCuentas() {
+  const ps = ((CT.tarjeta && CT.tarjeta.productos) || []).filter(function (x) { return x.cuenta && x.cuenta.tipo !== 'bien'; });
+  return ps.length ? '<button type="button" class="btn-chico" data-editar-cuentas="1">✏️ Editar cuentas</button>' : '';
+}
+
+/** La cuenta y el centro de cada producto: "Para todos" arriba y una fila por producto. Se guarda solo lo que cambió. */
+async function editarCuentasUI() {
+  const r = CT.tarjeta, id = r.tarjeta ? r.tarjeta.id : r.pedido.ref;
+  const ps = (r.productos || []).filter(function (x) { return x.cuenta && x.cuenta.tipo !== 'bien'; });
+  if (!ps.length) return;
+  const sel = {};
+  ps.forEach(function (x) { sel[x.id] = { cuenta: x.cuenta.cuenta || '', centro: x.cuenta.centro || '' }; });
+  const opcCuenta = function (v) {
+    return (v ? '' : '<option value="">Elegí la cuenta</option>') + r.cuentas.map(function (c) { return '<option value="' + esc(c.codigo) + '"' + (c.codigo === v ? ' selected' : '') + '>' + esc(c.nombre) + '</option>'; }).join('');
+  };
+  const opcCentro = function (cuenta, v) {
+    const cs = (r.cuentas.filter(function (c) { return c.codigo === cuenta; })[0] || {}).centros || [];
+    return (v && cs.some(function (x) { return x.centro === v; }) ? '' : '<option value="">Elegí el centro</option>') +
+      cs.map(function (x) { return '<option value="' + esc(x.centro) + '"' + (x.centro === v ? ' selected' : '') + '>' + esc(x.centro) + '</option>'; }).join('');
+  };
+  const c = document.createElement('div');
+  c.className = 'cuerpo ec-cuentas';
+  const pintar = function () {
+    c.innerHTML = (ps.length > 1 ? '<div class="ec-fila ec-todos"><b>Para todos</b><select data-tc="cuenta">' + opcCuenta('') + '</select><select data-tc="centro" disabled><option value="">Elegí el centro</option></select>' +
+                   '<button type="button" class="btn2" data-tc-aplicar disabled>Aplicar a todos</button></div>' : '') +
+      ps.map(function (x) {
+        const v = sel[x.id];
+        return '<div class="ec-fila"><b>' + esc(x.cantidad + ' × ' + x.nombre) + '</b><select data-ec="' + esc(x.id) + '" data-k="cuenta">' + opcCuenta(v.cuenta) + '</select>' +
+               '<select data-ec="' + esc(x.id) + '" data-k="centro">' + opcCentro(v.cuenta, v.centro) + '</select></div>';
+      }).join('');
+    c.querySelectorAll('[data-ec]').forEach(function (s) {
+      s.addEventListener('change', function () {
+        const v = sel[s.dataset.ec];
+        if (s.dataset.k === 'cuenta') {
+          v.cuenta = s.value; v.centro = '';
+          const cs = (r.cuentas.filter(function (cu) { return cu.codigo === v.cuenta; })[0] || {}).centros || [];
+          if (cs.length === 1) v.centro = cs[0].centro;
+          pintar();
+        } else v.centro = s.value;
+      });
+    });
+    const tc = c.querySelector('[data-tc="cuenta"]'), tce = c.querySelector('[data-tc="centro"]'), ta = c.querySelector('[data-tc-aplicar]');
+    if (tc) {
+      tc.addEventListener('change', function () {
+        tce.innerHTML = opcCentro(tc.value, '');
+        tce.disabled = !tc.value;
+        if (tce.options.length === 1 && tce.options[0].value) tce.value = tce.options[0].value;
+        ta.disabled = !tc.value || !tce.value;
+      });
+      tce.addEventListener('change', function () { ta.disabled = !tc.value || !tce.value; });
+      ta.addEventListener('click', function () {
+        ps.forEach(function (x) { sel[x.id] = { cuenta: tc.value, centro: tce.value }; });
+        pintar();
+      });
+    }
+  };
+  pintar();
+  const ok = await dialogo({ titulo: 'Las cuentas de los productos', cuerpo: c,
+    botones: [{ texto: 'Guardar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+  if (!ok) return;
+  const cambios = ps.filter(function (x) { return sel[x.id].cuenta !== (x.cuenta.cuenta || '') || sel[x.id].centro !== (x.cuenta.centro || ''); })
+    .map(function (x) { return { linea: x.id, cuenta: sel[x.id].cuenta, centro: sel[x.id].centro }; });
+  if (!cambios.length) return aviso('No cambió nada.');
+  const falta = cambios.filter(function (x) { return !x.cuenta || !x.centro; });
+  if (falta.length) return aviso('A algún producto le falta la cuenta o el centro de costos.', 'bad');
+  aviso('Guardando…');
+  const x = await api('cambiarCuentaProductos', id, cambios);
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal para cambiar las cuentas.' : x.error, 'bad');
+  aviso(x.avisoOrden ? 'Listo. Ojo: la orden de compra ya estaba en Albor con las cuentas de antes; cambiala allá si hace falta.' : 'Listo: se cambiaron las cuentas.');
+  cargarTarjetaContable(); cargarContable();
 }
 
 function pintarTarjetaContable() {
@@ -283,7 +363,7 @@ function pintarTarjetaContable() {
     $('b-titulo').textContent = 'Pedido';
     h += '<h2 class="cx-titulo">' + esc(r.pedido.titulo || r.pedido.ref) + '</h2>' + (r.pedido.prueba ? '<p class="nota">🧪 ' + esc(r.pedido.prueba) + '</p>' : '') +
       htmlPedidoCt(r.pedido, false) +
-      '<div class="caja"><h3>Productos</h3>' + htmlProductosCt(r.productos) + '</div>' + htmlOrdenesCt(r.ordenes) +
+      '<div class="caja"><h3>Productos ' + botonEditarCuentas() + '</h3>' + htmlProductosCt(r.productos) + '</div>' + htmlOrdenesCt(r.ordenes) +
       '<div class="caja"><h3>Presupuestos</h3>' + htmlPresupuestosCt(r.presupuestos) + '</div>';
   } else {
     // Fase 7, Paso 5 (Feli, 16/11): la compra con su factura. Arriba el proveedor, el CUIT y el número; la orden y si coincide;
@@ -296,12 +376,12 @@ function pintarTarjetaContable() {
       '<p class="nota">' + esc(t.titulo) + (t.prueba ? ' · 🧪 compra de un pedido de prueba' : '') + '</p>' +
       htmlOrdenPedidoCt(t, r.orden) +
       '<div class="caja cx-imput">' + r.pedidos.map(function (p) {
-        return htmlCuentaPedido(p) + '<p class="nota cx-pidio">Pidió <b>' + esc(p.solicitante || '—') + '</b> · ' + esc(p.sitio || '—') + (r.pedidos.length > 1 ? ' · ' + esc(p.titulo || p.ref) : '') + '</p>';
+        return (p.cuenta && p.cuenta.tipo === 'bien' ? htmlCuentaCt(p.cuenta.texto) : '') + '<p class="nota cx-pidio">Pidió <b>' + esc(p.solicitante || '—') + '</b> · ' + esc(p.sitio || '—') + (r.pedidos.length > 1 ? ' · ' + esc(p.titulo || p.ref) : '') + '</p>';
       }).join('') +
         '<p class="nota">' + esc(t.recibido ? 'Recibido' + (t.retiro ? ' · retiró ' + t.retiro + (t.fechaRetiro ? ', ' + fechaCt(t.fechaRetiro) : '') : '') : '⏳ Todavía no llegó (' + t.columna + ')') +
         (c && c.quien ? ' · compró ' + esc(c.quien) + (c.fecha ? ' el ' + esc(fechaCt(c.fecha)) : '') : '') + '</p></div>' +
       htmlNotasCt(r.comentarios, t.id) +
-      (t.entero ? '<div class="caja"><p class="nota">Este pedido pasó entero a Entregas, sin una compra hecha en la app: no tiene proveedor ni precios.</p>' + htmlProductosCt(r.productos) + '</div>'
+      (t.entero ? '<div class="caja"><h3>Productos ' + botonEditarCuentas() + '</h3><p class="nota">Este pedido pasó entero a Entregas, sin una compra hecha en la app: no tiene proveedor ni precios.</p>' + htmlProductosCt(r.productos) + '</div>'
                 : htmlComparadoCt(r.comparado, r.orden, t)) +
       '<div class="caja"><h3>Factura</h3>' + htmlFacturaCt(t, r.lectura) +
       // Feli (30/10): cargarla en Albor; en Compradas, "anticipadamente". Con la orden pendiente no se puede (Feli, 16/11)
@@ -311,6 +391,7 @@ function pintarTarjetaContable() {
   $('cx-cuerpo').innerHTML = h;
   $('cx-cuerpo').querySelectorAll('[data-ver]').forEach(function (b) { b.addEventListener('click', function () { verArchivo(b.dataset.ver); }); });
   $('cx-cuerpo').querySelectorAll('[data-cambiar]').forEach(function (b) { b.addEventListener('click', function () { cambiarCuentaUI(b.dataset.cambiar); }); });
+  $('cx-cuerpo').querySelectorAll('[data-editar-cuentas]').forEach(function (b) { b.addEventListener('click', editarCuentasUI); });
   $('cx-cuerpo').querySelectorAll('[data-nota]').forEach(function (b) { b.addEventListener('click', function () { agregarNotaUI(b, cargarTarjetaContable); }); });
   ['cx-fac-cargar', 'cx-fac-otra'].forEach(function (id) { if ($(id)) $(id).addEventListener('click', function () { $('cx-factura').click(); }); });
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
@@ -351,16 +432,18 @@ function htmlComparadoCt(cmp, o, t) {
   const verOC = o && (o.pdfProveedor || o.pdf), verFac = t.factura && t.factura.archivo;
   const pies = '<div class="cx-cmp-pie"><div>' + (verOC ? '<button type="button" class="btn2" data-ver="' + esc(verOC) + '">Ver orden de compra</button>' : '') + '</div>' +
                '<div>' + (verFac ? '<button type="button" class="btn2" data-ver="' + esc(verFac) + '">Ver factura</button>' : '') + '</div></div>';
-  if (!cmp) return '<div class="caja"><h3>Comprado y facturado</h3><p class="nota">' + (t.factura ? 'Cuando la IA lea la factura, acá se ve lo comprado al lado de lo facturado.' : 'Todavía no tiene factura.') + '</p>' + pies + '</div>';
+  if (!cmp) return '<div class="caja"><h3>Comprado y facturado ' + botonEditarCuentas() + '</h3><p class="nota">' + (t.factura ? 'Cuando la IA lea la factura, acá se ve lo comprado al lado de lo facturado.' : 'Todavía no tiene factura.') + '</p>' +
+                    htmlProductosCt((CT.tarjeta && CT.tarjeta.productos) || []) + pies + '</div>';
   const num = function (n) { return n === null || n === undefined ? '' : Number(n).toLocaleString('es-AR', { maximumFractionDigits: 4 }); };
   const lado = function (x, mon, k) {
     if (!x) return '<span class="nota">—</span>';
     return esc(num(x.cant) + (x.unidad ? ' ' + x.unidad : '')) + (x.precio !== null && x.precio !== undefined ? ' × ' + esc(dinero(x.precio, mon)) : '') +
            (x[k] !== null && x[k] !== undefined ? '<br><b>' + esc(dinero(x[k], mon)) + '</b>' : '');
   };
-  return '<div class="caja"><h3>Comprado y facturado</h3><div class="cx-cmp-w"><table class="cx-tabla cx-cmp"><thead><tr><th>Producto</th><th>Comprado</th><th>Facturado</th><th></th></tr></thead><tbody>' +
+  return '<div class="caja"><h3>Comprado y facturado ' + botonEditarCuentas() + '</h3><div class="cx-cmp-w"><table class="cx-tabla cx-cmp"><thead><tr><th>Producto</th><th>Comprado</th><th>Facturado</th><th></th></tr></thead><tbody>' +
     cmp.filas.map(function (x) {
       return '<tr' + (x.igual ? '' : ' class="cx-mal"') + '><td>' + esc(x.nombre) + (x.facturado && x.comprado && x.facturado.texto && x.facturado.texto !== x.nombre ? '<br><small class="nota">' + esc(x.facturado.texto) + '</small>' : '') +
+             (x.linea ? htmlCuentaProd(cuentaDeProductoCt(x.linea)) : '') +
              '</td><td>' + lado(x.comprado, cmp.moneda, 'total') + '</td><td>' + lado(x.facturado, cmp.monedaFactura, 'importe') + '</td><td>' + (x.igual ? '✅' : '⚠️') + '</td></tr>';
     }).join('') +
     '<tr class="cx-cmp-tot"><td>Total sin IVA</td><td><b>' + esc(dinero(cmp.totalCompra, cmp.moneda)) + '</b></td><td><b>' + esc(dinero(cmp.netoFactura, cmp.monedaFactura)) + '</b>' +
