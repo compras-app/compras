@@ -277,77 +277,118 @@ function htmlProductosCt(l) {
 /* ---------- Fase 7, Paso 6A (Feli, 21/11): la cuenta contable de cada producto, debajo del producto; "✏️ Editar" las cambia ---------- */
 function htmlCuentaProd(c) {
   if (!c) return '';
-  return '<div class="cx-cta-prod' + (c.tipo === 'sin' ? ' sin' : '') + '">📒 ' + esc(c.texto) + '</div>';
+  return '<div class="cx-cta-prod' + (c.tipo === 'sin' || c.falta ? ' sin' : '') + '">' + (c.tipo === 'gasto' || c.tipo === 'bien' ? '' : '📒 ') + esc(c.texto) + '</div>';
 }
 function cuentaDeProductoCt(linea) {
   const p = ((CT.tarjeta && CT.tarjeta.productos) || []).filter(function (x) { return x.id === linea; })[0];
   return p ? p.cuenta : null;
 }
 function botonEditarCuentas() {
-  const ps = ((CT.tarjeta && CT.tarjeta.productos) || []).filter(function (x) { return x.cuenta && x.cuenta.tipo !== 'bien'; });
-  return ps.length ? '<button type="button" class="btn-chico" data-editar-cuentas="1">✏️ Editar cuentas</button>' : '';
+  const ps = ((CT.tarjeta && CT.tarjeta.productos) || []).filter(function (x) { return x.cuenta; });
+  return ps.length ? '<button type="button" class="btn-chico" data-editar-cuentas="1">✏️ Editar cuentas</button><button type="button" class="btn-chico" data-bien-nuevo-ct="1">＋ Nuevo bien de uso</button>' : '';
 }
 
-/** La cuenta y el centro de cada producto: "Para todos" arriba y una fila por producto. Se guarda solo lo que cambió. */
+/** La cuenta y el centro de cada producto: "Para todos" arriba y una fila por producto. Se guarda solo lo que cambió.
+    Paso 6C en Pedidos (Feli, 21/11): cada producto puede ser "Gasto de bien de uso" (tipo, bien de Albor, tipo de costo, unidad y
+    centro); un pedido para un bien de uso arranca así, con su bien ya elegido. */
 async function editarCuentasUI() {
-  const r = CT.tarjeta, id = r.tarjeta ? r.tarjeta.id : r.pedido.ref;
-  const ps = (r.productos || []).filter(function (x) { return x.cuenta && x.cuenta.tipo !== 'bien'; });
+  const r = CT.tarjeta, id = r.tarjeta ? r.tarjeta.id : r.pedido.ref, og = r.opcionesGasto || {};
+  const ps = (r.productos || []).filter(function (x) { return x.cuenta; });
   if (!ps.length) return;
-  const sel = {};
-  ps.forEach(function (x) { sel[x.id] = { cuenta: x.cuenta.cuenta || '', centro: x.cuenta.centro || '' }; });
-  const opcCuenta = function (v) {
-    return (v ? '' : '<option value="">Elegí la cuenta</option>') + r.cuentas.map(function (c) { return '<option value="' + esc(c.codigo) + '"' + (c.codigo === v ? ' selected' : '') + '>' + esc(c.nombre) + '</option>'; }).join('');
+  const vacio = function () { return { tipo: '', cuenta: '', centro: '', tipoBien: '', bien: '', tipoCosto: '', unidad: '', centroG: '', bu: '' }; };
+  const inicial = function (x) {
+    const c = x.cuenta, v = vacio();
+    if (c.tipo === 'nuevo') Object.assign(v, { tipo: 'nuevo', bu: c.nuevo.bu });
+    else if (c.tipo === 'gasto') Object.assign(v, { tipo: 'gasto', tipoBien: c.gasto.tipoBien, bien: c.gasto.bien, tipoCosto: c.gasto.tipoCosto, unidad: c.gasto.unidad, centroG: c.gasto.centro });
+    else if (c.tipo === 'bien') Object.assign(v, { tipo: 'gasto' }, c.base || {});
+    else Object.assign(v, { cuenta: c.cuenta || '', centro: c.centro || '' });
+    return v;
   };
-  const opcCentro = function (cuenta, v) {
-    const cs = (r.cuentas.filter(function (c) { return c.codigo === cuenta; })[0] || {}).centros || [];
-    return (v && cs.some(function (x) { return x.centro === v; }) ? '' : '<option value="">Elegí el centro</option>') +
-      cs.map(function (x) { return '<option value="' + esc(x.centro) + '"' + (x.centro === v ? ' selected' : '') + '>' + esc(x.centro) + '</option>'; }).join('');
+  const sel = {}, antes = {};
+  ps.forEach(function (x) { sel[x.id] = inicial(x); antes[x.id] = JSON.stringify(sel[x.id]); });
+  const costoDe = function (c) { return (og.tiposCosto || []).filter(function (x) { return x.id === c; })[0]; };
+  const bienDe = function (b) { return (og.bienes || []).filter(function (x) { return x.id === b; })[0]; };
+  const unidadDe = function (u) { return (og.unidades || []).filter(function (x) { return x.id === u; })[0]; };
+  const ajustar = function (v) {
+    if (v.tipo === 'gasto') {
+      if (v.bien && !(bienDe(v.bien) && bienDe(v.bien).tipo === v.tipoBien)) v.bien = '';
+      const tc = costoDe(v.tipoCosto), us = tc ? tc.unidades : [];
+      if (us.indexOf(v.unidad) === -1) v.unidad = us.length === 1 ? us[0] : '';
+      const u = unidadDe(v.unidad);
+      if (!u || !u.centros.some(function (x) { return x.id === v.centroG; })) v.centroG = u && u.centros.length === 1 ? u.centros[0].id : '';
+    } else {
+      const cs = (r.cuentas.filter(function (cu) { return cu.codigo === v.cuenta; })[0] || {}).centros || [];
+      if (!cs.some(function (x) { return x.centro === v.centro; })) v.centro = cs.length === 1 ? cs[0].centro : '';
+    }
   };
+  const opc = function (lista, v, vacioT) {
+    return '<option value="">' + esc(vacioT) + '</option>' + lista.map(function (x) { return '<option value="' + esc(x.v) + '"' + (x.v === v ? ' selected' : '') + '>' + esc(x.t) + '</option>'; }).join('');
+  };
+  const costosPara = function (v) {
+    const b = bienDe(v.bien), pre = b ? (b.nombre.match(/^(?:[A-Z]+ )?(EST|GAN|AGR|MAQ|PAB)\b/i) || [])[1] : '';
+    const l = (og.tiposCosto || []).slice();
+    if (pre) l.sort(function (a, c) { return (c.nombre.toUpperCase().indexOf(pre.toUpperCase()) === 0) - (a.nombre.toUpperCase().indexOf(pre.toUpperCase()) === 0); });
+    return l.map(function (x) { return { v: x.id, t: x.nombre }; });
+  };
+  const selects = function (v, attr) {
+    let h = '<select ' + attr + ' data-k="tipo"><option value=""' + (v.tipo ? '' : ' selected') + '>Cuenta contable</option>' +
+            ((og.tiposCosto || []).length ? '<option value="gasto"' + (v.tipo === 'gasto' ? ' selected' : '') + '>Gasto de bien de uso</option>' : '') +
+            '<option value="nuevo"' + (v.tipo === 'nuevo' ? ' selected' : '') + '>Compra de un bien de uso nuevo</option></select>';
+    if (v.tipo === 'nuevo') {                                                          // Paso 6D
+      const bn = og.bienesNuevos || [];
+      return h + (bn.length ? '<select ' + attr + ' data-k="bu">' + opc(bn.map(function (x) { return { v: x.bu, t: x.nombre + ' (' + x.tipoNombre + ')' }; }), v.bu, 'Elegí el bien nuevo') + '</select>'
+                             : '<p class="nota">Todavía no hay bienes nuevos: cerrá y tocá «＋ Nuevo bien de uso».</p>') +
+             '<small class="nota">Va como «Bien de Uso», con unidad y centro PATRIMONIALES.</small>';
+    }
+    if (v.tipo === 'gasto') {
+      const tc = costoDe(v.tipoCosto), u = unidadDe(v.unidad);
+      h += '<select ' + attr + ' data-k="tipoBien">' + opc((og.tiposBien || []).map(function (x) { return { v: x.id, t: x.nombre }; }), v.tipoBien, 'Tipo de bien de uso') + '</select>' +
+           '<select ' + attr + ' data-k="bien"' + (v.tipoBien ? '' : ' disabled') + '>' + opc((og.bienes || []).filter(function (x) { return x.tipo === v.tipoBien; }).map(function (x) { return { v: x.id, t: x.nombre }; }), v.bien, 'Bien de uso') + '</select>' +
+           '<select ' + attr + ' data-k="tipoCosto"' + (v.bien ? '' : ' disabled') + '>' + opc(costosPara(v), v.tipoCosto, 'Tipo de costo') + '</select>' +
+           (tc ? '<small class="nota">Cuenta: ' + esc(tc.cuentaNombre + ' (' + tc.cuenta + ')') + '</small>' : '') +
+           '<select ' + attr + ' data-k="unidad"' + (tc ? '' : ' disabled') + '>' + opc(tc ? tc.unidades.map(function (x) { const un = unidadDe(x); return { v: x, t: un ? un.nombre : x }; }) : [], v.unidad, 'Unidad de negocio') + '</select>' +
+           '<select ' + attr + ' data-k="centroG"' + (u ? '' : ' disabled') + '>' + opc(u ? u.centros.map(function (x) { return { v: x.id, t: x.nombre }; }) : [], v.centroG, 'Centro de costos') + '</select>';
+    } else {
+      const cs = (r.cuentas.filter(function (cu) { return cu.codigo === v.cuenta; })[0] || {}).centros || [];
+      h += '<select ' + attr + ' data-k="cuenta">' + opc(r.cuentas.map(function (c) { return { v: c.codigo, t: c.nombre }; }), v.cuenta, 'Elegí la cuenta') + '</select>' +
+           '<select ' + attr + ' data-k="centro"' + (v.cuenta ? '' : ' disabled') + '>' + opc(cs.map(function (x) { return { v: x.centro, t: x.centro }; }), v.centro, 'Elegí el centro') + '</select>';
+    }
+    return h;
+  };
+  const completo = function (v) { return v.tipo === 'nuevo' ? !!v.bu : v.tipo === 'gasto' ? !!(v.tipoBien && v.bien && v.tipoCosto && v.unidad && v.centroG) : !!(v.cuenta && v.centro); };
+  const todos = vacio();
   const c = document.createElement('div');
   c.className = 'cuerpo ec-cuentas';
   const pintar = function () {
-    c.innerHTML = (ps.length > 1 ? '<div class="ec-fila ec-todos"><b>Para todos</b><select data-tc="cuenta">' + opcCuenta('') + '</select><select data-tc="centro" disabled><option value="">Elegí el centro</option></select>' +
-                   '<button type="button" class="btn2" data-tc-aplicar disabled>Aplicar a todos</button></div>' : '') +
-      ps.map(function (x) {
-        const v = sel[x.id];
-        return '<div class="ec-fila"><b>' + esc(x.cantidad + ' × ' + x.nombre) + '</b><select data-ec="' + esc(x.id) + '" data-k="cuenta">' + opcCuenta(v.cuenta) + '</select>' +
-               '<select data-ec="' + esc(x.id) + '" data-k="centro">' + opcCentro(v.cuenta, v.centro) + '</select></div>';
-      }).join('');
-    c.querySelectorAll('[data-ec]').forEach(function (s) {
-      s.addEventListener('change', function () {
-        const v = sel[s.dataset.ec];
-        if (s.dataset.k === 'cuenta') {
-          v.cuenta = s.value; v.centro = '';
-          const cs = (r.cuentas.filter(function (cu) { return cu.codigo === v.cuenta; })[0] || {}).centros || [];
-          if (cs.length === 1) v.centro = cs[0].centro;
-          pintar();
-        } else v.centro = s.value;
-      });
-    });
-    const tc = c.querySelector('[data-tc="cuenta"]'), tce = c.querySelector('[data-tc="centro"]'), ta = c.querySelector('[data-tc-aplicar]');
-    if (tc) {
-      tc.addEventListener('change', function () {
-        tce.innerHTML = opcCentro(tc.value, '');
-        tce.disabled = !tc.value;
-        if (tce.options.length === 1 && tce.options[0].value) tce.value = tce.options[0].value;
-        ta.disabled = !tc.value || !tce.value;
-      });
-      tce.addEventListener('change', function () { ta.disabled = !tc.value || !tce.value; });
-      ta.addEventListener('click', function () {
-        ps.forEach(function (x) { sel[x.id] = { cuenta: tc.value, centro: tce.value }; });
+    c.innerHTML = (ps.length > 1 ? '<div class="ec-fila ec-todos"><b>Para todos</b>' + selects(todos, 'data-tc="1"') +
+                   '<button type="button" class="btn2" data-tc-aplicar' + (completo(todos) ? '' : ' disabled') + '>Aplicar a todos</button></div>' : '') +
+      ps.map(function (x) { return '<div class="ec-fila"><b>' + esc(x.cantidad + ' × ' + x.nombre) + '</b>' + selects(sel[x.id], 'data-ec="' + esc(x.id) + '"') + '</div>'; }).join('');
+    c.querySelectorAll('select').forEach(function (sl) {
+      sl.addEventListener('change', function () {
+        const v = sl.dataset.tc ? todos : sel[sl.dataset.ec];
+        v[sl.dataset.k] = sl.value;
+        if (sl.dataset.k === 'tipo') Object.assign(v, vacio(), { tipo: sl.value });
+        ajustar(v);
         pintar();
       });
-    }
+    });
+    const ta = c.querySelector('[data-tc-aplicar]');
+    if (ta) ta.addEventListener('click', function () { ps.forEach(function (x) { sel[x.id] = Object.assign({}, todos); }); pintar(); });
   };
   pintar();
-  const ok = await dialogo({ titulo: 'Las cuentas de los productos', cuerpo: c,
-    botones: [{ texto: 'Guardar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
+  const ok = await dialogo({ titulo: 'Las cuentas de los productos', cuerpo: c, botones: [{ texto: 'Guardar', clase: 'btn', valor: true }, { texto: 'Volver', valor: null }] });
   if (!ok) return;
-  const cambios = ps.filter(function (x) { return sel[x.id].cuenta !== (x.cuenta.cuenta || '') || sel[x.id].centro !== (x.cuenta.centro || ''); })
-    .map(function (x) { return { linea: x.id, cuenta: sel[x.id].cuenta, centro: sel[x.id].centro }; });
+  const cambiados = ps.filter(function (x) { return JSON.stringify(sel[x.id]) !== antes[x.id] || x.cuenta.tipo === 'bien'; });
+  const incompletos = cambiados.filter(function (x) { return !completo(sel[x.id]); });
+  const cambios = cambiados.filter(function (x) { return completo(sel[x.id]); }).map(function (x) {
+    const v = sel[x.id];
+    return v.tipo === 'nuevo' ? { linea: x.id, tipo: 'nuevo', bu: v.bu }
+         : v.tipo === 'gasto' ? { linea: x.id, tipo: 'gasto', tipoBien: v.tipoBien, bien: v.bien, tipoCosto: v.tipoCosto, unidad: v.unidad, centro: v.centroG }
+                              : { linea: x.id, cuenta: v.cuenta, centro: v.centro };
+  });
+  if (incompletos.some(function (x) { return x.cuenta.tipo !== 'bien' || JSON.stringify(sel[x.id]) !== antes[x.id]; }))
+    return aviso('A algún producto le falta completar la cuenta (o, en un gasto de bien de uso, el bien, el tipo de costo, la unidad o el centro).', 'bad');
   if (!cambios.length) return aviso('No cambió nada.');
-  const falta = cambios.filter(function (x) { return !x.cuenta || !x.centro; });
-  if (falta.length) return aviso('A algún producto le falta la cuenta o el centro de costos.', 'bad');
   aviso('Guardando…');
   const x = await api('cambiarCuentaProductos', id, cambios);
   if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal para cambiar las cuentas.' : x.error, 'bad');
@@ -392,6 +433,7 @@ function pintarTarjetaContable() {
   $('cx-cuerpo').querySelectorAll('[data-ver]').forEach(function (b) { b.addEventListener('click', function () { verArchivo(b.dataset.ver); }); });
   $('cx-cuerpo').querySelectorAll('[data-cambiar]').forEach(function (b) { b.addEventListener('click', function () { cambiarCuentaUI(b.dataset.cambiar); }); });
   $('cx-cuerpo').querySelectorAll('[data-editar-cuentas]').forEach(function (b) { b.addEventListener('click', editarCuentasUI); });
+  $('cx-cuerpo').querySelectorAll('[data-bien-nuevo-ct]').forEach(function (b) { b.addEventListener('click', function () { nuevoBienUsoUI('pedido'); }); });
   $('cx-cuerpo').querySelectorAll('[data-nota]').forEach(function (b) { b.addEventListener('click', function () { agregarNotaUI(b, cargarTarjetaContable); }); });
   ['cx-fac-cargar', 'cx-fac-otra'].forEach(function (id) { if ($(id)) $(id).addEventListener('click', function () { $('cx-factura').click(); }); });
   if ($('cx-fac-sacar')) $('cx-fac-sacar').addEventListener('click', sacarFactura);
@@ -2072,6 +2114,7 @@ $('s-cdoc').addEventListener('click', function (e) {
   else if (b.dataset.entablero) { if (CD.d && CD.d.enCompra) abrir('ctarjeta', { id: CD.d.enCompra.id }); }
   else if (b.dataset.irorden) irAOrden(b.dataset.irorden);
   else if (b.dataset.impEditar) editarImputacionUI();
+  else if (b.dataset.bienNuevo) nuevoBienUsoUI('factura');
   else if (b.dataset.impSug) usarSugerenciaImp();
 });
 
@@ -2200,13 +2243,15 @@ $('ip-compu').addEventListener('click', async function () {
 function textoImp(x) {
   if (!x) return '';
   if (x.tipo === 'gasto') return '🚜 ' + x.bienNombre + ' · ' + x.tipoCostoNombre + ' · ' + x.unidadNombre + ' · ' + x.centroNombre;     // Paso 6C
+  if (x.tipo === 'nuevo') return '🆕 ' + x.buNombre + ' (' + x.tipoBienNombre + ') · PATRIMONIALES';                                  // Paso 6D
   return x.cuentaNombre + ' · ' + x.unidadNombre + ' · ' + x.centroNombre;
 }
 function htmlImputacionDoc(d) {
   const im = d.imputacion;
   if (!im) return '';
   const cargada = d.tablero && d.tablero.albor && d.tablero.albor.estado === 'Cargada';
-  let h = '<div class="caja fc-imp' + (im.completa ? '' : ' falta') + '"><h3>📒 Imputación' + (cargada || !im.renglones.length ? '' : ' <button type="button" class="btn-chico" data-imp-editar="1">✏️ Editar</button>') + '</h3>';
+  let h = '<div class="caja fc-imp' + (im.completa ? '' : ' falta') + '"><h3>📒 Imputación' + (cargada || !im.renglones.length ? '' :
+    ' <button type="button" class="btn-chico" data-imp-editar="1">✏️ Editar</button><button type="button" class="btn-chico" data-bien-nuevo="1">＋ Nuevo bien de uso</button>') + '</h3>';
   if (!im.renglones.length) return h + '<p class="nota">' + esc(im.falta) + '</p></div>';
   h += '<ul class="fc-imp-l">' + im.renglones.map(function (x) {
     return '<li><b>' + esc(x.texto || 'Producto') + '</b>' + (x.importe !== null && x.importe !== undefined ? ' <small>' + esc(dinero(x.importe)) + '</small>' : '') +
@@ -2238,9 +2283,9 @@ async function editarImputacionUI() {
   const d = CD.d, im = d.imputacion, op = d.opcionesImp;
   if (!im || !op) return;
   // Cada fila: tipo '' (cuenta contable) o 'gasto' (gasto de bien de uso, Paso 6C: tipo de bien, bien, tipo de costo, unidad y centro)
-  const vacio = function () { return { tipo: '', cuenta: '', tipoBien: '', bien: '', tipoCosto: '', unidad: '', centro: '' }; };
+  const vacio = function () { return { tipo: '', cuenta: '', tipoBien: '', bien: '', tipoCosto: '', unidad: '', centro: '', bu: '' }; };
   const sel = {};
-  im.renglones.forEach(function (x) { sel[x.n] = Object.assign(vacio(), x.imp ? JSON.parse(JSON.stringify(x.imp)) : {}); if (sel[x.n].tipo !== 'gasto') sel[x.n].tipo = ''; });
+  im.renglones.forEach(function (x) { sel[x.n] = Object.assign(vacio(), x.imp ? JSON.parse(JSON.stringify(x.imp)) : {}); if (sel[x.n].tipo !== 'gasto' && sel[x.n].tipo !== 'nuevo') sel[x.n].tipo = ''; });
   const cuentaDe = function (c) { return op.cuentas.filter(function (x) { return x.codigo === c; })[0]; };
   const unidadDe = function (u) { return op.unidades.filter(function (x) { return x.id === u; })[0]; };
   const costoDe = function (c) { return (op.tiposCosto || []).filter(function (x) { return x.id === c; })[0]; };
@@ -2266,7 +2311,14 @@ async function editarImputacionUI() {
   };
   const selects = function (v, attr) {
     let h = '<select ' + attr + ' data-k="tipo">' + '<option value=""' + (v.tipo ? '' : ' selected') + '>Cuenta contable</option>' +
-            ((op.tiposCosto || []).length ? '<option value="gasto"' + (v.tipo === 'gasto' ? ' selected' : '') + '>Gasto de bien de uso</option>' : '') + '</select>';
+            ((op.tiposCosto || []).length ? '<option value="gasto"' + (v.tipo === 'gasto' ? ' selected' : '') + '>Gasto de bien de uso</option>' : '') +
+            '<option value="nuevo"' + (v.tipo === 'nuevo' ? ' selected' : '') + '>Compra de un bien de uso nuevo</option></select>';
+    if (v.tipo === 'nuevo') {                                                          // Paso 6D
+      const bn = op.bienesNuevos || [];
+      return h + (bn.length ? '<select ' + attr + ' data-k="bu">' + opc(bn.map(function (x) { return { v: x.bu, t: x.nombre + ' (' + x.tipoNombre + ')' }; }), v.bu, 'Elegí el bien nuevo') + '</select>'
+                             : '<p class="nota">Todavía no hay bienes nuevos: cerrá y tocá «＋ Nuevo bien de uso».</p>') +
+             '<small class="nota">Va como «Bien de Uso», con unidad y centro PATRIMONIALES.</small>';
+    }
     if (v.tipo === 'gasto') {
       h += '<select ' + attr + ' data-k="tipoBien">' + opc((op.tiposBien || []).map(function (x) { return { v: x.id, t: x.nombre }; }), v.tipoBien, 'Tipo de bien de uso') + '</select>' +
            '<select ' + attr + ' data-k="bien"' + (v.tipoBien ? '' : ' disabled') + '>' + opc((op.bienes || []).filter(function (x) { return x.tipo === v.tipoBien; }).map(function (x) { return { v: x.id, t: x.nombre }; }), v.bien, 'Bien de uso') + '</select>' +
@@ -2286,7 +2338,7 @@ async function editarImputacionUI() {
          '<select ' + attr + ' data-k="centro"' + (u ? '' : ' disabled') + '>' + opc(u ? u.centros.map(function (x) { return { v: x.id, t: x.nombre }; }) : [], v.centro, u && !u.centros.length ? 'Esta unidad no tiene centros en Albor' : 'Centro de costos') + '</select>';
     return h;
   };
-  const completo = function (v) { return v.tipo === 'gasto' ? !!(v.tipoBien && v.bien && v.tipoCosto && v.unidad && v.centro) : !!(v.cuenta && v.unidad && v.centro); };
+  const completo = function (v) { return v.tipo === 'nuevo' ? !!v.bu : v.tipo === 'gasto' ? !!(v.tipoBien && v.bien && v.tipoCosto && v.unidad && v.centro) : !!(v.cuenta && v.unidad && v.centro); };
   const todos = vacio();
   const c = document.createElement('div');
   c.className = 'cuerpo ec-cuentas';
@@ -2313,11 +2365,80 @@ async function editarImputacionUI() {
   if (!ok) return;
   const cambios = im.renglones.map(function (x) {
     const v = sel[x.n];
-    return v.tipo === 'gasto' ? { n: x.n, tipo: 'gasto', tipoBien: v.tipoBien, bien: v.bien, tipoCosto: v.tipoCosto, unidad: v.unidad, centro: v.centro }
+    return v.tipo === 'nuevo' ? { n: x.n, tipo: 'nuevo', bu: v.bu }
+         : v.tipo === 'gasto' ? { n: x.n, tipo: 'gasto', tipoBien: v.tipoBien, bien: v.bien, tipoCosto: v.tipoCosto, unidad: v.unidad, centro: v.centro }
                               : { n: x.n, cuenta: v.cuenta, unidad: v.unidad, centro: v.centro };
   });
-  if (im.renglones.some(function (x) { const v = sel[x.n]; return (v.tipo === 'gasto' || v.cuenta) && !completo(v); }))
+  if (im.renglones.some(function (x) { const v = sel[x.n]; return (v.tipo || v.cuenta) && !completo(v); }))
     return aviso('A algún producto le falta completar la imputación (unidad, centro o, en un gasto de bien de uso, el bien o el tipo de costo).', 'bad');
   guardarImp(cambios);
+}
+
+/* ---------- Fase 7, Paso 6D (Feli, 21/11): "＋ Nuevo bien de uso" ----------
+   Los datos del alta de Albor (lo que no se completa queda en blanco allá). Queda en el padrón de la app, pendiente de Albor, y la
+   compra (o la factura) se imputa como "Compra de un bien de uso nuevo": con un solo producto, sola; con varios, se elige en Editar. */
+async function nuevoBienUsoUI(donde) {
+  const op = donde === 'factura' ? CD.d && CD.d.opcionesImp : CT.tarjeta && CT.tarjeta.opcionesGasto;
+  if (!op) return;
+  const campo = function (id, rotulo, extra) { return '<div class="campo"><label for="' + id + '">' + rotulo + '</label><input type="text" id="' + id + '" autocomplete="off"' + (extra || '') + '></div>'; };
+  const sel = function (id, rotulo, ops, vacioT) { return '<div class="campo"><label for="' + id + '">' + rotulo + '</label><select id="' + id + '"><option value="">' + esc(vacioT) + '</option>' +
+    ops.map(function (x) { return '<option value="' + esc(x.v) + '">' + esc(x.t) + '</option>'; }).join('') + '</select></div>'; };
+  const casilla = function (id, rotulo, marcada) { return '<label class="pa-check"><input type="checkbox" id="' + id + '"' + (marcada ? ' checked' : '') + '> ' + rotulo + '</label>'; };
+  const c = document.createElement('div');
+  c.className = 'cuerpo nb-form';
+  c.innerHTML = campo('nb-nombre', 'Nombre', ' maxlength="80"') +
+    sel('nb-tipo', 'Tipo', (op.tiposBienTodos || []).map(function (x) { return { v: x.id, t: x.nombre }; }), 'Elegí el tipo') +
+    '<div class="fila-campos">' + campo('nb-fecha', 'Fecha de compra', ' placeholder="21/11/2026"') + campo('nb-precio', 'Precio de compra', ' inputmode="decimal"') +
+      '<div class="campo"><label for="nb-moneda">Moneda</label><select id="nb-moneda"><option value="ARS">Pesos</option><option value="USD">Dólares</option></select></div></div>' +
+    '<div class="fila-campos">' + campo('nb-anios', 'Años de vida útil', ' inputmode="numeric"') + campo('nb-residual', 'Valor residual', ' inputmode="decimal"') + '</div>' +
+    '<div class="fila-campos">' + campo('nb-actual', 'Valor actual', ' inputmode="decimal"') + campo('nb-ultima', 'Última amortización') + '</div>' +
+    casilla('nb-ot', 'Disponible en Órdenes de Trabajo') + casilla('nb-activo', 'Activo', true) + casilla('nb-camion', 'Es camión') +
+    '<div class="fila-campos" id="nb-patentes" hidden>' + campo('nb-chasis', 'Patente chasis') + campo('nb-acoplado', 'Patente acoplado') + '</div>' +
+    sel('nb-unidad', 'Unidad de negocio', (op.unidades || []).map(function (x) { return { v: x.id, t: x.nombre }; }), 'Sin unidad') +
+    '<div class="campo"><label for="nb-centro">Centro de costos</label><select id="nb-centro" disabled><option value="">Sin centro</option></select></div>' +
+    '<div class="campo"><label for="nb-obs">Observaciones</label><textarea id="nb-obs" rows="2" maxlength="500"></textarea></div>' +
+    '<p class="nota">Lo que no completes queda en blanco en Albor. El bien queda en el padrón enseguida y se da de alta en Albor al cargar la factura.</p>';
+  const v = await dialogo({ titulo: '＋ Nuevo bien de uso', cuerpo: c,
+    alAbrir: function () {
+      $('nb-camion').addEventListener('change', function () { $('nb-patentes').hidden = !this.checked; });
+      $('nb-unidad').addEventListener('change', function () {
+        const u = (op.unidades || []).filter(function (x) { return x.id === $('nb-unidad').value; })[0];
+        $('nb-centro').innerHTML = '<option value="">Sin centro</option>' + (u ? u.centros.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.nombre) + '</option>'; }).join('') : '');
+        $('nb-centro').disabled = !u;
+        if (u && u.centros.length === 1) $('nb-centro').value = u.centros[0].id;
+      });
+      $('nb-nombre').focus();
+    },
+    botones: [{ texto: 'Crear el bien de uso', clase: 'btn', valor: function () {
+      return { nombre: $('nb-nombre').value.trim(), tipo: $('nb-tipo').value, fechaCompra: $('nb-fecha').value.trim(), precioCompra: $('nb-precio').value.trim(),
+               moneda: $('nb-moneda').value, aniosVida: $('nb-anios').value.trim(), valorResidual: $('nb-residual').value.trim(), valorActual: $('nb-actual').value.trim(),
+               ultimaAmortizacion: $('nb-ultima').value.trim(), disponibleOT: $('nb-ot').checked, activo: $('nb-activo').checked, esCamion: $('nb-camion').checked,
+               patenteChasis: $('nb-chasis').value.trim(), patenteAcoplado: $('nb-acoplado').value.trim(), unidad: $('nb-unidad').value, centro: $('nb-centro').value,
+               observaciones: $('nb-obs').value.trim() };
+    } }, { texto: 'Volver', valor: null }] });
+  if (!v) return;
+  if (!v.nombre || !v.tipo) return aviso('Falta el nombre o el tipo del bien de uso.', 'bad');
+  aviso('Creando el bien de uso…');
+  const x = await api('crearBienUsoNuevo', v);
+  if (!x.ok) return aviso(x.sinConexion ? '📶 Hace falta señal para crear el bien de uso.' : x.error, 'bad');
+  op.bienesNuevos = x.bienesNuevos;
+  // Con un solo producto, queda imputado al bien nuevo; con varios, se elige en Editar
+  if (donde === 'factura') {
+    const im = CD.d.imputacion;
+    if (im && im.renglones.length === 1) return guardarImp([{ n: im.renglones[0].n, tipo: 'nuevo', bu: x.bu }]);
+    aviso('Listo: el bien de uso quedó en el padrón. Elegilo en ✏️ Editar → «Compra de un bien de uso nuevo».');
+    editarImputacionUI();
+  } else {
+    const ps = (CT.tarjeta.productos || []).filter(function (p) { return p.cuenta; });
+    const id = CT.tarjeta.tarjeta ? CT.tarjeta.tarjeta.id : CT.tarjeta.pedido.ref;
+    if (ps.length === 1) {
+      const y = await api('cambiarCuentaProductos', id, [{ linea: ps[0].id, tipo: 'nuevo', bu: x.bu }]);
+      if (!y.ok) return aviso(y.error || 'No se pudo imputar el producto.', 'bad');
+      aviso('Listo: el bien de uso quedó en el padrón y la compra quedó imputada a él.');
+      return cargarTarjetaContable();
+    }
+    aviso('Listo: el bien de uso quedó en el padrón. Elegilo en ✏️ Editar cuentas → «Compra de un bien de uso nuevo».');
+    editarCuentasUI();
+  }
 }
 

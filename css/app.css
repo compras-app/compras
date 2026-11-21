@@ -1384,3 +1384,8 @@ body[data-pantalla="cfac"] .contenido{max-width:none}
 .cx-corregir .cx-tabla{display:block;overflow-x:auto}
 .cx-corregir .cx-tabla input[data-k="texto"]{min-width:150px}
 .cx-corregir .cx-tabla [data-quitar-r]{padding:4px}
+/* Fase 7, Paso 6D (Feli, 21/11): el formulario del bien de uso nuevo */
+.nb-form{display:flex;flex-direction:column;gap:8px;max-height:65vh;overflow:auto}
+.nb-form .fila-campos{display:flex;gap:8px;flex-wrap:wrap}
+.nb-form .fila-campos .campo{flex:1;min-width:120px}
+.nb-form textarea{width:100%;box-sizing:border-box}
